@@ -1,0 +1,23 @@
+# Note: Icon File
+
+The installer script references `icon.ico` for the setup icon.
+
+## To add a custom icon:
+
+1. Create or obtain an `.ico` file
+2. Name it `icon.ico`
+3. Place it in the root directory: `C:\Users\Notebook 1\Desktop\erp_cnc_adapter\erp_cnc_adapter\icon.ico`
+4. Rebuild installer
+
+## If no icon is provided:
+
+The installer will use the default Inno Setup icon. The installer will still work perfectly.
+
+## Create icon from image:
+
+Use an online converter or tool like:
+- https://convertio.co/png-ico/
+- Or Windows built-in: Right-click image → "Save as" → Change extension to .ico
+
+Recommended size: 256x256 pixels
+

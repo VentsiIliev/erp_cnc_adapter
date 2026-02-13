@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Logs
+logs/*.log
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test files
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+nul
+
+# Build artifacts
+*.exe
+*.msi
+installer/payload/
+
+# Distribution packages
+dist_v*/
+ERP-CNC-Adapter-Setup-*.exe
+
+# Staged updates
+staged-update.exe
+update_worker.py
+launch_update.vbs
+run_update.bat
+
+# Backup files
+*.bak.*
+
