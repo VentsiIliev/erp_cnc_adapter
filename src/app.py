@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from src.config import Settings
 from src.app_state import AppState
@@ -39,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(api_router)
+    app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "static")), name="static")
 
     # Favicon ──────────────────────────────────────────────────────────────
     _favicon = _resolve_favicon()

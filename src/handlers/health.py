@@ -1,4 +1,6 @@
 import logging
+from pathlib import Path
+from string import Template
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -9,6 +11,10 @@ from version import VERSION
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_TEMPLATE = Template(
+    (Path(__file__).resolve().parent.parent / "templates" / "health.html").read_text()
+)
 
 
 def _build_status_data(manager) -> dict:
@@ -66,258 +72,54 @@ def _render_html(data: dict) -> str:
 
     error_row = ""
     if cnc["last_error"]:
-        error_row = f"""
-            <tr>
-                <td class="label">Last error</td>
-                <td class="value error">{cnc["last_error"]}</td>
-            </tr>"""
+        error_row = (
+            '\n            <tr>'
+            '\n                <td class="label">Last error</td>'
+            f'\n                <td class="value error">{cnc["last_error"]}</td>'
+            "\n            </tr>"
+        )
 
     retry_row = ""
     if cnc["retry_count"] > 0:
-        retry_row = f"""
-            <tr>
-                <td class="label">Retry count</td>
-                <td class="value">{cnc["retry_count"]}</td>
-            </tr>"""
+        retry_row = (
+            '\n            <tr>'
+            '\n                <td class="label">Retry count</td>'
+            f'\n                <td class="value">{cnc["retry_count"]}</td>'
+            "\n            </tr>"
+        )
 
     action_btn = ""
     if state == "cnc_not_running":
-        action_btn = """
-    <div style="padding:0 28px 16px;text-align:center">
-      <form method="post" action="/api/cnc/start">
-        <button type="submit" class="start-cnc-btn">&#9654; Start CNC</button>
-      </form>
-    </div>"""
+        action_btn = (
+            '\n    <div style="padding:0 28px 16px;text-align:center">'
+            '\n      <form method="post" action="/api/cnc/start">'
+            '\n        <button type="submit" class="start-cnc-btn">&#9654; Start CNC</button>'
+            "\n      </form>"
+            "\n    </div>"
+        )
     elif connected:
-        action_btn = """
-    <div style="padding:0 28px 16px;text-align:center">
-      <form method="post" action="/api/cnc/stop">
-        <button type="submit" class="stop-cnc-btn">&#9632; Stop CNC</button>
-      </form>
-    </div>"""
+        action_btn = (
+            '\n    <div style="padding:0 28px 16px;text-align:center">'
+            '\n      <form method="post" action="/api/cnc/stop">'
+            '\n        <button type="submit" class="stop-cnc-btn">&#9632; Stop CNC</button>'
+            "\n      </form>"
+            "\n    </div>"
+        )
 
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="5">
-<title>ERP-CNC Adapter</title>
-<link rel="icon" href="/favicon.ico" type="image/x-icon">
-<style>
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #f1f5f9;
-    color: #1e293b;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }}
-  .card {{
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,.1), 0 4px 16px rgba(0,0,0,.06);
-    width: 420px;
-    max-width: 95vw;
-    overflow: hidden;
-  }}
-  .header {{
-    padding: 24px 28px 20px;
-    border-bottom: 1px solid #e2e8f0;
-  }}
-  .header h1 {{
-    font-size: 18px;
-    font-weight: 600;
-    color: #334155;
-  }}
-  .header .version {{
-    font-size: 13px;
-    color: #94a3b8;
-    margin-top: 2px;
-  }}
-  .status-banner {{
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 18px 28px;
-    background: {status_bg};
-  }}
-  .status-icon {{
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: {status_color};
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    font-weight: bold;
-    flex-shrink: 0;
-  }}
-  .status-text {{
-    font-size: 16px;
-    font-weight: 600;
-    color: {status_color};
-  }}
-  .status-sub {{
-    font-size: 13px;
-    color: #64748b;
-    margin-top: 1px;
-  }}
-  .details {{
-    padding: 20px 28px 24px;
-  }}
-  .details table {{
-    width: 100%;
-    border-collapse: collapse;
-  }}
-  .details td {{
-    padding: 8px 0;
-    font-size: 14px;
-    vertical-align: top;
-  }}
-  .details tr + tr td {{
-    border-top: 1px solid #f1f5f9;
-  }}
-  .label {{
-    color: #64748b;
-    width: 40%;
-  }}
-  .value {{
-    font-weight: 500;
-    text-align: right;
-  }}
-  .error {{
-    color: #dc2626;
-    font-weight: 400;
-    font-size: 13px;
-    word-break: break-word;
-  }}
-  .dot {{
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 6px;
-    position: relative;
-    top: -1px;
-  }}
-  .dot-pulse {{
-    background: #16a34a;
-    animation: pulse 2s ease-in-out infinite;
-  }}
-  .dot-warn {{
-    background: #dc2626;
-    animation: pulse 1s ease-in-out infinite;
-  }}
-  @keyframes pulse {{
-    0%, 100% {{ opacity: 1; }}
-    50% {{ opacity: .4; }}
-  }}
-  .footer {{
-    padding: 12px 28px;
-    border-top: 1px solid #e2e8f0;
-    text-align: center;
-    font-size: 12px;
-    color: #94a3b8;
-  }}
-  .footer a {{
-    color: #64748b;
-    text-decoration: none;
-  }}
-  .footer a:hover {{ text-decoration: underline; }}
-  .docs-btn {{
-    display: inline-block;
-    margin-top: 8px;
-    padding: 6px 18px;
-    background: #3b82f6;
-    color: #fff !important;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    text-decoration: none !important;
-    transition: background .15s;
-  }}
-  .docs-btn:hover {{ background: #2563eb; }}
-  .start-cnc-btn {{
-    display: inline-block;
-    margin-top: 12px;
-    padding: 10px 28px;
-    background: #16a34a;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background .15s;
-  }}
-  .start-cnc-btn:hover {{ background: #15803d; }}
-  .stop-cnc-btn {{
-    display: inline-block;
-    margin-top: 12px;
-    padding: 10px 28px;
-    background: #dc2626;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background .15s;
-  }}
-  .stop-cnc-btn:hover {{ background: #b91c1c; }}
-  .update-link {{
-    display: inline-block;
-    margin-top: 8px;
-    padding: 8px 20px;
-    background: #f59e0b;
-    color: #fff !important;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    text-decoration: none !important;
-    transition: background .15s;
-  }}
-  .update-link:hover {{ background: #d97706; }}
-</style>
-</head>
-<body>
-  <div class="card">
-    <div class="header">
-      <h1>ERP-CNC Adapter</h1>
-      <div class="version">v{data["version"]}</div>
-    </div>
-    <div class="status-banner">
-      <div class="status-icon">{status_icon}</div>
-      <div>
-        <div class="status-text">{status_label}</div>
-        <div class="status-sub">CNC state: {cnc["state"]}</div>
-      </div>
-    </div>
-    <div class="details">
-      <table>
-        <tr>
-          <td class="label">Status</td>
-          <td class="value"><span class="dot {dot_class}"></span>{data["status"].capitalize()}</td>
-        </tr>
-        <tr>
-          <td class="label">Uptime</td>
-          <td class="value">{_format_uptime(cnc["uptime_seconds"])}</td>
-        </tr>{retry_row}{error_row}
-      </table>
-    </div>{action_btn}
-    <div class="footer">
-      Auto-refreshes every 5 s &middot; <a href="/api/health">JSON API</a>
-      <br><a class="docs-btn" href="/docs">API Docs</a>
-      <br><a class="update-link" href="/update">&#8635; Update Adapter</a>
-    </div>
-  </div>
-</body>
-</html>"""
+    return _TEMPLATE.substitute(
+        version=data["version"],
+        status_bg=status_bg,
+        status_color=status_color,
+        status_icon=status_icon,
+        status_label=status_label,
+        dot_class=dot_class,
+        status_text=data["status"].capitalize(),
+        uptime=_format_uptime(cnc["uptime_seconds"]),
+        cnc_state=cnc["state"],
+        retry_row=retry_row,
+        error_row=error_row,
+        action_btn=action_btn,
+    )
 
 
 @router.get("/")
@@ -342,5 +144,3 @@ async def health_json(
     data = _build_status_data(manager)
     status_code = 200 if data["cnc"]["connected"] else 503
     return JSONResponse(content=data, status_code=status_code)
-
-

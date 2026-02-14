@@ -1,0 +1,157 @@
+.card {
+  width: 420px;
+}
+
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 28px;
+}
+
+.status-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.status-text {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.status-sub {
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.details {
+  padding: 20px 28px 24px;
+}
+
+.details table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.details td {
+  padding: 8px 0;
+  font-size: 14px;
+  vertical-align: top;
+}
+
+.details tr + tr td {
+  border-top: 1px solid #f1f5f9;
+}
+
+.label {
+  color: #64748b;
+  width: 40%;
+}
+
+.value {
+  font-weight: 500;
+  text-align: right;
+}
+
+.error {
+  color: #dc2626;
+  font-weight: 400;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  position: relative;
+  top: -1px;
+}
+
+.dot-pulse {
+  background: #16a34a;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.dot-warn {
+  background: #dc2626;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+.docs-btn {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 6px 18px;
+  background: #3b82f6;
+  color: #fff !important;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none !important;
+  transition: background .15s;
+}
+
+.docs-btn:hover { background: #2563eb; }
+
+.start-cnc-btn {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 10px 28px;
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.start-cnc-btn:hover { background: #15803d; }
+
+.stop-cnc-btn {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 10px 28px;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.stop-cnc-btn:hover { background: #b91c1c; }
+
+.update-link {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 8px 20px;
+  background: #f59e0b;
+  color: #fff !important;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none !important;
+  transition: background .15s;
+}
+
+.update-link:hover { background: #d97706; }

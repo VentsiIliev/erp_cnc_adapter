@@ -24,7 +24,7 @@ NAVY      = "#0D132F"
 BG        = "#ffffff"
 BG_CARD   = "#f9f9f9"
 TEXT_BODY  = "#333333"
-TEXT_MUTED = "#0D132FB3"
+TEXT_MUTED = "rgba(13, 19, 47, 0.7)"
 BORDER     = "#eeeeee"
 
 STYLESHEET = f"""
