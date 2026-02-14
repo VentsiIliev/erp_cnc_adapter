@@ -60,3 +60,6 @@ run_update.bat
 # Backup files
 *.bak.*
 
+# Update lock file
+.update-lock
+

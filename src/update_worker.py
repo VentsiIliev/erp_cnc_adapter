@@ -222,6 +222,23 @@ def main() -> None:
     logger.info("  Installation type:   %s", install_type.upper())
     logger.info("=" * 70)
 
+    # Create lock file to prevent watchdog from restarting during update
+    lock_file = os.path.join(exe_dir, ".update-lock")
+    try:
+        with open(lock_file, "w") as f:
+            f.write(f"Update in progress since {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        logger.info("Lock file created: %s", lock_file)
+    except OSError as e:
+        logger.warning("Could not create lock file: %s", e)
+
+    def _remove_lock():
+        try:
+            if os.path.exists(lock_file):
+                os.remove(lock_file)
+                logger.info("Lock file removed")
+        except OSError as e:
+            logger.warning("Could not remove lock file: %s", e)
+
     # Stop the adapter
     logger.info("")
     logger.info("PHASE 1: Stopping current adapter")
@@ -319,6 +336,7 @@ def main() -> None:
                 logger.info("  Status:      ✓ Backup restored successfully")
             except Exception as restore_err:
                 logger.error("  Status:      ✗ CRITICAL: Failed to restore backup: %s", restore_err)
+        _remove_lock()
         sys.exit(1)
 
     # Start the adapter
@@ -338,6 +356,7 @@ def main() -> None:
         logger.info("  • Service status:    Running")
         logger.info("  • Completion time:   %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         logger.info("=" * 70)
+        _remove_lock()
         logger.info("Update worker finished successfully")
     else:
         logger.error("  Status:      ✗ Failed to start service with new EXE")
@@ -361,6 +380,7 @@ def main() -> None:
         else:
             logger.error("  Status:      ✗ No backup found for rollback!")
         logger.info("=" * 70)
+        _remove_lock()
         sys.exit(1)
 
 
