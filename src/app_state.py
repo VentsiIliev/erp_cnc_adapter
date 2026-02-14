@@ -10,6 +10,7 @@ from src.config import Settings
 from src.services.cnc_client import CncClient
 from src.services.cnc_client_protocol import CncClientProtocol
 from src.services.connection_manager import ConnectionManager
+from src.services.mock_cnc_client import MockCncClient
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,11 @@ class AppState:
         _write_pid_file()
 
         logger.info("Initializing CNC client...")
-        self.cnc_client: CncClientProtocol = CncClient(settings)
+        if settings.dev_mode:
+            logger.warning("DEV_MODE enabled — using mock CNC client")
+            self.cnc_client: CncClientProtocol = MockCncClient()
+        else:
+            self.cnc_client: CncClientProtocol = CncClient(settings)
         self.connection_manager = ConnectionManager(self.cnc_client, settings)
         logger.info("CNC client initialized (connection managed by ConnectionManager)")
 

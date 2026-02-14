@@ -103,6 +103,7 @@ def _render_html(data: dict) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="5">
 <title>ERP-CNC Adapter</title>
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{

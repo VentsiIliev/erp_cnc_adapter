@@ -10,3 +10,4 @@ class Settings:
     log_level: str = "DEBUG"
     cnc_retry_interval: int = 5   # seconds between connection retries
     cnc_health_interval: int = 10  # seconds between heartbeat checks
+    dev_mode: bool = False

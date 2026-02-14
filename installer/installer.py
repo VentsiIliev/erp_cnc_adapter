@@ -21,9 +21,20 @@ from PyQt5.QtWidgets import (
     QMessageBox,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QPoint
-from PyQt5.QtGui import QFont, QColor, QMouseEvent
+from PyQt5.QtGui import QFont, QColor, QMouseEvent, QIcon, QPixmap
 
 VERSION = "1.0.0"
+
+
+def _icon_path() -> str | None:
+    """Return the path to logo.ico, or None if not found."""
+    if getattr(sys, "frozen", False):
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path(__file__).resolve().parent.parent
+    ico = base / "resources" / "logo.ico"
+    return str(ico) if ico.exists() else None
+
 
 # ── PL Project Color Scheme ──────────────────────────────────────────────────
 PRIMARY   = "#4261ee"
@@ -704,10 +715,16 @@ class WelcomePage(QWidget):
 
         lay.addStretch(1)
 
-        # Logo placeholder
-        logo = QLabel("\u2699")
-        logo.setStyleSheet(f"font-size: 48px; color: {PRIMARY};")
+        # Logo
+        logo = QLabel()
         logo.setAlignment(Qt.AlignCenter)
+        ico = _icon_path()
+        if ico:
+            pixmap = QPixmap(ico).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            logo.setPixmap(pixmap)
+        else:
+            logo.setText("\u2699")
+            logo.setStyleSheet(f"font-size: 48px; color: {PRIMARY};")
         lay.addWidget(logo)
 
         title = QLabel(f"ERP-CNC Adapter v{VERSION}")
@@ -1080,6 +1097,10 @@ def main():
     app = QApplication(sys.argv)
     app.setFont(QFont("Segoe UI", 10))
     app.setStyleSheet(STYLESHEET)
+
+    ico = _icon_path()
+    if ico:
+        app.setWindowIcon(QIcon(ico))
 
     if not is_admin:
         QMessageBox.critical(

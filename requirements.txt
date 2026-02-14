@@ -1,4 +1,12 @@
 fastapi
 uvicorn[standard]
 python-multipart
-pywin32
+
+# Build / test dependencies
+pyinstaller
+pytest
+pytest-timeout
+pytest-asyncio
+httpx
+PyQt5
+

@@ -203,7 +203,11 @@ async def upload_update(file: UploadFile = File(...)):
     _rotate_backups()
 
     # Spawn detached updater
-    _spawn_updater(exe_path, staged_path)
+    try:
+        _spawn_updater(exe_path, staged_path)
+    except Exception as e:
+        logger.error("Failed to spawn update worker: %s", e)
+        return UpdateResponse(status=1, message=f"Update failed: {e}")
 
     return UpdateResponse(
         status=0,
@@ -232,7 +236,11 @@ async def rollback():
         logger.error("Failed to stage backup for rollback: %s", e)
         return RollbackResponse(status=1, message=f"Failed to stage rollback: {e}")
 
-    _spawn_updater(exe_path, staged_path)
+    try:
+        _spawn_updater(exe_path, staged_path)
+    except Exception as e:
+        logger.error("Failed to spawn rollback worker: %s", e)
+        return RollbackResponse(status=1, message=f"Rollback failed: {e}")
 
     return RollbackResponse(
         status=0,

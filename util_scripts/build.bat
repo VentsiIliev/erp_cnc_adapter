@@ -70,6 +70,13 @@ copy "windows_service\service_status.bat" "%DIST_FOLDER%\windows_service\" >nul
 copy "windows_service\restart_service.bat" "%DIST_FOLDER%\windows_service\" >nul
 copy "windows_service\README.md" "%DIST_FOLDER%\windows_service\" >nul
 
+REM Copy resources (favicon/logo)
+echo   Copying resources...
+if exist "resources" (
+    mkdir "%DIST_FOLDER%\resources"
+    xcopy /Y /Q "resources\*" "%DIST_FOLDER%\resources\" >nul
+)
+
 REM Copy documentation
 echo   Copying documentation...
 if exist "SERVICE_SETUP.md" copy "SERVICE_SETUP.md" "%DIST_FOLDER%\" >nul

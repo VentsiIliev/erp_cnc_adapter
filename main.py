@@ -10,7 +10,8 @@ from src.config import Settings
 
 logger = logging.getLogger(__name__)
 
-settings = Settings()
+dev_mode = True
+settings = Settings(dev_mode=dev_mode)
 app = create_app(settings)
 
 

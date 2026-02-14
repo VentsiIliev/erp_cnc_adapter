@@ -19,6 +19,7 @@ def _render_update_page() -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Update - ERP-CNC Adapter</title>
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{
@@ -406,9 +407,11 @@ def _render_update_page() -> str:
       const fd = new FormData();
       fd.append('file', fileInput.files[0]);
       const res = await fetch('/api/update', {{ method: 'POST', body: fd }});
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {{ data = JSON.parse(text); }} catch {{ data = {{ status: 1, message: text || ('Server error: ' + res.status) }}; }}
       showMsg(data.message + (data.version_info ? ' (' + data.version_info + ')' : ''), data.status === 0);
-      
+
       if (data.status === 0) {{
         // Clear file selection on success
         fileInput.value = '';
@@ -436,7 +439,9 @@ def _render_update_page() -> str:
     
     try {{
       const res = await fetch('/api/update/rollback', {{ method: 'POST' }});
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {{ data = JSON.parse(text); }} catch {{ data = {{ status: 1, message: text || ('Server error: ' + res.status) }}; }}
       showMsg(data.message, data.status === 0);
     }} catch(err) {{
       showMsg('Rollback failed: ' + err.message, false);

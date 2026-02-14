@@ -52,9 +52,12 @@ echo Step 3: Building installer EXE...
 
 REM Check if icon exists
 set ICON_ARG=
-if exist "installer\icon.ico" (
+if exist "resources\logo.ico" (
+    set ICON_ARG=--icon "resources\logo.ico"
+    echo Using custom icon: resources\logo.ico
+) else if exist "installer\icon.ico" (
     set ICON_ARG=--icon "installer\icon.ico"
-    echo Using custom icon
+    echo Using custom icon: installer\icon.ico
 ) else (
     echo Using default icon
 )
@@ -66,6 +69,7 @@ python -m PyInstaller --clean --noconfirm ^
     --onefile ^
     --windowed ^
     --add-data "installer\payload;payload" ^
+    --add-data "resources\logo.ico;resources" ^
     --hidden-import PyQt5 ^
     --hidden-import PyQt5.QtWidgets ^
     --hidden-import PyQt5.QtCore ^
