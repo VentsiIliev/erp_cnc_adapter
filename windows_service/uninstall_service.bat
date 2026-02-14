@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo  ERP-CNC Adapter Service Uninstaller
+echo  ERP-CNC Adapter Uninstaller
 echo ========================================
 echo.
 
@@ -17,61 +17,97 @@ if %errorlevel% neq 0 (
 REM Change to project root
 cd /d "%~dp0.."
 
-REM Check if service exists
+set FOUND_SOMETHING=0
+
+REM ── Step 1: Stop and remove Windows Service (if exists) ──────────────
 sc query ERPCNCAdapter >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Service is not installed.
-    pause
-    exit /b 0
-)
-
-echo Step 1: Stopping service...
-sc query ERPCNCAdapter | find "RUNNING" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo Service is running, stopping...
-    python windows_service\service_exe.py stop 2>nul
-    net stop ERPCNCAdapter >nul 2>&1
-    timeout /t 2 >nul
+    set FOUND_SOMETHING=1
+    echo Step 1a: Stopping Windows Service...
+    sc query ERPCNCAdapter | find "RUNNING" >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo   Service is running, stopping...
+        python windows_service\service_exe.py stop 2>nul
+        net stop ERPCNCAdapter >nul 2>&1
+        timeout /t 3 >nul
+    ) else (
+        echo   Service is already stopped
+    )
+
+    echo   Removing service registration...
+    python windows_service\service_exe.py remove 2>nul
+    sc delete ERPCNCAdapter >nul 2>&1
+    echo   Done.
 ) else (
-    echo Service is already stopped
+    echo Step 1a: No Windows Service found (skipped)
 )
 
 echo.
-echo Step 2: Removing service...
-python windows_service\service_exe.py remove 2>nul
-set REMOVE_RESULT=%errorlevel%
-sc delete ERPCNCAdapter >nul 2>&1
+
+REM ── Step 1b: Stop and remove Scheduled Task (if exists) ──────────────
+schtasks /Query /TN ERPCNCAdapter >nul 2>&1
+if %errorlevel% equ 0 (
+    set FOUND_SOMETHING=1
+    echo Step 1b: Removing Scheduled Task...
+    schtasks /End /TN ERPCNCAdapter >nul 2>&1
+    timeout /t 2 >nul
+    schtasks /Delete /TN ERPCNCAdapter /F >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo   Scheduled task removed
+    ) else (
+        echo   WARNING: Could not remove scheduled task
+    )
+) else (
+    echo Step 1b: No Scheduled Task found (skipped)
+)
 
 echo.
-echo Step 3: Cleaning up any orphan processes...
-taskkill /F /IM erp-cnc-adapter.exe /T 2>nul
-REM Don't wait - taskkill is instant if process exists
+
+REM ── Step 2: Kill any running process ─────────────────────────────────
+echo Step 2: Stopping erp-cnc-adapter.exe process...
+tasklist /FI "IMAGENAME eq erp-cnc-adapter.exe" 2>nul | find /I "erp-cnc-adapter.exe" >nul 2>&1
+if %errorlevel% equ 0 (
+    set FOUND_SOMETHING=1
+    echo   Process is running, killing...
+    taskkill /F /IM erp-cnc-adapter.exe /T >nul 2>&1
+    timeout /t 2 >nul
+    REM Verify it's actually dead
+    tasklist /FI "IMAGENAME eq erp-cnc-adapter.exe" 2>nul | find /I "erp-cnc-adapter.exe" >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo   WARNING: Process still running, retrying...
+        timeout /t 3 >nul
+        taskkill /F /IM erp-cnc-adapter.exe /T >nul 2>&1
+    )
+    echo   Done.
+) else (
+    echo   Process is not running
+)
 
 echo.
-echo Step 4: Removing firewall rule...
+
+REM ── Step 3: Remove firewall rule ─────────────────────────────────────
+echo Step 3: Removing firewall rule...
 netsh advfirewall firewall delete rule name="ERP-CNC Adapter" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo Firewall rule removed
+    echo   Firewall rule removed
 ) else (
-    echo No firewall rule found
+    echo   No firewall rule found
 )
 
 echo.
 echo ========================================
-if %REMOVE_RESULT% equ 0 (
-    echo  SUCCESS! Service uninstalled
+if %FOUND_SOMETHING% equ 1 (
+    echo  SUCCESS! ERP-CNC Adapter uninstalled
     echo ========================================
     echo.
-    echo The ERP-CNC Adapter service has been removed.
+    echo The adapter has been fully stopped and removed.
 ) else (
-    echo  WARNING: Service may not have been fully removed
+    echo  Nothing to uninstall
     echo ========================================
     echo.
-    echo The service registration has been cleared.
+    echo No service, scheduled task, or running process was found.
 )
 echo.
 echo To reinstall: Run windows_service\install_service.bat
-
 echo.
 pause
-
