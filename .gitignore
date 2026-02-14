@@ -48,7 +48,7 @@ nul
 installer/payload/
 
 # Distribution packages
-dist_v*/
+#dist_v*/
 ERP-CNC-Adapter-Setup-*.exe
 
 # Staged updates

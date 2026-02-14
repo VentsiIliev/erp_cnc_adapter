@@ -44,21 +44,30 @@ if %errorlevel% equ 0 (
 
 echo.
 
-REM ── Step 1b: Stop and remove Scheduled Task (if exists) ──────────────
+REM ── Step 1b: Stop and remove Scheduled Tasks (if exist) ──────────────
+schtasks /Query /TN ERPCNCAdapterWatchdog >nul 2>&1
+if %errorlevel% equ 0 (
+    set FOUND_SOMETHING=1
+    echo Step 1b: Removing Watchdog Task...
+    schtasks /End /TN ERPCNCAdapterWatchdog >nul 2>&1
+    schtasks /Delete /TN ERPCNCAdapterWatchdog /F >nul 2>&1
+    echo   Watchdog task removed
+)
+
 schtasks /Query /TN ERPCNCAdapter >nul 2>&1
 if %errorlevel% equ 0 (
     set FOUND_SOMETHING=1
-    echo Step 1b: Removing Scheduled Task...
+    echo   Removing Startup Task...
     schtasks /End /TN ERPCNCAdapter >nul 2>&1
     timeout /t 2 >nul
     schtasks /Delete /TN ERPCNCAdapter /F >nul 2>&1
     if %errorlevel% equ 0 (
-        echo   Scheduled task removed
+        echo   Startup task removed
     ) else (
         echo   WARNING: Could not remove scheduled task
     )
 ) else (
-    echo Step 1b: No Scheduled Task found (skipped)
+    echo Step 1b: No Scheduled Tasks found (skipped)
 )
 
 echo.

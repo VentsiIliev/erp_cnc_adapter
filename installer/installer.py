@@ -502,6 +502,41 @@ class InstallWorker(QThread):
             installation_log.write("✓ Startup task created successfully\n")
             installation_log.write("Application will start automatically on boot\n")
             installation_log.flush()
+            self.progress_value.emit(50)
+
+            # Create watchdog task (restarts adapter if it crashes)
+            watchdog_path = self.install_path / "windows_service" / "watchdog.bat"
+            if watchdog_path.exists():
+                self.log_message.emit("Creating watchdog task...")
+                installation_log.write("\nCreating Watchdog Task...\n")
+
+                subprocess.run(
+                    ["schtasks", "/Delete", "/TN", "ERPCNCAdapterWatchdog", "/F"],
+                    capture_output=True, startupinfo=self._startupinfo(),
+                )
+
+                result = subprocess.run(
+                    [
+                        "schtasks", "/Create",
+                        "/TN", "ERPCNCAdapterWatchdog",
+                        "/TR", f'"{watchdog_path}"',
+                        "/SC", "MINUTE",
+                        "/MO", "2",
+                        "/RU", "SYSTEM",
+                        "/RL", "HIGHEST",
+                        "/F"
+                    ],
+                    capture_output=True, text=True,
+                    startupinfo=self._startupinfo(),
+                )
+
+                if result.returncode == 0:
+                    self.log_message.emit("✓ Watchdog task created (checks every 2 minutes)")
+                    installation_log.write("✓ Watchdog task created\n")
+                else:
+                    self.log_message.emit("⚠ Watchdog task creation failed (non-critical)")
+                    installation_log.write(f"⚠ Watchdog failed: {result.stderr}\n")
+            installation_log.flush()
             self.progress_value.emit(55)
 
             import time
