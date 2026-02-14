@@ -24,6 +24,8 @@ a = Analysis(
     binaries=[],
     datas=[
         (os.path.join(PROJECT_ROOT, 'src', 'update_worker.py'), 'src'),
+        (os.path.join(PROJECT_ROOT, 'src', 'templates'), os.path.join('src', 'templates')),
+        (os.path.join(PROJECT_ROOT, 'src', 'static'), os.path.join('src', 'static')),
     ],
     hiddenimports=[
         # FastAPI / Uvicorn internals that PyInstaller may miss

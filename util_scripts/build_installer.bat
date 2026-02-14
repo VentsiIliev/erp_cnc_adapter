@@ -75,7 +75,7 @@ python -m PyInstaller --clean --noconfirm ^
     --hidden-import PyQt5.QtCore ^
     --hidden-import PyQt5.QtGui ^
     %ICON_ARG% ^
-    "installer\installer.py"
+    "run_installer.py"
 
 if %errorlevel% neq 0 (
     echo ERROR: Failed to build installer

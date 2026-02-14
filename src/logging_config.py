@@ -15,8 +15,12 @@ def setup_logging(level: str = "INFO") -> None:
     Args:
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     """
-    # Create logs directory if it doesn't exist
-    log_dir = Path("logs")
+    # Create logs directory next to the executable (frozen) or project root (dev)
+    if getattr(sys, "frozen", False):
+        base = Path(sys.executable).parent
+    else:
+        base = Path(__file__).resolve().parent.parent
+    log_dir = base / "logs"
     log_dir.mkdir(exist_ok=True)
 
     log_file = log_dir / "adapter.log"

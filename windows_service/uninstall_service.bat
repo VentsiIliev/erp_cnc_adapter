@@ -27,7 +27,6 @@ if %errorlevel% equ 0 (
     sc query ERPCNCAdapter | find "RUNNING" >nul 2>&1
     if %errorlevel% equ 0 (
         echo   Service is running, stopping...
-        python windows_service\service_exe.py stop 2>nul
         net stop ERPCNCAdapter >nul 2>&1
         timeout /t 3 >nul
     ) else (
@@ -35,7 +34,6 @@ if %errorlevel% equ 0 (
     )
 
     echo   Removing service registration...
-    python windows_service\service_exe.py remove 2>nul
     sc delete ERPCNCAdapter >nul 2>&1
     echo   Done.
 ) else (

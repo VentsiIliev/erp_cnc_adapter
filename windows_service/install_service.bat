@@ -20,13 +20,13 @@ cd /d "%~dp0.."
 REM Check if EXE exists - check both dev mode and distribution mode
 if exist "erp-cnc-adapter.exe" (
     echo Found EXE in distribution mode
-    set EXE_MODE=DIST
+    set EXE_PATH=%CD%\erp-cnc-adapter.exe
     goto :exe_found
 )
 
 if exist "dist\erp-cnc-adapter.exe" (
     echo Found EXE in development mode
-    set EXE_MODE=DEV
+    set EXE_PATH=%CD%\dist\erp-cnc-adapter.exe
     goto :exe_found
 )
 
@@ -42,48 +42,53 @@ exit /b 1
 
 :exe_found
 echo.
-echo Step 1: Checking dependencies
-python -c "import win32serviceutil" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo   pywin32 is already installed
-) else (
-    echo   Installing pywin32 (this may take 1-2 minutes^)
-    python -m pip install pywin32
-    if %errorlevel% neq 0 (
-        echo ERROR: Failed to install pywin32
-        pause
-        exit /b 1
-    )
-)
+echo EXE: %EXE_PATH%
 
 echo.
-echo Step 2: Checking for existing service...
+echo Step 1: Checking for existing service/task...
+
+REM Remove old pywin32-based service if exists
 sc query ERPCNCAdapter >nul 2>&1
 if %errorlevel% equ 0 (
     echo Stopping existing service...
     net stop ERPCNCAdapter >nul 2>&1
     echo Removing existing service...
-    python windows_service\service_exe.py remove
+    sc delete ERPCNCAdapter
     timeout /t 2 >nul
 )
 
+REM Remove old scheduled task if exists
+schtasks /Delete /TN "ERPCNCAdapter" /F >nul 2>&1
+
 echo.
-echo Step 3: Installing Windows service...
-python windows_service\service_exe.py install
+echo Step 2: Creating startup task (with working directory)...
+
+set INSTALL_DIR=%CD%
+powershell -NoProfile -Command "$action = New-ScheduledTaskAction -Execute '\"%EXE_PATH%\"' -WorkingDirectory '\"%INSTALL_DIR%\"'; $trigger = New-ScheduledTaskTrigger -AtStartup; $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1); Register-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force"
 if %errorlevel% neq 0 (
-    echo ERROR: Failed to install service
+    echo ERROR: Failed to create startup task
     pause
     exit /b 1
 )
+echo   Startup task created successfully
 
 echo.
-echo Step 4: Configuring auto-start and recovery...
-sc config ERPCNCAdapter start= auto
-sc failure ERPCNCAdapter reset= 86400 actions= restart/5000/restart/10000/restart/30000
+echo Step 3: Creating watchdog task...
+
+if exist "windows_service\watchdog.bat" (
+    schtasks /Delete /TN "ERPCNCAdapterWatchdog" /F >nul 2>&1
+    schtasks /Create /TN "ERPCNCAdapterWatchdog" /TR "\"%CD%\windows_service\watchdog.bat\"" /SC MINUTE /MO 2 /RU SYSTEM /RL HIGHEST /F
+    if %errorlevel% equ 0 (
+        echo   Watchdog task created (checks every 2 minutes)
+    ) else (
+        echo   WARNING: Watchdog task creation failed (non-critical)
+    )
+) else (
+    echo   Watchdog script not found, skipping
+)
 
 echo.
-echo Step 4a: Configuring Windows Firewall...
-echo   Adding firewall rule for port 8002...
+echo Step 4: Configuring Windows Firewall...
 netsh advfirewall firewall delete rule name="ERP-CNC Adapter" >nul 2>&1
 netsh advfirewall firewall add rule name="ERP-CNC Adapter" dir=in action=allow protocol=TCP localport=8002 enable=yes profile=any description="Allow incoming connections to ERP-CNC Adapter API"
 if %errorlevel% equ 0 (
@@ -93,48 +98,36 @@ if %errorlevel% equ 0 (
 )
 
 echo.
-echo Step 5: Starting service...
-python windows_service\service_exe.py start
-if %errorlevel% neq 0 (
-    echo ERROR: Failed to start service
-    echo Check logs\service.log for details
-    pause
-    exit /b 1
-)
-
+echo Step 5: Starting application...
+start "" /D "%INSTALL_DIR%" "%EXE_PATH%"
 timeout /t 3 >nul
-
-REM Verify service is running
-sc query ERPCNCAdapter | find "RUNNING" >nul
+tasklist /FI "IMAGENAME eq erp-cnc-adapter.exe" 2>nul | find /I "erp-cnc-adapter.exe" >nul 2>&1
 if %errorlevel% equ 0 (
     echo.
     echo ========================================
-    echo  SUCCESS! Service installed and running
+    echo  SUCCESS! Application installed and running
     echo ========================================
     echo.
-    echo Service Name: ERPCNCAdapter
-    echo Display Name: ERP-CNC Adapter Service
-    echo Status: Running
-    echo Startup Type: Automatic
+    echo Task Name:    ERPCNCAdapter
+    echo Status:       Running
+    echo Startup:      Automatic (on boot)
     echo.
-    echo Access the adapter at: http://localhost:8000
-    echo API Documentation: http://localhost:8000/docs
+    echo Access the adapter at: http://localhost:8002
+    echo API Documentation:     http://localhost:8002/docs
     echo.
-    echo Service logs: logs\service.log
+    echo Application logs: logs\adapter.log
     echo.
-    echo Management commands:
-    echo   Start:   net start ERPCNCAdapter
-    echo   Stop:    net stop ERPCNCAdapter
-    echo   Restart: net stop ERPCNCAdapter ^& net start ERPCNCAdapter
-    echo   Status:  sc query ERPCNCAdapter
+    echo Management:
+    echo   Start:   schtasks /Run /TN "ERPCNCAdapter"
+    echo   Stop:    taskkill /F /IM erp-cnc-adapter.exe
+    echo   Status:  tasklist /FI "IMAGENAME eq erp-cnc-adapter.exe"
     echo.
     echo To uninstall: Run windows_service\uninstall_service.bat
 ) else (
     echo.
-    echo WARNING: Service installed but not running!
-    echo Check logs\service.log for details
+    echo Application configured but could not start immediately.
+    echo It will start automatically on next boot.
 )
 
 echo.
 pause
-
