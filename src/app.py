@@ -7,10 +7,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from src.config import Settings
-from src.app_state import AppState
-from src.handlers import api_router
-from src.logging_config import setup_logging
+from src.core.config import Settings
+from src.core.app_state import AppState
+from src.api import api_router
+from src.core.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api_router)
 
     if getattr(sys, "frozen", False):
-        _static_dir = Path(sys._MEIPASS) / "src" / "static"
+        _static_dir = Path(sys._MEIPASS) / "src" / "web" / "static"
     else:
-        _static_dir = Path(__file__).resolve().parent / "static"
+        _static_dir = Path(__file__).resolve().parent / "web" / "static"
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
     # Favicon ──────────────────────────────────────────────────────────────

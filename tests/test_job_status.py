@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.handlers.job_status import STATE_MAP
+from src.api.job_status import STATE_MAP
 
 
 class TestJobStatus:

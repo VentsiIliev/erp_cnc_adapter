@@ -1,6 +1,6 @@
 """Tests for Settings configuration."""
 
-from src.config import Settings
+from src.core.config import Settings
 
 
 class TestSettings:

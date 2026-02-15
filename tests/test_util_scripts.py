@@ -149,7 +149,7 @@ class TestBuildInstallerScript:
 
     def test_installer_script_exists(self):
         """The Python installer GUI that build_installer.bat packages."""
-        assert (PROJECT_ROOT / "installer" / "installer.py").exists()
+        assert (PROJECT_ROOT / "src" / "installer" / "installer.py").exists()
 
 
 # ===========================================================================

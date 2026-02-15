@@ -41,11 +41,11 @@ echo.
 echo Step 2: Preparing installer payload...
 
 REM Create payload directory
-if exist "installer\payload" rd /s /q "installer\payload"
-mkdir "installer\payload"
+if exist "src\installer\payload" rd /s /q "src\installer\payload"
+mkdir "src\installer\payload"
 
 REM Copy dist folder contents to payload
-xcopy /E /I /Y "dist\dist_v%VERSION%\*" "installer\payload\"
+xcopy /E /I /Y "dist\dist_v%VERSION%\*" "src\installer\payload\"
 
 echo.
 echo Step 3: Building installer EXE...
@@ -55,9 +55,9 @@ set ICON_ARG=
 if exist "resources\logo.ico" (
     set ICON_ARG=--icon "resources\logo.ico"
     echo Using custom icon: resources\logo.ico
-) else if exist "installer\icon.ico" (
-    set ICON_ARG=--icon "installer\icon.ico"
-    echo Using custom icon: installer\icon.ico
+) else if exist "src\installer\icon.ico" (
+    set ICON_ARG=--icon "src\installer\icon.ico"
+    echo Using custom icon: src\installer\icon.ico
 ) else (
     echo Using default icon
 )
@@ -68,7 +68,7 @@ python -m PyInstaller --clean --noconfirm ^
     --name "ERP-CNC-Adapter-Setup-v%VERSION%" ^
     --onefile ^
     --windowed ^
-    --add-data "installer\payload;payload" ^
+    --add-data "src\installer\payload;payload" ^
     --add-data "resources\logo.ico;resources" ^
     --hidden-import PyQt5 ^
     --hidden-import PyQt5.QtWidgets ^
@@ -88,7 +88,7 @@ echo Step 4: Moving installer to distribution folder...
 move /Y "dist\ERP-CNC-Adapter-Setup-v%VERSION%.exe" "dist\dist_v%VERSION%\" >nul
 
 REM Cleanup
-if exist "installer\payload" rd /s /q "installer\payload"
+if exist "src\installer\payload" rd /s /q "src\installer\payload"
 if exist "build" rd /s /q "build"
 if exist "ERP-CNC-Adapter-Setup-v%VERSION%.spec" del /q "ERP-CNC-Adapter-Setup-v%VERSION%.spec"
 

@@ -26,32 +26,38 @@ A REST API service that bridges ERP systems with CNC machines, enabling automate
 ### API Endpoints
 
 ```
-GET  /health        - Health check & version
-POST /cnc/start     - Start CNC server
-POST /cnc/stop      - Stop CNC server
-POST /job/load      - Load G-code job
-POST /job/start     - Start loaded job
-GET  /job/status    - Get job status
-POST /api/update    - Upload new version
-GET  /update        - Manual update page
+GET  /              - Health dashboard (HTML) or status (JSON)
+GET  /api/health    - Health check & version (JSON)
+POST /api/cnc/start - Start CNC server
+POST /api/cnc/stop  - Stop CNC server
+POST /api/cnc/job/load   - Load G-code job
+POST /api/cnc/job/start  - Start loaded job
+GET  /api/cnc/job/status - Get job status
+POST /api/update         - Upload new version
+GET  /api/update/backups - List backup versions
+POST /api/update/rollback - Rollback to previous version
+GET  /update             - Manual update page (HTML)
 ```
 
 ### Example Usage
 
 ```bash
 # Check health
-curl http://localhost:8002/health
+curl http://localhost:8002/api/health
 
 # Start CNC
-curl -X POST http://localhost:8002/cnc/start
+curl -X POST http://localhost:8002/api/cnc/start
 
 # Load job
-curl -X POST http://localhost:8002/job/load \
+curl -X POST http://localhost:8002/api/cnc/job/load \
   -H "Content-Type: application/json" \
-  -d '{"file_path": "C:/Jobs/part.nc"}'
+  -d '{"fileName": "C:/Jobs/part.nc"}'
 
 # Start job
-curl -X POST http://localhost:8002/job/start
+curl -X POST http://localhost:8002/api/cnc/job/start
+
+# Get job status
+curl http://localhost:8002/api/cnc/job/status
 ```
 
 ## Architecture
@@ -85,7 +91,6 @@ curl -X POST http://localhost:8002/job/start
 - **Pytest** - Testing framework
 - **PyInstaller** - EXE packaging
 - **PyQt5** - Installer GUI
-- **Inno Setup** - Installer builder
 
 ## Development
 
@@ -135,19 +140,33 @@ cd util_scripts
 
 ```
 erp_cnc_adapter/
-├── cncapi/              # CNC DLL interface
+├── cncapi/                  # CNC DLL interface (ctypes structs)
 ├── src/
-│   ├── handlers/        # API endpoint handlers
-│   ├── schemas/         # Pydantic models
-│   └── services/        # Business logic
-├── tests/               # Test suite
-├── installer/           # Installer GUI
-├── util_scripts/        # Build scripts
-├── scripts/             # Installation & management scripts
-├── docs/                # Documentation
-├── main.py              # Application entry point
-├── version.py           # Version info
-└── requirements.txt     # Dependencies
+│   ├── api/                 # API endpoint handlers
+│   │   ├── schemas/         # Pydantic request/response models
+│   │   ├── health.py, cnc_start.py, cnc_stop.py
+│   │   ├── job_load.py, job_start.py, job_status.py
+│   │   └── update.py, update_page.py
+│   ├── core/                # Config, app state, logging
+│   │   ├── app_state.py, config.py, logging_config.py
+│   ├── cnc/                 # CNC client & connection management
+│   │   ├── cnc_client.py, cnc_client_protocol.py
+│   │   ├── connection_manager.py, mock_cnc_client.py
+│   ├── web/                 # Static assets & HTML templates
+│   │   ├── static/css/, static/js/
+│   │   └── templates/
+│   ├── installer/           # PyQt5 installer GUI
+│   │   ├── ui/              # UI pages & window
+│   │   ├── constants.py, installer.py, worker.py
+│   ├── app.py               # FastAPI app factory
+│   └── update_worker.py     # Detached update process
+├── tests/                   # Test suite (pytest)
+├── scripts/                 # Installation & management scripts
+├── util_scripts/            # Build & dev scripts
+├── main.py                  # Application entry point
+├── run_installer.py         # Installer entry point
+├── version.py               # Version info
+└── requirements.txt         # Dependencies
 ```
 
 ## Installation Methods

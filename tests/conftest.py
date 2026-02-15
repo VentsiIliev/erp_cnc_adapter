@@ -11,9 +11,9 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from fastapi import FastAPI
 
-from src.handlers import api_router
-from src.services.connection_manager import ConnectionManager
-from src.config import Settings
+from src.api import api_router
+from src.cnc.connection_manager import ConnectionManager
+from src.core.config import Settings
 
 
 # ---------------------------------------------------------------------------

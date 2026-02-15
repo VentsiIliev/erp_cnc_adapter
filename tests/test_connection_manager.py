@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from src.services.connection_manager import ConnectionManager
+from src.cnc.connection_manager import ConnectionManager
 
 
 class TestConnectionManagerInit:

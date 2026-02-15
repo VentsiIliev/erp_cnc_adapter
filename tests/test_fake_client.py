@@ -1,6 +1,6 @@
 """Tests that FakeCncClient conforms to CncClientProtocol."""
 
-from src.services.cnc_client_protocol import CncClientProtocol
+from src.cnc.cnc_client_protocol import CncClientProtocol
 
 
 class TestFakeCncClient:

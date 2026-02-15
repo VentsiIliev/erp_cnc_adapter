@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.handlers.health import _build_status_data, _format_uptime
+from src.api.health import _build_status_data, _format_uptime
 
 
 # ---------------------------------------------------------------------------

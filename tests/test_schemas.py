@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.schemas.job import (
+from src.api.schemas.job import (
     LoadJobRequest,
     LoadJobResponse,
     RunJobResponse,

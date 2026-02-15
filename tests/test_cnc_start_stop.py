@@ -13,7 +13,7 @@ pytestmark = pytest.mark.asyncio
 
 class TestCncStart:
 
-    @patch("src.handlers.cnc_start.os.path.isfile", return_value=False)
+    @patch("src.api.cnc_start.os.path.isfile", return_value=False)
     async def test_start_missing_exe_returns_404(self, mock_isfile, client):
         resp = await client.post("/api/cnc/start")
 
@@ -21,8 +21,8 @@ class TestCncStart:
         body = resp.json()
         assert "not found" in body["error"].lower()
 
-    @patch("src.handlers.cnc_start.subprocess.Popen")
-    @patch("src.handlers.cnc_start.os.path.isfile", return_value=True)
+    @patch("src.api.cnc_start.subprocess.Popen")
+    @patch("src.api.cnc_start.os.path.isfile", return_value=True)
     async def test_start_success_redirects(self, mock_isfile, mock_popen, client):
         proc = MagicMock()
         proc.poll.return_value = None  # still running
@@ -34,8 +34,8 @@ class TestCncStart:
         assert resp.status_code == 303
         assert resp.headers["location"] == "/"
 
-    @patch("src.handlers.cnc_start.subprocess.Popen")
-    @patch("src.handlers.cnc_start.os.path.isfile", return_value=True)
+    @patch("src.api.cnc_start.subprocess.Popen")
+    @patch("src.api.cnc_start.os.path.isfile", return_value=True)
     async def test_start_process_exits_immediately(self, mock_isfile, mock_popen, client):
         proc = MagicMock()
         proc.poll.return_value = 1  # exited
@@ -49,8 +49,8 @@ class TestCncStart:
         body = resp.json()
         assert "exited immediately" in body["error"].lower()
 
-    @patch("src.handlers.cnc_start.subprocess.Popen", side_effect=OSError("access denied"))
-    @patch("src.handlers.cnc_start.os.path.isfile", return_value=True)
+    @patch("src.api.cnc_start.subprocess.Popen", side_effect=OSError("access denied"))
+    @patch("src.api.cnc_start.os.path.isfile", return_value=True)
     async def test_start_popen_exception(self, mock_isfile, mock_popen, client):
         resp = await client.post("/api/cnc/start")
 
@@ -58,8 +58,8 @@ class TestCncStart:
         body = resp.json()
         assert "failed to start" in body["error"].lower()
 
-    @patch("src.handlers.cnc_start.subprocess.Popen")
-    @patch("src.handlers.cnc_start.os.path.isfile", return_value=True)
+    @patch("src.api.cnc_start.subprocess.Popen")
+    @patch("src.api.cnc_start.os.path.isfile", return_value=True)
     async def test_start_nudges_connection_manager(
         self, mock_isfile, mock_popen, client, connection_manager
     ):
@@ -77,7 +77,7 @@ class TestCncStart:
 
 class TestCncStop:
 
-    @patch("src.handlers.cnc_stop.ctypes")
+    @patch("src.api.cnc_stop.ctypes")
     async def test_stop_disconnects_and_redirects(self, mock_ctypes, client, fake_client):
         fake_client._connected = True
         mock_ctypes.windll.shell32.ShellExecuteW.return_value = 42

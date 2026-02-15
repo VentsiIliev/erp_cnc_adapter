@@ -1,5 +1,5 @@
 ================================================================
- ERP-CNC Adapter v1.0.0 - Distribution Package
+ ERP-CNC Adapter v1.0.1 - Distribution Package
 ================================================================
 
 QUICK START:
