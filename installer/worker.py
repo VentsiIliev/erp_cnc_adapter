@@ -269,17 +269,23 @@ class InstallWorker(QThread):
                 capture_output=True, startupinfo=self._startupinfo(),
             )
 
-            # Create task that runs at system startup
+            # Create task that runs at system startup (with working directory)
+            ps_cmd = (
+                f'$action = New-ScheduledTaskAction '
+                f'-Execute \'"{exe_path}"\' '
+                f'-WorkingDirectory \'"{self.install_path}"\'; '
+                f'$trigger = New-ScheduledTaskTrigger -AtStartup; '
+                f'$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" '
+                f'-LogonType ServiceAccount -RunLevel Highest; '
+                f'$settings = New-ScheduledTaskSettingsSet '
+                f'-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries '
+                f'-RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1); '
+                f'Register-ScheduledTask -TaskName "ERPCNCAdapter" '
+                f'-Action $action -Trigger $trigger -Principal $principal '
+                f'-Settings $settings -Force'
+            )
             result = subprocess.run(
-                [
-                    "schtasks", "/Create",
-                    "/TN", "ERPCNCAdapter",
-                    "/TR", f'"{exe_path}"',
-                    "/SC", "ONSTART",
-                    "/RU", "SYSTEM",
-                    "/RL", "HIGHEST",
-                    "/F"
-                ],
+                ["powershell", "-NoProfile", "-Command", ps_cmd],
                 capture_output=True, text=True,
                 startupinfo=self._startupinfo(),
             )
@@ -303,7 +309,7 @@ class InstallWorker(QThread):
             self.progress_value.emit(50)
 
             # Create watchdog task (restarts adapter if it crashes)
-            watchdog_path = self.install_path / "windows_service" / "watchdog.bat"
+            watchdog_path = self.install_path / "scripts" / "watchdog.bat"
             if watchdog_path.exists():
                 self.log_message.emit("Creating watchdog task...")
                 installation_log.write("\nCreating Watchdog Task...\n")
@@ -373,23 +379,40 @@ class InstallWorker(QThread):
             installation_log.write("\nSTEP 3: Starting Application\n")
             installation_log.write("-" * 70 + "\n")
 
-            # Run the scheduled task now
-            result = subprocess.run(
-                ["schtasks", "/Run", "/TN", "ERPCNCAdapter"],
-                capture_output=True, text=True,
-                startupinfo=self._startupinfo(),
-            )
+            # Launch the exe directly with the correct working directory
+            # (schtasks /Run starts in System32 which breaks relative paths)
+            installation_log.write(f"Launching: {exe_path}\n")
+            installation_log.write(f"Working dir: {self.install_path}\n")
+            try:
+                CREATE_NEW_PROCESS_GROUP = 0x00000200
+                DETACHED_PROCESS = 0x00000008
+                subprocess.Popen(
+                    [str(exe_path)],
+                    cwd=str(self.install_path),
+                    creationflags=CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
+                    close_fds=True,
+                    startupinfo=self._startupinfo(),
+                )
+                import time
+                time.sleep(3)
 
-            installation_log.write(f"Command: schtasks /Run /TN ERPCNCAdapter\n")
-            installation_log.write(f"Exit code: {result.returncode}\n")
-            installation_log.write(f"Output: {result.stdout}\n")
-
-            if result.returncode == 0:
-                self.log_message.emit("\u2713 Application started successfully")
-                self.log_message.emit("\u2713 Access at: http://localhost:8002")
-                installation_log.write("\u2713 Application started successfully\n")
-            else:
-                self.log_message.emit("\u2713 Application configured (will start on next boot)")
+                # Verify the process is actually running
+                check = subprocess.run(
+                    ["tasklist", "/FI", f"IMAGENAME eq {exe_path.name}"],
+                    capture_output=True, text=True,
+                    startupinfo=self._startupinfo(),
+                )
+                if exe_path.name.lower() in check.stdout.lower():
+                    self.log_message.emit("\u2713 Application started successfully")
+                    self.log_message.emit("\u2713 Access at: http://localhost:8002")
+                    installation_log.write("\u2713 Application started successfully\n")
+                else:
+                    self.log_message.emit("\u26a0 Application may not have started — check logs")
+                    installation_log.write("\u26a0 Process not found after launch\n")
+            except Exception as start_err:
+                self.log_message.emit(f"\u26a0 Could not start now: {start_err}")
+                self.log_message.emit("\u2713 Application will start on next boot")
+                installation_log.write(f"\u26a0 Launch error: {start_err}\n")
                 installation_log.write("Application will start on next boot\n")
 
             installation_log.write("\n" + "=" * 70 + "\n")

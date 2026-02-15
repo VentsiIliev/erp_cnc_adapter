@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="5">
+<title>ERP-CNC Adapter</title>
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="/static/css/common.css">
+<link rel="stylesheet" href="/static/css/health.css">
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>ERP-CNC Adapter</h1>
+      <div class="version">v$version</div>
+    </div>
+    <div class="status-banner" style="background: $status_bg;">
+      <div class="status-icon" style="background: $status_color;">$status_icon</div>
+      <div>
+        <div class="status-text" style="color: $status_color;">$status_label</div>
+        <div class="status-sub">CNC state: $cnc_state</div>
+      </div>
+    </div>
+    <div class="details">
+      <table>
+        <tr>
+          <td class="label">Status</td>
+          <td class="value"><span class="dot $dot_class"></span>$status_text</td>
+        </tr>
+        <tr>
+          <td class="label">Uptime</td>
+          <td class="value">$uptime</td>
+        </tr>$retry_row$error_row
+      </table>
+    </div>$action_btn
+    <div class="footer">
+      Auto-refreshes every 5 s &middot; <a href="/api/health">JSON API</a>
+      <br><a class="docs-btn" href="/docs">API Docs</a>
+      <br><a class="update-link" href="/update">&#8635; Update Adapter</a>
+    </div>
+  </div>
+</body>
+</html>

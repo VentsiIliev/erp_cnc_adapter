@@ -143,7 +143,7 @@ erp_cnc_adapter/
 ├── tests/               # Test suite
 ├── installer/           # Installer GUI
 ├── util_scripts/        # Build scripts
-├── windows_service/     # Service management
+├── scripts/             # Installation & management scripts
 ├── docs/                # Documentation
 ├── main.py              # Application entry point
 ├── version.py           # Version info

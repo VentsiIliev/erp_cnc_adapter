@@ -111,7 +111,7 @@ echo.
 echo This folder contains:
 echo   - erp-cnc-adapter.exe (the application)
 echo   - ERP-CNC-Adapter-Setup-v%VERSION%.exe (the installer)
-echo   - windows_service\ (service installation scripts)
+echo   - scripts\ (management scripts)
 echo   - logs\ (empty directory)
 echo   - VERSION.txt, README.txt
 echo.
@@ -121,7 +121,7 @@ echo Distribution:
 echo   1. Copy this single EXE to target machines
 echo   2. Users right-click and "Run as administrator"
 echo   3. Follow the wizard to install
-echo   4. Done! Service running automatically
+echo   4. Done! Application running automatically
 echo.
 echo No external tools or installers needed!
 echo.

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Update - ERP-CNC Adapter</title>
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="/static/css/common.css">
+<link rel="stylesheet" href="/static/css/update.css">
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <a href="/" class="back-link">&larr; Back to Health</a>
+      <h1>Update Adapter</h1>
+      <div class="version">Current: v$version</div>
+    </div>
+
+    <div class="content">
+      <div class="section">
+        <h2>&#128230; Upload New Version</h2>
+        <p>Upload a new ERP-CNC Adapter executable to update the service. The adapter will automatically restart with the new version.</p>
+
+        <div class="warning-box">
+          <strong>&#9888;&#65039; Important:</strong>
+          The service will restart during the update process. Any active CNC operations will be interrupted. The update typically completes in 5-10 seconds.
+        </div>
+
+        <form class="update-form" id="updateForm">
+          <div class="file-input-wrapper" id="fileWrapper">
+            <input type="file" id="exeFile" accept=".exe" required>
+            <div class="file-placeholder">
+              <div class="file-icon">&#128193;</div>
+              <div class="file-text">Click to select .exe file</div>
+              <div class="file-subtext">or drag and drop here</div>
+              <div class="selected-file" id="selectedFileName"></div>
+            </div>
+          </div>
+          <div class="button-group">
+            <button type="submit" class="update-btn" id="updateBtn" disabled>Upload &amp; Update</button>
+          </div>
+        </form>
+        <div class="update-msg" id="updateMsg"></div>
+      </div>
+
+      <div class="section">
+        <h2>&#9198;&#65039; Rollback</h2>
+        <p>Restore a previous version from automatic backups. The most recent backup will be restored.</p>
+        <button type="button" class="rollback-btn" id="rollbackBtn">Rollback to Previous Version</button>
+
+        <details class="backup-list" id="backupDetails">
+          <summary>Available backups</summary>
+          <ul id="backupList"><li>Loading...</li></ul>
+        </details>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="nav-links">
+        <a href="/">Health Status</a>
+        &middot;
+        <a href="/api/health">JSON API</a>
+        &middot;
+        <a href="/docs">API Docs</a>
+      </div>
+    </div>
+  </div>
+
+<script src="/static/js/update.js"></script>
+</body>
+</html>

@@ -81,8 +81,12 @@ def stop_adapter(service_name: str, exe_name: str, install_type: str) -> bool:
         return True
 
 
-def start_adapter(service_name: str, install_type: str) -> bool:
-    """Start the adapter (service or task)."""
+def start_adapter(service_name: str, install_type: str, exe_path: str = "") -> bool:
+    """Start the adapter (service or task).
+
+    For scheduled tasks, launches the EXE directly with the correct working
+    directory instead of using ``schtasks /Run`` (which starts in System32).
+    """
     if install_type == "service":
         logger.info("  → Starting Windows Service '%s'...", service_name)
         cmd = ["net", "start", service_name]
@@ -96,16 +100,29 @@ def start_adapter(service_name: str, install_type: str) -> bool:
         return True
 
     elif install_type == "task":
-        logger.info("  → Starting Scheduled Task '%s'...", service_name)
-        cmd = ["schtasks", "/Run", "/TN", service_name]
-        logger.info("Running: %s", " ".join(cmd))
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        logger.info("stdout: %s", result.stdout.strip())
-        if result.returncode != 0:
-            logger.warning("stderr: %s", result.stderr.strip())
+        logger.info("  → Starting adapter directly (Scheduled Task '%s')...", service_name)
+        if not exe_path or not os.path.exists(exe_path):
+            logger.error("  → EXE path not available or missing: %s", exe_path)
             return False
-        logger.info("  → Task started successfully")
-        return True
+        exe_dir = os.path.dirname(exe_path)
+        logger.info("  → Launching: %s", exe_path)
+        logger.info("  → Working dir: %s", exe_dir)
+        try:
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            DETACHED_PROCESS = 0x00000008
+            subprocess.Popen(
+                [exe_path],
+                cwd=exe_dir,
+                creationflags=CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
+                close_fds=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            logger.info("  → Process launched successfully")
+            return True
+        except Exception as e:
+            logger.error("  → Failed to launch EXE: %s", e)
+            return False
 
     else:
         logger.error("  → Cannot start: unknown installation type")
@@ -344,7 +361,7 @@ def main() -> None:
     logger.info("STEP 3: Restarting adapter")
     logger.info("  Name:        %s", service_name)
     logger.info("  Type:        %s", install_type.upper())
-    if start_adapter(service_name, install_type):
+    if start_adapter(service_name, install_type, exe_path):
         logger.info("  Status:      ✓ Adapter started successfully")
         logger.info("=" * 70)
         logger.info("UPDATE COMPLETED SUCCESSFULLY")
@@ -371,7 +388,7 @@ def main() -> None:
             try:
                 shutil.copy2(latest_backup, exe_path)
                 logger.info("  Backup restored, attempting to start adapter...")
-                if start_adapter(service_name, install_type):
+                if start_adapter(service_name, install_type, exe_path):
                     logger.info("  Status:      ✓ Rollback successful, adapter running with previous version")
                 else:
                     logger.error("  Status:      ✗ CRITICAL: Rollback failed to start adapter!")

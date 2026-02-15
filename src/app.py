@@ -40,7 +40,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(api_router)
-    app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "static")), name="static")
 
     if getattr(sys, "frozen", False):
         _static_dir = Path(sys._MEIPASS) / "src" / "static"

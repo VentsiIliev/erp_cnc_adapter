@@ -53,22 +53,22 @@ if exist "%DIST_FOLDER%" rd /s /q "%DIST_FOLDER%"
 
 REM Create directory structure
 mkdir "%DIST_FOLDER%"
-mkdir "%DIST_FOLDER%\windows_service"
+mkdir "%DIST_FOLDER%\scripts"
 mkdir "%DIST_FOLDER%\logs"
 
 REM Copy EXE
 echo   Copying EXE...
 copy "dist\erp-cnc-adapter.exe" "%DIST_FOLDER%\" >nul
 
-REM Copy service files
-echo   Copying service files...
-copy "windows_service\service_exe.py" "%DIST_FOLDER%\windows_service\" >nul
-copy "windows_service\install_service.bat" "%DIST_FOLDER%\windows_service\" >nul
-copy "windows_service\uninstall_service.bat" "%DIST_FOLDER%\windows_service\" >nul
-copy "windows_service\update_adapter.py" "%DIST_FOLDER%\windows_service\" >nul
-copy "windows_service\service_status.bat" "%DIST_FOLDER%\windows_service\" >nul
-copy "windows_service\restart_service.bat" "%DIST_FOLDER%\windows_service\" >nul
-copy "windows_service\README.md" "%DIST_FOLDER%\windows_service\" >nul
+REM Copy scripts
+echo   Copying scripts...
+copy "scripts\install.bat" "%DIST_FOLDER%\scripts\" >nul
+copy "scripts\uninstall.bat" "%DIST_FOLDER%\scripts\" >nul
+copy "scripts\update_adapter.py" "%DIST_FOLDER%\scripts\" >nul
+copy "scripts\status.bat" "%DIST_FOLDER%\scripts\" >nul
+copy "scripts\restart.bat" "%DIST_FOLDER%\scripts\" >nul
+copy "scripts\watchdog.bat" "%DIST_FOLDER%\scripts\" >nul
+copy "scripts\README.md" "%DIST_FOLDER%\scripts\" >nul
 
 REM Copy resources (favicon/logo)
 echo   Copying resources...
@@ -76,11 +76,6 @@ if exist "resources" (
     mkdir "%DIST_FOLDER%\resources"
     xcopy /Y /Q "resources\*" "%DIST_FOLDER%\resources\" >nul
 )
-
-REM Copy documentation
-echo   Copying documentation...
-if exist "SERVICE_SETUP.md" copy "SERVICE_SETUP.md" "%DIST_FOLDER%\" >nul
-if exist "IMPLEMENTATION_SUMMARY.txt" copy "IMPLEMENTATION_SUMMARY.txt" "%DIST_FOLDER%\" >nul
 
 REM Create version info file
 echo   Creating version info...
@@ -100,30 +95,25 @@ echo  ERP-CNC Adapter v%VERSION% - Distribution Package
 echo ================================================================
 echo.
 echo QUICK START:
-echo   1. Ensure Python 3.8+ ^(32-bit^) is installed on target machine
-echo   2. Right-click: windows_service\install_service.bat
+echo   1. Run the GUI installer EXE, or:
+echo   2. Right-click: scripts\install.bat
 echo   3. Select: "Run as administrator"
-echo   4. Access: http://localhost:8000
+echo   4. Access: http://localhost:8002
 echo.
 echo CONTENTS:
 echo   erp-cnc-adapter.exe    - The application
-echo   windows_service\       - Service installation and management
+echo   scripts\               - Installation and management scripts
 echo   logs\                  - Log directory ^(auto-populated^)
 echo   VERSION.txt            - Build information
 echo.
-echo DOCUMENTATION:
-echo   windows_service\README.md - Complete service documentation
-echo.
 echo MANAGEMENT:
-echo   Start:     net start ERPCNCAdapter
-echo   Stop:      net stop ERPCNCAdapter
-echo   Status:    windows_service\service_status.bat
-echo   Uninstall: windows_service\uninstall_service.bat
+echo   Start:     schtasks /Run /TN "ERPCNCAdapter"
+echo   Stop:      taskkill /F /IM erp-cnc-adapter.exe
+echo   Status:    scripts\status.bat
+echo   Restart:   scripts\restart.bat
+echo   Uninstall: scripts\uninstall.bat
 echo.
-echo UPDATING:
-echo   python windows_service\update_adapter.py path\to\new-exe
-echo.
-echo For detailed instructions, see windows_service\README.md
+echo For detailed instructions, see scripts\README.md
 echo.
 echo ================================================================
 ) > "%DIST_FOLDER%\README.txt"
@@ -138,7 +128,7 @@ echo Distribution: %DIST_FOLDER%\
 echo.
 echo Contents:
 echo   [√] erp-cnc-adapter.exe
-echo   [√] windows_service\ (7 files)
+echo   [√] scripts\ (7 files)
 echo   [√] logs\ (empty directory)
 echo   [√] VERSION.txt
 echo   [√] README.txt
@@ -147,7 +137,7 @@ echo Ready to deploy! Copy the dist_v%VERSION% folder to target machines.
 echo.
 echo Next steps for local installation:
 echo   cd %DIST_FOLDER%
-echo   Right-click windows_service\install_service.bat
+echo   Right-click scripts\install.bat
 echo   Select "Run as administrator"
 echo.
 REM Only pause when run directly (not called from build_installer.bat)
