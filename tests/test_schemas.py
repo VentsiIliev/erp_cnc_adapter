@@ -96,3 +96,31 @@ class TestJobStatusResponse:
         assert resp.state == 6
         assert resp.jobName == "part.nc"
         assert resp.jobProgress == 75.5
+
+    def test_error_state_negative_one(self):
+        resp = JobStatusResponse(state=-1, stateText="Error: DLL crashed")
+        assert resp.state == -1
+        assert resp.jobName == ""
+
+    def test_coerces_float_to_int_fields(self):
+        """Fields like xCollision (int) should accept float input and coerce."""
+        resp = JobStatusResponse(
+            state=1,
+            stateText="Idle",
+            xCollision=0.0,
+            yCollision=0.0,
+            zCollision=0.0,
+        )
+        assert resp.xCollision == 0
+
+
+class TestLoadJobRequestEdge:
+
+    def test_pure_backslash_path_unchanged(self):
+        req = LoadJobRequest(fileName=r"C:\CNC\parts\test.nc")
+        # Backslashes remain backslashes
+        assert "\\" in req.file_name
+
+    def test_single_char_filename(self):
+        req = LoadJobRequest(fileName="x")
+        assert req.file_name == "x"

@@ -78,6 +78,36 @@ class TestJobStatus:
             assert field in body, f"Missing field: {field}"
 
 
+    async def test_get_state_ok_but_get_job_status_raises(self, client, fake_client):
+        """If get_state() works but get_job_status() raises, state should be -1."""
+        fake_client._state = 1
+
+        def raise_error():
+            raise RuntimeError("DLL error in get_job_status")
+
+        fake_client.get_job_status = raise_error
+
+        resp = await client.get("/api/cnc/job/status")
+        body = resp.json()
+        assert body["state"] == -1
+
+    async def test_job_progress_boundary_zero(self, client, fake_client):
+        fake_client._state = 1
+        fake_client._job_status["jobProgress"] = 0.0
+
+        resp = await client.get("/api/cnc/job/status")
+        body = resp.json()
+        assert body["jobProgress"] == 0.0
+
+    async def test_job_progress_boundary_100(self, client, fake_client):
+        fake_client._state = 6
+        fake_client._job_status["jobProgress"] = 100.0
+
+        resp = await client.get("/api/cnc/job/status")
+        body = resp.json()
+        assert body["jobProgress"] == 100.0
+
+
 class TestStateMap:
 
     def test_all_states_0_to_23(self):

@@ -90,3 +90,44 @@ class TestJobLoad:
         body = resp.json()
         assert body["status"] == -1
         assert "exception" in body["message"].lower()
+
+    async def test_backslash_fix_route_unescaped_windows_path(self, client, fake_client):
+        """Raw body with unescaped Windows backslashes should be auto-fixed."""
+        fake_client._load_job_rc = 0
+
+        # Send raw body with unescaped backslashes (invalid JSON normally)
+        resp = await client.post(
+            "/api/cnc/job/load",
+            content=b'{"fileName": "C:\\CNC\\parts\\test.nc"}',
+            headers={"Content-Type": "application/json"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == 0
+
+    async def test_backslash_fix_route_valid_json_unchanged(self, client, fake_client):
+        """Valid JSON with properly escaped backslashes passes through unchanged."""
+        fake_client._load_job_rc = 0
+
+        resp = await client.post(
+            "/api/cnc/job/load",
+            json={"fileName": r"C:\\CNC\\test.nc"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == 0
+
+    async def test_single_char_filename(self, client, fake_client):
+        """Single character filename should be accepted."""
+        fake_client._load_job_rc = 0
+
+        resp = await client.post(
+            "/api/cnc/job/load",
+            json={"fileName": "x"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == 0

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.api.health import _build_status_data, _format_uptime
+from src.api.health import _build_status_data, _format_uptime, _render_html
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +32,56 @@ class TestBuildStatusData:
         data = _build_status_data(connection_manager)
         assert "version" in data
 
+    def test_uptime_rounded_when_connected(self, fake_client, connection_manager):
+        connection_manager._state = "connected"
+        from datetime import datetime, timezone, timedelta
+        connection_manager._last_connected_at = datetime.now(timezone.utc) - timedelta(seconds=123.456)
+        data = _build_status_data(connection_manager)
+        uptime = data["cnc"]["uptime_seconds"]
+        assert uptime is not None
+        # Rounded to 1 decimal
+        assert uptime == round(uptime, 1)
+
+
+class TestRenderHtml:
+
+    def _make_data(self, connected=False, state="disconnected", last_error=None, retry_count=0, uptime=None):
+        return {
+            "status": "healthy" if connected else "degraded",
+            "version": "1.0.0",
+            "cnc": {
+                "connected": connected,
+                "state": state,
+                "retry_count": retry_count,
+                "last_error": last_error,
+                "uptime_seconds": uptime,
+            },
+        }
+
+    def test_retrying_state_shows_disconnected(self):
+        html = _render_html(self._make_data(state="retrying"))
+        assert "Disconnected" in html
+        assert "#dc2626" in html  # red color
+
+    def test_error_row_rendered(self):
+        html = _render_html(self._make_data(last_error="connect() timed out"))
+        assert "connect() timed out" in html
+        assert "Last error" in html
+
+    def test_retry_row_rendered(self):
+        html = _render_html(self._make_data(retry_count=5))
+        assert "Retry count" in html
+        assert "5" in html
+
+    def test_no_action_button_in_retrying(self):
+        html = _render_html(self._make_data(state="retrying"))
+        assert "Start CNC" not in html
+        assert "Stop CNC" not in html
+
+    def test_no_error_row_when_no_error(self):
+        html = _render_html(self._make_data())
+        assert "Last error" not in html
+
 
 class TestFormatUptime:
 
@@ -46,6 +96,12 @@ class TestFormatUptime:
 
     def test_hours(self):
         assert _format_uptime(3665.0) == "1h 1m"
+
+    def test_exact_one_minute_boundary(self):
+        assert _format_uptime(60.0) == "1m 0s"
+
+    def test_exact_one_hour_boundary(self):
+        assert _format_uptime(3600.0) == "1h 0m"
 
 
 # ---------------------------------------------------------------------------

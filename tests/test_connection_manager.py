@@ -111,6 +111,73 @@ class TestConnectionManagerHeartbeat:
         await mgr.stop()
 
 
+class TestConnectionManagerConnectEdge:
+
+    async def test_connect_rc_22_server_not_running(self, fake_client, settings):
+        """RC=22 (CNC_RC_ERR_SERVER_NOT_RUNNING) should set cnc_not_running state."""
+        fake_client._server_process_alive = True
+        fake_client._connect_rc = 22
+        settings.cnc_retry_interval = 0.1
+
+        mgr = ConnectionManager(fake_client, settings)
+        mgr.start()
+
+        await asyncio.sleep(0.5)
+
+        assert mgr.state == "cnc_not_running"
+
+        await mgr.stop()
+
+    async def test_connect_generic_exception(self, fake_client, settings):
+        """Generic exception from connect() should set last_error to str(exc)."""
+        fake_client._server_process_alive = True
+        settings.cnc_retry_interval = 0.1
+
+        def exploding_connect():
+            raise RuntimeError("DLL crashed")
+
+        fake_client.connect = exploding_connect
+
+        mgr = ConnectionManager(fake_client, settings)
+        mgr.start()
+
+        await asyncio.sleep(0.5)
+
+        assert mgr.last_error == "DLL crashed"
+        assert mgr.retry_count > 0
+
+        await mgr.stop()
+
+
+class TestConnectionManagerHeartbeatEdge:
+
+    async def test_heartbeat_exception_drops_connection(self, fake_client, settings):
+        """Generic exception in heartbeat should drop connection."""
+        fake_client._server_process_alive = True
+        fake_client._connect_rc = 0
+        settings.cnc_health_interval = 0.1
+        settings.cnc_retry_interval = 0.1
+
+        mgr = ConnectionManager(fake_client, settings)
+        mgr.start()
+
+        await asyncio.sleep(0.3)
+        assert mgr.connected is True
+
+        # Make heartbeat throw
+        def exploding_check():
+            raise RuntimeError("heartbeat boom")
+
+        fake_client.is_server_connected = exploding_check
+        fake_client._server_process_alive = False
+
+        await asyncio.sleep(0.5)
+
+        assert mgr.state in ("cnc_not_running", "retrying")
+
+        await mgr.stop()
+
+
 class TestConnectionManagerLifecycle:
 
     async def test_stop_sets_disconnected(self, fake_client, settings):
