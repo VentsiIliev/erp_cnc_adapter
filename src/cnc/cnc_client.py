@@ -2,9 +2,9 @@ import ctypes
 import logging
 import struct
 import sys
-from ctypes import POINTER, WinDLL, c_char_p, c_int, c_wchar_p
+from ctypes import POINTER, WinDLL, c_char_p, c_int, c_uint, c_wchar_p
 
-from cncapi.cncstructs import CNC_JOB_STATUS
+from cncapi.python.cncstructs import CNC_JOB_STATUS
 from src.core.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -158,37 +158,39 @@ class CncClient:
         return {
             "jobName": job_name,
             "jobLoadCounter": s.jobLoadCounter,
-            "numLinesInJob": s.numLinesInjob,
-            "numLinesInMacro": s.numLinesInMacro,
-            "numLinesInUserMacro": s.numLinesInUserMacro,
-            "isLongJob": s.isLongJob,
-            "isSuperLongJob": s.isSuperLongJob,
-            "jobIsRendered": s.jobIsRendered,
-            "totalJobLength": s.totalJobLength,
-            "jobProgress": s.jobProgress,
-            "jobActualRunningTime": s.jobActualRunningTime,
-            "jobRemainingRunningTime": s.jobRemainingRunningTime,
-            "jobEstimatedTime": s.jobEstimatedTime,
-            "TCACollision": s.TCACollision,
-            "MCACollision": s.MCACollision,
-            "xCollision": s.xCollision,
-            "yCollision": s.yCollision,
-            "zCollision": s.zCollision,
-            "jobRenderLine": s.jobRenderLine,
-            "jobRenderProgressPercentage": s.jobRenderProgressPercentage,
-            "curIpLine": s.curIpLine,
-            "curExLine": s.curExLine,
-            "lastKnownExecutedLineNumber": s.lastKnownExcutedLineNumber,
-            "lastKnownToolChangeLineNumber": s.lastKnownToolChangeLineNumber,
+            # "numLinesInJob": s.numLinesInjob,
+            # "numLinesInMacro": s.numLinesInMacro,
+            # "numLinesInUserMacro": s.numLinesInUserMacro,
+            # "numBytesInJob": s.numBytesInJob,
+            # "isLongJob": s.isLongJob,
+            # "isSuperLongJob": s.isSuperLongJob,
+            # "jobIsRendered": s.jobIsRendered,
+            "totalJobLengthMm": s.totalJobLength,
+            "jobProgressMm": s.jobProgress,
+            "jobActualRunningTimeSeconds": s.jobActualRunningTime,
+            "jobRemainingRunningTimeSeconds": s.jobRemainingRunningTime,
+            "jobEstimatedTimeSeconds": s.jobEstimatedTime,
+            # "TCACollision": s.TCACollision,
+            # "MCACollision": s.MCACollision,
+            # "xCollision": s.xCollision,
+            # "yCollision": s.yCollision,
+            # "zCollision": s.zCollision,
+            # "jobRenderLine": s.jobRenderLine,
+            # "jobRenderProgressPercentage": s.jobRenderProgressPercentage,
+            # "curIpLine": s.curIpLine,
+            # "curIpLineText": s.curIpLineText.decode("ascii", errors="replace").rstrip('\x00'),
+            # "curExLine": s.curExLine,
+            # "lastKnownExecutedLineNumber": s.lastKnownExcutedLineNumber,
+            # "lastKnownToolChangeLineNumber": s.lastKnownToolChangeLineNumber,
             "doRepeatJob": s.doRepeatJob,
             "nrOfJobRepeatsSet": s.nrOfJobRepeatsSet,
             "nrOfRepeatsActual": s.nrOfRepeatsActual,
-            "extraLineWhenEndOfJob": s.extraLineWhenEndOfJob.decode(
-                "ascii", errors="replace"
-            ),
-            "stockDiameterTurning": s.stockDiameterTurning,
-            "stockLengthTurning": s.stockLengthTurning,
-            "stockZAtWorkOffset": s.stockZAtworkOffset,
+            # "extraLineWhenEndOfJob": s.extraLineWhenEndOfJob.decode(
+            #     "ascii", errors="replace"
+            # ),
+            # "stockDiameterTurning": s.stockDiameterTurning,
+            # "stockLengthTurning": s.stockLengthTurning,
+            # "stockZAtWorkOffset": s.stockZAtworkOffset,
         }
 
     def load_job(self, file_name: str) -> int:
@@ -227,6 +229,60 @@ class CncClient:
                 logger.warning("CncSendUserMessage failed: %s", e)
 
         return result
+
+    def set_job_quantity(self, quantity: int) -> int:
+        """Set the number of times the job should repeat.
+
+        Args:
+            quantity: Number of times to repeat the job (1-9999)
+                     1 = run once (no repeat)
+                     2 = run twice (repeat once)
+                     etc.
+
+        Returns:
+            CNC_RC_OK (0) on success, error code otherwise
+        """
+        try:
+            # CncSetExtraJobOptions(extraLine, doRepeat, numberOfRepeats)
+            # doRepeat: 1 = enable repeat, 0 = disable
+            # numberOfRepeats: total number of executions
+            do_repeat = 1 if quantity > 1 else 0
+            if do_repeat == 1:
+                extra_line = b"M02"  # M02 = end of program, so repeat starts over
+            else:
+                extra_line = b""  # no extra line needed when not repeating
+            result = self._dll.CncSetExtraJobOptions(
+                extra_line,  # extraLine - no extra G-code line
+                c_int(do_repeat),
+                c_uint(quantity)
+            )
+            logger.info("CncSetExtraJobOptions(doRepeat=%d, qty=%d) returned %d",
+                       do_repeat, quantity, result)
+            return result
+        except Exception as e:
+            logger.error("Failed to set job quantity: %s", e)
+            return -1
+
+    def render_job(self) -> int:
+        """Start rendering the loaded job so the CNC computes toolpath data.
+
+        Rendering populates totalJobLength, jobProgress, time estimates,
+        and other fields in CNC_JOB_STATUS. Runs asynchronously — poll
+        jobIsRendered in job status to know when it completes.
+
+        Returns:
+            CNC_RC_OK (0) on success, error code otherwise
+        """
+        try:
+            result = self._dll.CncStartRenderGraph(
+                c_int(0),  # outLines: 0 = don't push to graph FIFO
+                c_int(0),  # contour: 0 = full render
+            )
+            logger.info("CncStartRenderGraph() returned %d", result)
+            return result
+        except Exception as e:
+            logger.error("Failed to start render: %s", e)
+            return -1
 
     def run_job(self) -> int:
         """Start (or resume) execution of the loaded job."""
@@ -279,6 +335,8 @@ class CncClient:
             ("CncSendUserMessage", [c_char_p, c_char_p, c_int, c_int, c_int, c_char_p], None),
             ("CncRunOrResumeJob", None, c_int),
             ("CncReset", None, c_int),
+            ("CncSetExtraJobOptions", [c_char_p, c_int, c_uint], c_int),
+            ("CncStartRenderGraph", [c_int, c_int], c_int),
         ]:
             try:
                 func = getattr(self._dll, name)

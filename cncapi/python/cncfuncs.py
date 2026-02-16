@@ -1,7 +1,7 @@
 from ctypes import c_void_p, c_char_p, c_int, c_short, c_char, c_long, c_uint, c_bool, c_double, c_ulong, c_float, Structure, c_wchar, c_wchar_p, POINTER, c_ubyte, Union, create_string_buffer, byref
-from cncapi.cncdefines import *
-from cncapi.cncenums import *
-from cncapi.cncstructs import *
+from .cncdefines import *
+from .cncenums import *
+from .cncstructs import *
 
 import platform
 if platform.architecture()[1] == 'ELF':

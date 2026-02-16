@@ -48,7 +48,34 @@ async def get_job_status(
         state_text = STATE_MAP.get(state, f"Unknown state: {state}")
         job = client.get_job_status()
         logger.info("State: %s (code %d), job: %s", state_text, state, job.get("jobName", ""))
-        return JobStatusResponse(state=state, stateText=state_text, **job)
+
+        # Calculate job progress percentage
+        total_length = job.get("totalJobLengthMm", 0.0)
+        progress = job.get("jobProgressMm", 0.0)
+
+        if total_length > 0:
+            progress_percentage = (progress / total_length) * 100.0
+        else:
+            progress_percentage = 0.0
+
+        # Calculate current repeat iteration (1-based)
+        # NOTE: nrOfRepeatsActual is REMAINING count (decrements after each run)
+        do_repeat = job.get("doRepeatJob", 0)
+        total_repeats = job.get("nrOfJobRepeatsSet", 0)
+        repeats_remaining = job.get("nrOfRepeatsActual", 0)
+
+        if do_repeat and total_repeats > 0:
+            current_repeat = total_repeats - repeats_remaining + 1
+        else:
+            current_repeat = 0
+
+        return JobStatusResponse(
+            state=state,
+            stateText=state_text,
+            jobProgressPercentage=progress_percentage,
+            currentRepeat=current_repeat,
+            **job
+        )
     except Exception as exc:
         logger.error("Error getting job status: %s", exc)
         return JobStatusResponse(state=-1, stateText=f"Error: {exc}")

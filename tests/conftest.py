@@ -60,6 +60,12 @@ class FakeCncClient:
     def load_job(self, file_name: str) -> int:
         return self._load_job_rc
 
+    def set_job_quantity(self, quantity: int) -> int:
+        return 0  # Always succeed in tests
+
+    def render_job(self) -> int:
+        return 0  # Always succeed in tests
+
     def run_job(self) -> int:
         return self._run_job_rc
 
@@ -68,35 +74,36 @@ def _default_job_status() -> dict:
     return {
         "jobName": "test_part.nc",
         "jobLoadCounter": 1,
-        "numLinesInJob": 200,
-        "numLinesInMacro": 0,
-        "numLinesInUserMacro": 0,
-        "isLongJob": 0,
-        "isSuperLongJob": 0,
-        "jobIsRendered": 1,
-        "totalJobLength": 150.5,
-        "jobProgress": 45.0,
-        "jobActualRunningTime": 30.0,
-        "jobRemainingRunningTime": 20.0,
-        "jobEstimatedTime": 50.0,
-        "TCACollision": 0,
-        "MCACollision": 0,
-        "xCollision": 0,
-        "yCollision": 0,
-        "zCollision": 0,
-        "jobRenderLine": 100,
-        "jobRenderProgressPercentage": 50.0,
-        "curIpLine": 100,
-        "curExLine": 99,
-        "lastKnownExecutedLineNumber": 99,
-        "lastKnownToolChangeLineNumber": 10,
+        "totalJobLengthMm": 150.5,
+        "jobProgressMm": 45.0,
+        "jobActualRunningTimeSeconds": 30.0,
+        "jobRemainingRunningTimeSeconds": 20.0,
+        "jobEstimatedTimeSeconds": 50.0,
         "doRepeatJob": 0,
         "nrOfJobRepeatsSet": 0,
         "nrOfRepeatsActual": 0,
-        "extraLineWhenEndOfJob": "",
-        "stockDiameterTurning": 0.0,
-        "stockLengthTurning": 0.0,
-        "stockZAtWorkOffset": 0,
+        # Commented out - not currently used
+        # "numLinesInJob": 200,
+        # "numLinesInMacro": 0,
+        # "numLinesInUserMacro": 0,
+        # "isLongJob": 0,
+        # "isSuperLongJob": 0,
+        # "jobIsRendered": 1,
+        # "TCACollision": 0,
+        # "MCACollision": 0,
+        # "xCollision": 0,
+        # "yCollision": 0,
+        # "zCollision": 0,
+        # "jobRenderLine": 100,
+        # "jobRenderProgressPercentage": 50.0,
+        # "curIpLine": 100,
+        # "curExLine": 99,
+        # "lastKnownExecutedLineNumber": 99,
+        # "lastKnownToolChangeLineNumber": 10,
+        # "extraLineWhenEndOfJob": "",
+        # "stockDiameterTurning": 0.0,
+        # "stockLengthTurning": 0.0,
+        # "stockZAtWorkOffset": 0,
     }
 
 

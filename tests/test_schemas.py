@@ -95,34 +95,46 @@ class TestJobStatusResponse:
     def test_defaults(self):
         resp = JobStatusResponse(state=1, stateText="Idle")
         assert resp.jobName == ""
-        assert resp.jobProgress == 0.0
-        assert resp.numLinesInJob == 0
+        assert resp.jobProgressMm == 0.0
+        assert resp.jobLoadCounter == 0
+        assert resp.totalJobLengthMm == 0.0
 
     def test_full_construction(self):
         resp = JobStatusResponse(
             state=6,
             stateText="Running job",
             jobName="part.nc",
-            numLinesInJob=500,
-            jobProgress=75.5,
+            jobLoadCounter=5,
+            totalJobLengthMm=200.0,
+            jobProgressMm=75.5,
+            jobActualRunningTimeSeconds=30.0,
+            doRepeatJob=1,
+            nrOfJobRepeatsSet=3,
+            nrOfRepeatsActual=2,
         )
         assert resp.state == 6
         assert resp.jobName == "part.nc"
-        assert resp.jobProgress == 75.5
+        assert resp.jobProgressMm == 75.5
+        assert resp.jobLoadCounter == 5
+        assert resp.doRepeatJob == 1
 
     def test_error_state_negative_one(self):
         resp = JobStatusResponse(state=-1, stateText="Error: DLL crashed")
         assert resp.state == -1
         assert resp.jobName == ""
 
-    def test_coerces_float_to_int_fields(self):
-        """Fields like xCollision (int) should accept float input and coerce."""
+    def test_computed_repeat_fields(self):
+        """Computed currentRepeat field should be calculated correctly."""
         resp = JobStatusResponse(
-            state=1,
-            stateText="Idle",
-            xCollision=0.0,
-            yCollision=0.0,
-            zCollision=0.0,
+            state=2,
+            stateText="Ready",
+            doRepeatJob=1,
+            nrOfJobRepeatsSet=5,
+            nrOfRepeatsActual=3,
+            currentRepeat=3,  # 5 - 3 + 1 = 3 (on 3rd iteration of 5)
         )
-        assert resp.xCollision == 0
+        assert resp.doRepeatJob == 1
+        assert resp.nrOfJobRepeatsSet == 5
+        assert resp.nrOfRepeatsActual == 3
+        assert resp.currentRepeat == 3
 

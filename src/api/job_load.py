@@ -44,10 +44,11 @@ router = APIRouter(route_class=BackslashFixRoute)
 
 
 
-@router.get("/api/cnc/job/load/{job_number}/{step}", response_model=LoadJobResponse)
+@router.get("/api/cnc/job/load/{job_number}/{step}/{qty}", response_model=LoadJobResponse)
 async def load_job(
     job_number: str = Path(..., min_length=12, max_length=12, pattern=r'^\d{12}$', description="12-digit job number"),
-    step: str = Path(..., pattern=r'^\d+$', description="Numeric step identifier"),
+    step: str = Path(..., min_length=1, max_length=3, pattern=r'^\d+$', description="Numeric step identifier (1-999)"),
+    qty: int = Path(..., ge=1, le=9999, description="Quantity/number of repeats (1-9999)"),
     client: CncClientProtocol = Depends(get_cnc_client),
     settings: Settings = Depends(get_settings),
 ):
@@ -55,8 +56,8 @@ async def load_job(
     request = LoadJobRequest(job_number=job_number, step=step, base_dir=settings.base_dir)
 
     logger.info(
-        "LOAD JOB request — job_number=%s, step=%s, job_dir=%s",
-        job_number, step, request.job_dir
+        "LOAD JOB request — job_number=%s, step=%s, qty=%d, job_dir=%s",
+        job_number, step, qty, request.job_dir
     )
 
     try:
@@ -69,6 +70,31 @@ async def load_job(
         if result == 0:
             message = "Job loaded successfully"
             logger.info(message)
+
+            # Always set job quantity (ensures repeat flag is configured)
+            if qty >= 1:
+                try:
+                    qty_result = client.set_job_quantity(qty)
+                    if qty_result == 0:
+                        if qty > 1:
+                            message += f" with quantity: {qty}"
+                        logger.info("Job quantity set to %d", qty)
+                    else:
+                        logger.warning("Failed to set job quantity: error code %d", qty_result)
+                        message += f" (quantity set failed: {qty_result})"
+                except Exception as qty_exc:
+                    logger.warning("Exception setting job quantity: %s", qty_exc)
+                    message += f" (quantity set error: {qty_exc})"
+
+            # Render the job so the CNC computes toolpath, progress, and time estimates
+            try:
+                render_result = client.render_job()
+                if render_result == 0:
+                    logger.info("Job render started")
+                else:
+                    logger.warning("Failed to start job render: error code %d", render_result)
+            except Exception as render_exc:
+                logger.warning("Exception starting job render: %s", render_exc)
         else:
             message = f"Load failed with error code: {result}"
             logger.error(message)

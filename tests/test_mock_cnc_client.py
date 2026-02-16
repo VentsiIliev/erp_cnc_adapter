@@ -32,10 +32,12 @@ class TestMockCncClient:
         client = MockCncClient()
         status = client.get_job_status()
         assert isinstance(status, dict)
+        # Check minimal fields with unit suffixes
         expected_keys = [
-            "jobName", "jobLoadCounter", "numLinesInJob",
-            "jobProgress", "jobActualRunningTime", "jobEstimatedTime",
-            "TCACollision", "MCACollision",
+            "jobName", "jobLoadCounter",
+            "totalJobLengthMm", "jobProgressMm",
+            "jobActualRunningTimeSeconds", "jobEstimatedTimeSeconds",
+            "doRepeatJob", "nrOfJobRepeatsSet",
         ]
         for key in expected_keys:
             assert key in status

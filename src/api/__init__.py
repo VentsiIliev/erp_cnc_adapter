@@ -12,6 +12,3 @@ api_router.include_router(cnc_stop.router)
 api_router.include_router(update.router)
 api_router.include_router(update_page.router)
 
-# {
-#   "fileName": "//192.168.2.11/Production/CNC/Mills/000150650010/Setup_1 F6 #32.nc"
-# }

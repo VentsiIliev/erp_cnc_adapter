@@ -1,6 +1,6 @@
-from ctypes import c_void_p, c_char_p, c_int, c_short, c_char, c_long, c_uint, c_bool, c_double, c_ulong, c_float, Structure, c_wchar, c_wchar_p, POINTER, c_ubyte, Union, create_string_buffer, byref
-from cncapi.cncdefines import *
-from cncapi.cncenums import *
+from ctypes import c_void_p, c_char_p, c_int, c_short, c_char, c_long, c_uint, c_bool, c_double, c_ulong, c_float, c_longlong, Structure, c_wchar, c_wchar_p, POINTER, c_ubyte, Union, create_string_buffer, byref
+from .cncdefines import *
+from .cncenums import *
 
 class KIN_CONTROLDATA(Union):
     _pack_ = 1
@@ -977,6 +977,7 @@ class CNC_JOB_STATUS(Structure):
         ( "numLinesInjob", c_int ),
         ( "numLinesInMacro", c_int ),
         ( "numLinesInUserMacro", c_int ),
+        ( "numBytesInJob", c_longlong ),  # Added in newer CNC DLL version (8 bytes)
         ( "isLongJob", c_int ),
         ( "isSuperLongJob", c_int ),
         ( "jobIsRendered", c_int ),
@@ -993,6 +994,7 @@ class CNC_JOB_STATUS(Structure):
         ( "jobRenderLine", c_int ),
         ( "jobRenderProgressPercentage", c_double ),
         ( "curIpLine", c_int ),
+        ( "curIpLineText", c_char * (CNC_MAX_INTERPRETER_LINE + 1) ),  # Current interpreter line text
         ( "curExLine", c_int ),
         ( "lastKnownExcutedLineNumber", c_int ),
         ( "lastKnownToolChangeLineNumber", c_int ),
