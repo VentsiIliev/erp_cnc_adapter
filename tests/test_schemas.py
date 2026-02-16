@@ -17,26 +17,39 @@ from src.api.schemas.job import (
 
 class TestLoadJobRequest:
 
-    def test_accepts_valid_filename(self):
-        req = LoadJobRequest(fileName=r"C:\CNC\parts\test.nc")
-        assert req.file_name == r"C:\CNC\parts\test.nc"
+    def test_accepts_valid_job_number_and_step(self):
+        req = LoadJobRequest(job_number="123456789012", step="10")
+        assert req.job_number == "123456789012"
+        assert req.step == "10"
 
-    def test_normalizes_forward_slashes(self):
-        req = LoadJobRequest(fileName="//server/share/part.nc")
-        assert req.file_name == r"\\server\share\part.nc"
+    def test_constructs_job_dir_correctly(self):
+        req = LoadJobRequest(job_number="123456789012", step="10")
+        assert "123456789012" in req.job_dir
+        assert req.base_dir in req.job_dir
 
-    def test_rejects_empty_filename(self):
+    def test_rejects_invalid_job_number_too_short(self):
         with pytest.raises(ValidationError):
-            LoadJobRequest(fileName="")
+            LoadJobRequest(job_number="12345", step="10")
 
-    def test_accepts_populate_by_name(self):
-        req = LoadJobRequest(file_name=r"C:\test.nc")
-        assert req.file_name == r"C:\test.nc"
+    def test_rejects_invalid_job_number_too_long(self):
+        with pytest.raises(ValidationError):
+            LoadJobRequest(job_number="1234567890123", step="10")
 
-    def test_mixed_slashes_normalized(self):
-        req = LoadJobRequest(fileName="C:/CNC/parts/sub\\file.nc")
-        assert "\\" in req.file_name
-        assert "/" not in req.file_name
+    def test_rejects_non_numeric_job_number(self):
+        with pytest.raises(ValidationError):
+            LoadJobRequest(job_number="12345678901A", step="10")
+
+    def test_rejects_non_numeric_step(self):
+        with pytest.raises(ValidationError):
+            LoadJobRequest(job_number="123456789012", step="ABC")
+
+    def test_custom_base_dir(self):
+        req = LoadJobRequest(
+            job_number="123456789012",
+            step="10",
+            base_dir=r"C:\CustomPath"
+        )
+        assert req.job_dir == r"C:\CustomPath\123456789012"
 
 
 # ---------------------------------------------------------------------------
@@ -113,14 +126,3 @@ class TestJobStatusResponse:
         )
         assert resp.xCollision == 0
 
-
-class TestLoadJobRequestEdge:
-
-    def test_pure_backslash_path_unchanged(self):
-        req = LoadJobRequest(fileName=r"C:\CNC\parts\test.nc")
-        # Backslashes remain backslashes
-        assert "\\" in req.file_name
-
-    def test_single_char_filename(self):
-        req = LoadJobRequest(fileName="x")
-        assert req.file_name == "x"

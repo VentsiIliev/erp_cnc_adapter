@@ -1,4 +1,4 @@
-"""Tests for POST /api/cnc/job/start."""
+"""Tests for GET /api/cnc/job/start."""
 
 import pytest
 
@@ -11,7 +11,7 @@ class TestJobStart:
     async def test_start_success(self, client, fake_client):
         fake_client._run_job_rc = 0
 
-        resp = await client.post("/api/cnc/job/start")
+        resp = await client.get("/api/cnc/job/start")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -21,7 +21,7 @@ class TestJobStart:
     async def test_start_failure(self, client, fake_client):
         fake_client._run_job_rc = 24  # not connected
 
-        resp = await client.post("/api/cnc/job/start")
+        resp = await client.get("/api/cnc/job/start")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -35,7 +35,7 @@ class TestJobStart:
 
         fake_client.run_job = raise_error
 
-        resp = await client.post("/api/cnc/job/start")
+        resp = await client.get("/api/cnc/job/start")
 
         assert resp.status_code == 200
         body = resp.json()

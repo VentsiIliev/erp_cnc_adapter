@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/api/cnc/start")
+@router.get("/api/cnc/start")
 async def start_cnc(request: Request):
     """
     Start the CNC Server (CncServer.exe).

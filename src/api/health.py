@@ -96,17 +96,13 @@ def _render_html(data: dict) -> str:
     if state == "cnc_not_running":
         action_btn = (
             '\n    <div style="padding:0 28px 16px;text-align:center">'
-            '\n      <form method="post" action="/api/cnc/start">'
-            '\n        <button type="submit" class="start-cnc-btn">&#9654; Start CNC</button>'
-            "\n      </form>"
+            '\n      <a href="/api/cnc/start" class="start-cnc-btn" style="display:inline-block;text-decoration:none">&#9654; Start CNC</a>'
             "\n    </div>"
         )
     elif connected:
         action_btn = (
             '\n    <div style="padding:0 28px 16px;text-align:center">'
-            '\n      <form method="post" action="/api/cnc/stop">'
-            '\n        <button type="submit" class="stop-cnc-btn">&#9632; Stop CNC</button>'
-            "\n      </form>"
+            '\n      <a href="/api/cnc/stop" class="stop-cnc-btn" style="display:inline-block;text-decoration:none">&#9632; Stop CNC</a>'
             "\n    </div>"
         )
 

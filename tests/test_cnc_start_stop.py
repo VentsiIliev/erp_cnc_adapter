@@ -1,4 +1,4 @@
-"""Tests for POST /api/cnc/start and POST /api/cnc/stop.
+"""Tests for GET /api/cnc/start and GET /api/cnc/stop.
 
 These endpoints interact with the OS (subprocess, taskkill), so we test
 the HTTP-level behavior with mocked system calls.
@@ -15,7 +15,7 @@ class TestCncStart:
 
     @patch("src.api.cnc_start.os.path.isfile", return_value=False)
     async def test_start_missing_exe_returns_404(self, mock_isfile, client):
-        resp = await client.post("/api/cnc/start")
+        resp = await client.get("/api/cnc/start")
 
         assert resp.status_code == 404
         body = resp.json()
@@ -29,7 +29,7 @@ class TestCncStart:
         proc.pid = 1234
         mock_popen.return_value = proc
 
-        resp = await client.post("/api/cnc/start", follow_redirects=False)
+        resp = await client.get("/api/cnc/start", follow_redirects=False)
 
         assert resp.status_code == 303
         assert resp.headers["location"] == "/"
@@ -43,7 +43,7 @@ class TestCncStart:
         proc.pid = 1234
         mock_popen.return_value = proc
 
-        resp = await client.post("/api/cnc/start")
+        resp = await client.get("/api/cnc/start")
 
         assert resp.status_code == 500
         body = resp.json()
@@ -52,7 +52,7 @@ class TestCncStart:
     @patch("src.api.cnc_start.subprocess.Popen", side_effect=OSError("access denied"))
     @patch("src.api.cnc_start.os.path.isfile", return_value=True)
     async def test_start_popen_exception(self, mock_isfile, mock_popen, client):
-        resp = await client.post("/api/cnc/start")
+        resp = await client.get("/api/cnc/start")
 
         assert resp.status_code == 500
         body = resp.json()
@@ -69,7 +69,7 @@ class TestCncStart:
         proc.pid = 1234
         mock_popen.return_value = proc
 
-        await client.post("/api/cnc/start", follow_redirects=False)
+        await client.get("/api/cnc/start", follow_redirects=False)
 
         # The nudge event should have been set
         assert connection_manager._nudge_event.is_set()
@@ -82,7 +82,7 @@ class TestCncStop:
         fake_client._connected = True
         mock_ctypes.windll.shell32.ShellExecuteW.return_value = 42
 
-        resp = await client.post("/api/cnc/stop", follow_redirects=False)
+        resp = await client.get("/api/cnc/stop", follow_redirects=False)
 
         assert resp.status_code == 303
         assert resp.headers["location"] == "/"
@@ -94,7 +94,7 @@ class TestCncStop:
         fake_client._connected = True
         mock_ctypes.windll.shell32.ShellExecuteW.return_value = 2  # failure code
 
-        resp = await client.post("/api/cnc/stop", follow_redirects=False)
+        resp = await client.get("/api/cnc/stop", follow_redirects=False)
 
         assert resp.status_code == 303
         assert fake_client._connected is False
@@ -105,7 +105,7 @@ class TestCncStop:
         fake_client._connected = True
         mock_ctypes.windll.shell32.ShellExecuteW.return_value = 42
 
-        await client.post("/api/cnc/stop", follow_redirects=False)
+        await client.get("/api/cnc/stop", follow_redirects=False)
 
         calls = mock_ctypes.windll.shell32.ShellExecuteW.call_args_list
         assert len(calls) == 2
@@ -119,14 +119,7 @@ class TestCncStop:
         fake_client._connected = False
         mock_ctypes.windll.shell32.ShellExecuteW.return_value = 42
 
-        resp = await client.post("/api/cnc/stop", follow_redirects=False)
+        resp = await client.get("/api/cnc/stop", follow_redirects=False)
 
         assert resp.status_code == 303
 
-    async def test_get_stop_returns_405(self, client):
-        resp = await client.get("/api/cnc/stop")
-        assert resp.status_code == 405
-
-    async def test_get_start_returns_405(self, client):
-        resp = await client.get("/api/cnc/start")
-        assert resp.status_code == 405

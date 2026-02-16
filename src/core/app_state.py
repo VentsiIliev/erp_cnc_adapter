@@ -47,6 +47,8 @@ class AppState:
         _kill_stale_adapter()
         _write_pid_file()
 
+        self.settings = settings
+
         logger.info("Initializing CNC client...")
         if settings.dev_mode:
             logger.warning("DEV_MODE enabled — using mock CNC client")
@@ -93,3 +95,8 @@ def get_cnc_client(request: Request) -> CncClientProtocol:
 
 def get_connection_manager(request: Request) -> ConnectionManager:
     return request.app.state.services.connection_manager
+
+
+def get_settings(request: Request) -> Settings:
+    return request.app.state.services.settings
+

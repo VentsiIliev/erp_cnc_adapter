@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/api/cnc/stop")
+@router.get("/api/cnc/stop")
 async def stop_cnc(request: Request):
     """Disconnect the adapter, then shut down CNC and CncServer."""
     # Disconnect adapter first so it doesn't hold the DLL connection

@@ -121,6 +121,7 @@ def settings():
         log_level="WARNING",
         cnc_retry_interval=1,
         cnc_health_interval=1,
+        base_dir=r"\\192.168.2.11\Production\CNC\Mills",
     )
 
 
@@ -130,7 +131,7 @@ def connection_manager(fake_client, settings):
     return ConnectionManager(fake_client, settings)
 
 
-def _build_test_app(fake_client: FakeCncClient, manager: ConnectionManager) -> FastAPI:
+def _build_test_app(fake_client: FakeCncClient, manager: ConnectionManager, settings: Settings) -> FastAPI:
     """Create a FastAPI app with injected fakes instead of real CNC hardware."""
     app = FastAPI()
     app.include_router(api_router)
@@ -139,14 +140,15 @@ def _build_test_app(fake_client: FakeCncClient, manager: ConnectionManager) -> F
     services = MagicMock()
     services.cnc_client = fake_client
     services.connection_manager = manager
+    services.settings = settings
     app.state.services = services
     return app
 
 
 @pytest.fixture()
-def test_app(fake_client, connection_manager):
+def test_app(fake_client, connection_manager, settings):
     """FastAPI test application with mocked services."""
-    return _build_test_app(fake_client, connection_manager)
+    return _build_test_app(fake_client, connection_manager, settings)
 
 
 @pytest.fixture()

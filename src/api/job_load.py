@@ -2,10 +2,11 @@ import json
 import logging
 import re
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Path
 from fastapi.routing import APIRoute
 
-from src.core.app_state import get_cnc_client
+from src.core.app_state import get_cnc_client, get_settings
+from src.core.config import Settings
 from .schemas.job import LoadJobRequest, LoadJobResponse
 from src.cnc.cnc_client_protocol import CncClientProtocol
 
@@ -41,26 +42,52 @@ class BackslashFixRoute(APIRoute):
 router = APIRouter(route_class=BackslashFixRoute)
 
 
-@router.post("/api/cnc/job/load", response_model=LoadJobResponse)
+
+
+@router.get("/api/cnc/job/load/{job_number}/{step}", response_model=LoadJobResponse)
 async def load_job(
-    request: LoadJobRequest,
+    job_number: str = Path(..., min_length=12, max_length=12, pattern=r'^\d{12}$', description="12-digit job number"),
+    step: str = Path(..., pattern=r'^\d+$', description="Numeric step identifier"),
     client: CncClientProtocol = Depends(get_cnc_client),
+    settings: Settings = Depends(get_settings),
 ):
-    logger.info("LOAD JOB request — fileName=%s", request.file_name)
+    # Construct the request object from path parameters and settings
+    request = LoadJobRequest(job_number=job_number, step=step, base_dir=settings.base_dir)
+
+    logger.info(
+        "LOAD JOB request — job_number=%s, step=%s, job_dir=%s",
+        job_number, step, request.job_dir
+    )
 
     try:
-        result = client.load_job(request.file_name)
+        # Find the .nc file matching Setup_{step}*.nc pattern
+        file_path = request.find_nc_file()
+        logger.info("Found NC file: %s", file_path)
+
+        # Load the job using the found file path
+        result = client.load_job(file_path)
         if result == 0:
             message = "Job loaded successfully"
             logger.info(message)
         else:
             message = f"Load failed with error code: {result}"
             logger.error(message)
+    except FileNotFoundError as exc:
+        result = -1
+        message = f"File not found: {exc}"
+        logger.error(message)
+        file_path = ""
+    except ValueError as exc:
+        result = -1
+        message = f"File search error: {exc}"
+        logger.error(message)
+        file_path = ""
     except Exception as exc:
         result = -1
         message = f"Exception calling LoadJob: {exc}"
         logger.error(message)
+        file_path = ""
 
     return LoadJobResponse.model_construct(
-        status=result, message=message, fileName=request.file_name
+        status=result, message=message, fileName=file_path
     )

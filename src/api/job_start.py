@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/api/cnc/job/start", response_model=RunJobResponse)
+@router.get("/api/cnc/job/start", response_model=RunJobResponse)
 async def start_job(
     client: CncClientProtocol = Depends(get_cnc_client),
 ):

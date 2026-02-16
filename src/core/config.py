@@ -11,3 +11,4 @@ class Settings:
     cnc_retry_interval: int = 5   # seconds between connection retries
     cnc_health_interval: int = 10  # seconds between heartbeat checks
     dev_mode: bool = False
+    base_dir: str = r"\\192.168.2.11\Production\CNC\Mills"  # Base directory for job files

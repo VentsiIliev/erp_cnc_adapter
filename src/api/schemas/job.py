@@ -1,15 +1,44 @@
-from pydantic import BaseModel, Field, field_validator
+import glob
+import os
+from pydantic import BaseModel, Field
 
 
 class LoadJobRequest(BaseModel):
-    file_name: str = Field(..., alias="fileName", min_length=1)
+    job_number: str = Field(..., min_length=12, max_length=12, pattern=r'^\d{12}$')
+    step: str = Field(..., pattern=r'^\d+$')
+    base_dir: str = Field(default=r"\\192.168.2.11\Production\CNC\Mills")
 
     model_config = {"populate_by_name": True}
 
-    @field_validator("file_name")
-    @classmethod
-    def normalize_slashes(cls, v: str) -> str:
-        return v.replace("/", "\\")
+    @property
+    def job_dir(self) -> str:
+        """Construct the job directory path."""
+        return os.path.join(self.base_dir, self.job_number)
+
+    def find_nc_file(self) -> str:
+        """Find the .nc file that starts with Setup_{step} in the job directory.
+
+        Returns:
+            Full path to the .nc file
+
+        Raises:
+            FileNotFoundError: If no matching file is found
+            ValueError: If multiple matching files are found
+        """
+        pattern = os.path.join(self.job_dir, f"Setup_{self.step}*.nc")
+        matches = glob.glob(pattern)
+
+        if not matches:
+            raise FileNotFoundError(
+                f"No .nc file found matching Setup_{self.step}*.nc in {self.job_dir}"
+            )
+
+        if len(matches) > 1:
+            raise ValueError(
+                f"Multiple .nc files found matching Setup_{self.step}*.nc: {matches}"
+            )
+
+        return matches[0]
 
 
 class JobStatusResponse(BaseModel):
