@@ -53,11 +53,6 @@ async def get_job_status(
         total_length = job.get("totalJobLengthMm", 0.0)
         progress = job.get("jobProgressMm", 0.0)
 
-        if total_length > 0:
-            progress_percentage = (progress / total_length) * 100.0
-        else:
-            progress_percentage = 0.0
-
         # Calculate current repeat iteration (1-based)
         # NOTE: nrOfRepeatsActual is REMAINING count (decrements after each run)
         do_repeat = job.get("doRepeatJob", 0)
@@ -68,6 +63,25 @@ async def get_job_status(
             current_repeat = total_repeats - repeats_remaining + 1
         else:
             current_repeat = 0
+
+        # Calculate progress percentage
+        # Note: jobProgressMm can exceed totalJobLengthMm slightly (CNC controller behavior)
+        # Always clamp to 0-100% range for consistent API response
+        if total_length > 0:
+            if do_repeat and total_repeats > 0 and current_repeat > 0:
+                # Repeat mode: calculate percentage within current repeat
+                completed_repeats = current_repeat - 1
+                progress_in_current_repeat = progress - (completed_repeats * total_length)
+                progress_percentage = (progress_in_current_repeat / total_length) * 100.0
+                # Clamp to 0-100 range
+                progress_percentage = max(0.0, min(100.0, progress_percentage))
+            else:
+                # Non-repeat mode: simple calculation
+                progress_percentage = (progress / total_length) * 100.0
+                # Clamp to 0-100 range (progress can exceed total length slightly)
+                progress_percentage = max(0.0, min(100.0, progress_percentage))
+        else:
+            progress_percentage = 0.0
 
         return JobStatusResponse(
             state=state,

@@ -126,14 +126,16 @@ class TestJobStatus:
         assert body["jobProgressPercentage"] == 25.0  # 50/200 * 100 = 25%
 
     async def test_job_progress_percentage_over_100(self, client, fake_client):
-        """Test that percentage can exceed 100% (normal CNC behavior)."""
+        """Test that percentage is clamped to 100% when progress exceeds total length."""
         fake_client._state = 6
         fake_client._job_status["totalJobLengthMm"] = 100.0
         fake_client._job_status["jobProgressMm"] = 110.0
+        fake_client._job_status["doRepeatJob"] = 0  # No repeat mode
 
         resp = await client.get("/api/cnc/job/status")
         body = resp.json()
-        assert body["jobProgressPercentage"] == pytest.approx(110.0)  # 110/100 * 100 = 110%
+        # Progress exceeds total, but percentage is clamped to 100%
+        assert body["jobProgressPercentage"] == pytest.approx(100.0)
 
     async def test_job_progress_percentage_zero_length(self, client, fake_client):
         """Test that percentage is 0 when totalJobLengthMm is 0."""
@@ -144,6 +146,67 @@ class TestJobStatus:
         resp = await client.get("/api/cnc/job/status")
         body = resp.json()
         assert body["jobProgressPercentage"] == 0.0
+
+    async def test_job_progress_percentage_repeat_mode_first_run(self, client, fake_client):
+        """Test percentage calculation during first repeat (should be normal)."""
+        fake_client._state = 6
+        fake_client._job_status["totalJobLengthMm"] = 200.0
+        fake_client._job_status["jobProgressMm"] = 100.0  # 50% through first run
+        fake_client._job_status["doRepeatJob"] = 1
+        fake_client._job_status["nrOfJobRepeatsSet"] = 3
+        fake_client._job_status["nrOfRepeatsActual"] = 3  # 3 remaining = on first run (not yet decremented)
+
+        resp = await client.get("/api/cnc/job/status")
+        body = resp.json()
+        assert body["currentRepeat"] == 1
+        assert body["jobProgressPercentage"] == pytest.approx(50.0)  # 100/200 * 100 = 50%
+
+    async def test_job_progress_percentage_repeat_mode_second_run(self, client, fake_client):
+        """Test percentage calculation during second repeat."""
+        fake_client._state = 6
+        fake_client._job_status["totalJobLengthMm"] = 219.0
+        fake_client._job_status["jobProgressMm"] = 219.0 + 100.0  # Completed 1st run + 100mm into 2nd
+        fake_client._job_status["doRepeatJob"] = 1
+        fake_client._job_status["nrOfJobRepeatsSet"] = 2
+        fake_client._job_status["nrOfRepeatsActual"] = 1  # 1 remaining = on second run
+
+        resp = await client.get("/api/cnc/job/status")
+        body = resp.json()
+        assert body["currentRepeat"] == 2
+        # Progress in current repeat = 319 - (1 * 219) = 100mm
+        # Percentage = 100/219 * 100 ≈ 45.66%
+        assert body["jobProgressPercentage"] == pytest.approx(45.66, rel=0.01)
+
+    async def test_job_progress_percentage_repeat_mode_at_end_of_second_run(self, client, fake_client):
+        """Test that percentage is clamped to 100% at end of repeat."""
+        fake_client._state = 6
+        fake_client._job_status["totalJobLengthMm"] = 219.0
+        fake_client._job_status["jobProgressMm"] = 219.0 * 2  # Completed 2 full runs
+        fake_client._job_status["doRepeatJob"] = 1
+        fake_client._job_status["nrOfJobRepeatsSet"] = 2
+        fake_client._job_status["nrOfRepeatsActual"] = 1  # 1 remaining but actually at end
+
+        resp = await client.get("/api/cnc/job/status")
+        body = resp.json()
+        assert body["currentRepeat"] == 2
+        # Progress in current repeat = 438 - (1 * 219) = 219mm = 100%
+        assert body["jobProgressPercentage"] == pytest.approx(100.0)
+
+    async def test_job_progress_percentage_repeat_mode_third_run(self, client, fake_client):
+        """Test percentage calculation during third repeat."""
+        fake_client._state = 6
+        fake_client._job_status["totalJobLengthMm"] = 200.0
+        fake_client._job_status["jobProgressMm"] = 200.0 * 2 + 50.0  # Completed 2 runs + 50mm into 3rd
+        fake_client._job_status["doRepeatJob"] = 1
+        fake_client._job_status["nrOfJobRepeatsSet"] = 3
+        fake_client._job_status["nrOfRepeatsActual"] = 1  # 1 remaining = on third run
+
+        resp = await client.get("/api/cnc/job/status")
+        body = resp.json()
+        assert body["currentRepeat"] == 3
+        # Progress in current repeat = 450 - (2 * 200) = 50mm
+        # Percentage = 50/200 * 100 = 25%
+        assert body["jobProgressPercentage"] == pytest.approx(25.0)
 
 
 class TestStateMap:

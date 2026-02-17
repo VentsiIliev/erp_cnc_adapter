@@ -71,7 +71,7 @@ class JobStatusResponse(BaseModel):
     jobEstimatedTimeSeconds: float = 0.0       # Total estimated time (seconds)
 
     # Computed progress percentage (calculated by API layer)
-    jobProgressPercentage: float = 0.0         # Completion percentage (0-100, can exceed 100)
+    jobProgressPercentage: float = 0.0         # Completion percentage (always 0-100, clamped)
 
     # Commented out - collision and rendering fields
     # TCACollision: int = 0

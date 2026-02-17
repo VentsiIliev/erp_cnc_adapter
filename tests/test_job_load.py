@@ -248,7 +248,7 @@ class TestJobLoad:
 
     @patch('src.api.schemas.job.glob.glob')
     async def test_load_with_qty_parameter(self, mock_glob, client, fake_client):
-        """Test loading with quantity parameter."""
+        """Test loading with quantity parameter (currently hardcoded to 1, so qty is not used)."""
         fake_client._load_job_rc = 0
         mock_glob.return_value = [r"\\192.168.2.11\Production\CNC\Mills\123456789012\Setup_1.nc"]
 
@@ -259,7 +259,8 @@ class TestJobLoad:
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == 0
-        assert "quantity: 5" in body["message"]
+        # Currently qty is hardcoded to 1, so message should not mention quantity
+        assert "quantity" not in body["message"]
 
     @patch('src.api.schemas.job.glob.glob')
     async def test_load_with_default_qty(self, mock_glob, client, fake_client):
@@ -297,7 +298,7 @@ class TestJobLoad:
 
     @patch('src.api.schemas.job.glob.glob')
     async def test_load_with_max_qty(self, mock_glob, client, fake_client):
-        """Test loading with maximum quantity."""
+        """Test loading with maximum quantity (currently qty is hardcoded to 1)."""
         fake_client._load_job_rc = 0
         mock_glob.return_value = [r"\\192.168.2.11\Production\CNC\Mills\123456789012\Setup_1.nc"]
 
@@ -308,7 +309,8 @@ class TestJobLoad:
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == 0
-        assert "quantity: 9999" in body["message"]
+        # Currently qty is hardcoded to 1, so message should not mention quantity
+        assert "quantity" not in body["message"]
 
     @patch('src.api.schemas.job.glob.glob')
     async def test_load_with_cnc_extension(self, mock_glob, client, fake_client):

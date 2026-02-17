@@ -203,7 +203,7 @@ class TestSetJobQuantityIntegration:
     @pytest.mark.asyncio
     @patch('src.api.schemas.job.glob.glob')
     async def test_load_job_sets_quantity_on_success(self, mock_glob, client, fake_client):
-        """Test that loading with qty>1 calls set_job_quantity."""
+        """Test that loading calls set_job_quantity (currently qty is hardcoded to 1)."""
         fake_client._load_job_rc = 0
         mock_glob.return_value = [r"\\192.168.2.11\Production\CNC\Mills\123456789012\Setup_1.nc"]
 
@@ -221,7 +221,8 @@ class TestSetJobQuantityIntegration:
 
         assert resp.status_code == 200
         assert len(calls) == 1
-        assert calls[0] == 5
+        # Currently qty is hardcoded to 1 in job_load.py
+        assert calls[0] == 1
 
     @pytest.mark.asyncio
     @patch('src.api.schemas.job.glob.glob')

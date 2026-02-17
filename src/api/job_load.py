@@ -54,7 +54,8 @@ async def load_job(
 ):
     # Construct the request object from path parameters and settings
     request = LoadJobRequest(job_number=job_number, step=step, base_dir=settings.base_dir)
-
+    # For now accept the qty parameter but keep it = 1 !
+    qty = 1
     logger.info(
         "LOAD JOB request — job_number=%s, step=%s, qty=%d, job_dir=%s",
         job_number, step, qty, request.job_dir
