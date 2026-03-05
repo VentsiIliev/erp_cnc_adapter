@@ -245,12 +245,19 @@ class JobMonitor:
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 response = await client.get(self._report_url, params=params)
 
+                # Capture response content (limit to first 1000 chars to avoid memory issues)
+                response_content = response.text[:1000] if response.text else ""
+
+                logger.info("Job done report response: status=%d, content_length=%d",
+                           response.status_code, len(response.text))
+
                 if response.status_code == 200:
-                    logger.info("✓ Job done report sent successfully (status: %d)", response.status_code)
+                    logger.info("✓ Job done report sent successfully")
                     self._last_report_status = {
                         "success": True,
                         "timestamp": datetime.now().isoformat(),
                         "status_code": response.status_code,
+                        "response_content": response_content,
                         "url": self._report_url,
                         "machine": machine,
                         "job_number": job_number,
@@ -264,6 +271,7 @@ class JobMonitor:
                         "timestamp": datetime.now().isoformat(),
                         "error": error_msg,
                         "status_code": response.status_code,
+                        "response_content": response_content,
                         "url": self._report_url,
                     }
 
@@ -275,6 +283,7 @@ class JobMonitor:
                 "timestamp": datetime.now().isoformat(),
                 "error": error_msg,
                 "url": self._report_url,
+                "response_content": "",
             }
         except httpx.RequestError as e:
             error_msg = str(e)
@@ -284,6 +293,7 @@ class JobMonitor:
                 "timestamp": datetime.now().isoformat(),
                 "error": error_msg,
                 "url": self._report_url,
+                "response_content": "",
             }
         except Exception as e:
             error_msg = str(e)
@@ -293,6 +303,7 @@ class JobMonitor:
                 "timestamp": datetime.now().isoformat(),
                 "error": error_msg,
                 "url": self._report_url,
+                "response_content": "",
             }
 
     def _log_job_finished(
