@@ -25,7 +25,7 @@ class FakeCncClient:
 
     def __init__(self):
         self._connected = False
-        self._state = 1  # Idle
+        self._state = 2  # Ready (not Idle) - required for load_job and start_job to work
         self._job_status = _default_job_status()
         self._load_job_rc = 0
         self._run_job_rc = 0
@@ -148,6 +148,16 @@ def _build_test_app(fake_client: FakeCncClient, manager: ConnectionManager, sett
     services.cnc_client = fake_client
     services.connection_manager = manager
     services.settings = settings
+
+    # Add job_monitor mock (no actual monitoring, just for state checks)
+    job_monitor_mock = MagicMock()
+    job_monitor_mock._was_running = False  # Not running by default
+    job_monitor_mock._job_info = {}
+    services.job_monitor = job_monitor_mock
+
+    # Add last_loaded_job storage
+    services.last_loaded_job = None
+
     app.state.services = services
     return app
 

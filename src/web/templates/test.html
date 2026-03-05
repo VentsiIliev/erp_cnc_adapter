@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Monitor Test Page</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .status-panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .status-row:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .status-value {
+            font-family: 'Courier New', monospace;
+            color: #333;
+            background: white;
+            padding: 5px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge.running {
+            background: #10b981;
+            color: white;
+        }
+
+        .badge.stopped {
+            background: #ef4444;
+            color: white;
+        }
+
+        .badge.idle {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .badge.ready {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .badge.job-running {
+            background: #8b5cf6;
+            color: white;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .job-finished {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: 700;
+            animation: slideDown 0.5s ease-out, glow 1.5s ease-in-out infinite;
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes glow {
+            0%, 100% {
+                box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+            }
+            50% {
+                box-shadow: 0 10px 40px rgba(16, 185, 129, 0.8);
+            }
+        }
+
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+
+        .log-time {
+            color: #888;
+        }
+
+        .log-info {
+            color: #4ec9b0;
+        }
+
+        .log-success {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .log-error {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: #764ba2;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Job Monitor Test</h1>
+        <p class="subtitle">Test job loading, starting, and monitor tracking</p>
+
+        <div class="controls">
+            <button id="loadBtn" onclick="loadJob()">📁 Load Job</button>
+            <button id="startBtn" onclick="startJob()" disabled>▶️ Start Job</button>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-row">
+                <span class="status-label">Job Monitor:</span>
+                <span id="monitorStatus" class="badge stopped">Stopped</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">CNC State:</span>
+                <span id="cncState" class="status-value">-</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Current Job:</span>
+                <span id="currentJob" class="status-value">None</span>
+            </div>
+        </div>
+
+        <div id="jobFinished" class="job-finished hidden">
+            ✅ JOB FINISHED!
+        </div>
+
+        <div class="log" id="log">
+            <div class="log-entry">
+                <span class="log-time">[Ready]</span>
+                <span class="log-info">Click "Load Job" to begin...</span>
+            </div>
+        </div>
+
+        <a href="/" class="back-link">← Back to Home</a>
+        <a href="/monitor" class="back-link" style="margin-left: 15px;">📊 Live Monitor</a>
+    </div>
+
+    <script>
+        const JOB_NUMBER = '000000000000';
+        const STEP = '0';
+        const QTY = 1;
+        let pollingInterval = null;
+        let lastState = null;
+        let wasRunning = false;
+
+        function addLog(message, type = 'info') {
+            const log = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `
+                <span class="log-time">[${time}]</span>
+                <span class="log-${type}">${message}</span>
+            `;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function loadJob() {
+            const loadBtn = document.getElementById('loadBtn');
+            loadBtn.disabled = true;
+
+            addLog(`Loading job ${JOB_NUMBER}, step ${STEP}, qty ${QTY}...`, 'info');
+
+            try {
+                // Use path parameters: /api/cnc/job/load/{job_number}/{step}/{qty}
+                const response = await fetch(`/api/cnc/job/load/${JOB_NUMBER}/${STEP}/${QTY}`);
+                const data = await response.json();
+
+                if (data.status === 0) {
+                    addLog(`✓ Job loaded: ${data.fileName}`, 'success');
+                    document.getElementById('currentJob').textContent = data.fileName.split('\\').pop();
+                    document.getElementById('startBtn').disabled = false;
+                } else {
+                    addLog(`✗ Load failed: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                addLog(`✗ Error: ${error.message}`, 'error');
+            } finally {
+                loadBtn.disabled = false;
+            }
+        }
+
+        async function startJob() {
+            const startBtn = document.getElementById('startBtn');
+            startBtn.disabled = true;
+
+            addLog('Starting job...', 'info');
+
+            // Hide previous job finished indicator
+            document.getElementById('jobFinished').classList.add('hidden');
+            wasRunning = false;
+
+            try {
+                const response = await fetch('/api/cnc/job/start');
+                const data = await response.json();
+
+                if (data.status === 0) {
+                    addLog('✓ Job started successfully', 'success');
+                    addLog('✓ Job monitor started', 'success');
+                    startPolling();
+                } else {
+                    addLog(`✗ Start failed: ${data.message}`, 'error');
+                    startBtn.disabled = false;
+                }
+            } catch (error) {
+                addLog(`✗ Error: ${error.message}`, 'error');
+                startBtn.disabled = false;
+            }
+        }
+
+        function startPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+
+            pollingInterval = setInterval(checkStatus, 1000);
+            checkStatus(); // Immediate first check
+        }
+
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                // Get job status
+                const response = await fetch('/api/cnc/job/status');
+                const data = await response.json();
+
+                // Get monitor status
+                const monitorResponse = await fetch('/api/cnc/monitor/status');
+                const monitorData = await monitorResponse.json();
+
+                // Update monitor status
+                const monitorBadge = document.getElementById('monitorStatus');
+                if (monitorData.monitoring) {
+                    monitorBadge.textContent = 'Running';
+                    monitorBadge.className = 'badge running';
+                } else {
+                    monitorBadge.textContent = 'Stopped';
+                    monitorBadge.className = 'badge stopped';
+                }
+
+                // Update CNC state
+                const stateMap = {
+                    0: 'Power-up',
+                    1: 'Idle',
+                    2: 'Ready',
+                    3: 'Execution error',
+                    4: 'Internal error',
+                    5: 'Aborted',
+                    6: 'Running job',
+                    7: 'Running line',
+                    8: 'Running sub',
+                    11: 'Paused (line)',
+                    12: 'Paused (job)',
+                };
+
+                const stateText = stateMap[data.state] || `State ${data.state}`;
+                const stateBadge = document.getElementById('cncState');
+                stateBadge.textContent = stateText;
+
+                // Apply badge styling based on state
+                stateBadge.className = 'status-value badge';
+                if (data.state === 6) {
+                    stateBadge.classList.add('job-running');
+                    if (!wasRunning) {
+                        addLog('Job execution started', 'info');
+                        wasRunning = true;
+                    }
+                } else if (data.state === 2) {
+                    stateBadge.classList.add('ready');
+
+                    // Detect job completion
+                    if (wasRunning) {
+                        addLog('════════════════════════════════════════', 'success');
+                        addLog('✅ JOB FINISHED!', 'success');
+                        addLog('════════════════════════════════════════', 'success');
+
+                        // Show job finished indicator
+                        document.getElementById('jobFinished').classList.remove('hidden');
+
+                        // Enable buttons
+                        document.getElementById('loadBtn').disabled = false;
+                        document.getElementById('startBtn').disabled = false;
+
+                        wasRunning = false;
+                        stopPolling();
+                    }
+                } else if (data.state === 1) {
+                    stateBadge.classList.add('idle');
+                }
+
+                // Log state changes
+                if (lastState !== null && lastState !== data.state) {
+                    addLog(`State changed: ${stateMap[lastState] || lastState} → ${stateText}`, 'info');
+                }
+                lastState = data.state;
+
+            } catch (error) {
+                console.error('Status check error:', error);
+            }
+        }
+
+        // Start polling on page load to show initial state
+        checkStatus();
+    </script>
+</body>
+</html>
+

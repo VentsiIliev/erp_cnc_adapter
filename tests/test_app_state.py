@@ -111,10 +111,11 @@ class TestAppStateInit:
 
 class TestAppStateLifecycle:
 
+    @patch("asyncio.create_task")
     @patch("src.core.app_state._write_pid_file")
     @patch("src.core.app_state._kill_stale_adapter")
     @patch("src.core.app_state.atexit.register")
-    def test_start_calls_manager_start(self, _atexit, _kill, _write):
+    def test_start_calls_manager_start(self, _atexit, _kill, _write, mock_create_task):
         from src.core.config import Settings
 
         settings = Settings(
@@ -124,8 +125,11 @@ class TestAppStateLifecycle:
         )
         state = AppState(settings)
         state.connection_manager = MagicMock()
+        state.job_monitor = MagicMock()
         state.start()
         state.connection_manager.start.assert_called_once()
+        # Verify job monitor start_monitoring was called via create_task
+        mock_create_task.assert_called_once()
 
     @patch("src.core.app_state._write_pid_file")
     @patch("src.core.app_state._kill_stale_adapter")
@@ -142,6 +146,8 @@ class TestAppStateLifecycle:
         state = AppState(settings)
         state.connection_manager = MagicMock()
         state.connection_manager.stop = AsyncMock()
+        state.job_monitor = MagicMock()
+        state.job_monitor.is_monitoring = False
 
         with patch.object(AppState, "_remove_pid_file") as mock_remove:
             await state.shutdown()

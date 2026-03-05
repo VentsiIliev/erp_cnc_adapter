@@ -19,6 +19,9 @@ build/
 logs/*.log
 *.log
 
+# User configuration (machine-specific)
+config.json
+
 # IDE
 .vscode/
 .idea/

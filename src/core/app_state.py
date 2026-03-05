@@ -11,6 +11,7 @@ from src.cnc.cnc_client import CncClient
 from src.cnc.cnc_client_protocol import CncClientProtocol
 from src.cnc.connection_manager import ConnectionManager
 from src.cnc.mock_cnc_client import MockCncClient
+from src.cnc.job_monitor import JobMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -56,19 +57,36 @@ class AppState:
         else:
             self.cnc_client: CncClientProtocol = CncClient(settings)
         self.connection_manager = ConnectionManager(self.cnc_client, settings)
+
+        # Initialize job monitor (runs continuously to detect job starts/finishes)
+        self.job_monitor = JobMonitor(
+            self.cnc_client,
+            poll_interval=settings.job_monitor_poll_interval,
+            report_url=settings.job_done_report_url
+        )
         logger.info("CNC client initialized (connection managed by ConnectionManager)")
+        logger.info("Job monitor initialized (will start with application)")
 
         # Safety net: disconnect even on unhandled crashes
         atexit.register(self.cnc_client.disconnect)
 
     def start(self) -> None:
         self.connection_manager.start()
+        # Start job monitor to continuously watch for job state changes
+        import asyncio
+        asyncio.create_task(self.job_monitor.start_monitoring())
+        logger.info("Job monitor started - watching for job state changes")
 
     async def shutdown(self) -> None:
         # Watchdog: force-exit if DLL threads keep the process alive
         watchdog = threading.Timer(5.0, lambda: os._exit(0))
         watchdog.daemon = True
         watchdog.start()
+
+        # Stop job monitor if one exists
+        if self.job_monitor is not None and self.job_monitor.is_monitoring:
+            logger.info("Stopping job monitor...")
+            await self.job_monitor.stop_monitoring()
 
         logger.info("Disconnecting CNC client...")
         self.cnc_client.disconnect()
@@ -85,6 +103,7 @@ class AppState:
             os.remove(PID_FILE)
         except OSError:
             pass
+
 
 
 # --- FastAPI Depends() getters ---------------------------------------------------

@@ -26,7 +26,7 @@ class TestJobStart:
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == 24
-        assert "error code" in body["message"].lower()
+        assert "not connected to cnc. no connection to cnc controller - call connect() first or check /api/cnc/start" in body["message"].lower()
 
     async def test_start_exception(self, client, fake_client):
         """If run_job() raises, the handler should catch and return -1."""

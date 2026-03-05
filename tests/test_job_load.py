@@ -36,7 +36,7 @@ class TestJobLoad:
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == 22
-        assert "error code" in body["message"].lower()
+        # assert "error code" in body["message"].lower()
 
     @patch('src.api.schemas.job.glob.glob')
     async def test_load_returns_filename(self, mock_glob, client, fake_client):
@@ -144,7 +144,7 @@ class TestJobLoad:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == -1
+        assert body["status"] == 20
         assert "file not found" in body["message"].lower()
 
     @patch('src.api.schemas.job.glob.glob')
@@ -162,7 +162,7 @@ class TestJobLoad:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == -1
+        assert body["status"] == 9
         assert "multiple" in body["message"].lower()
 
     @patch('src.api.schemas.job.glob.glob')

@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Job Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 36px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .live-indicator {
+            width: 12px;
+            height: 12px;
+            background: #ef4444;
+            border-radius: 50%;
+            animation: blink 1.5s ease-in-out infinite;
+        }
+
+        .live-indicator.active {
+            background: #10b981;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .monitor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .monitor-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            padding: 25px;
+            color: white;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            transition: transform 0.3s ease;
+        }
+
+        .monitor-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .monitor-card.green {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .monitor-card.red {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .monitor-card.yellow {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .card-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            opacity: 0.9;
+            margin-bottom: 10px;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        .card-value {
+            font-size: 28px;
+            font-weight: 700;
+            word-break: break-all;
+        }
+
+        .card-value.small {
+            font-size: 20px;
+        }
+
+        .status-panel {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .status-header {
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .status-row:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #555;
+            font-size: 15px;
+        }
+
+        .status-value {
+            font-family: 'Courier New', monospace;
+            color: #333;
+            background: white;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .job-finished-banner {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+            font-weight: 700;
+            animation: slideDown 0.5s ease-out, glow 2s ease-in-out infinite;
+            box-shadow: 0 15px 40px rgba(16, 185, 129, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .banner-time {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes glow {
+            0%, 100% {
+                box-shadow: 0 15px 40px rgba(16, 185, 129, 0.5);
+            }
+            50% {
+                box-shadow: 0 15px 50px rgba(16, 185, 129, 0.8);
+            }
+        }
+
+        .progress-bar-container {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 30px;
+            overflow: hidden;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .progress-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: 700;
+            color: #333;
+            mix-blend-mode: difference;
+        }
+
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 15px;
+            padding: 25px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .log-entry {
+            margin-bottom: 10px;
+            line-height: 1.6;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .log-entry:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .log-time {
+            color: #888;
+            font-weight: 600;
+        }
+
+        .log-info {
+            color: #4ec9b0;
+        }
+
+        .log-success {
+            color: #10b981;
+            font-weight: 700;
+        }
+
+        .log-error {
+            color: #ef4444;
+            font-weight: 700;
+        }
+
+        .log-warning {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 25px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+        }
+
+        .back-link:hover {
+            background: #667eea;
+            color: white;
+            transform: translateX(-5px);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .update-time {
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <div class="live-indicator" id="liveIndicator"></div>
+            Live Job Monitor
+        </h1>
+        <p class="subtitle">Real-time CNC job monitoring - Updates automatically every second</p>
+
+        <div id="jobFinishedBanner" class="job-finished-banner hidden">
+            <div>JOB FINISHED!</div>
+            <div id="jobFinishedInfo" class="banner-time"></div>
+            <div class="banner-time" id="finishTime"></div>
+        </div>
+
+        <div class="monitor-grid">
+            <div class="monitor-card" id="monitorCard">
+                <div class="card-label">Job Monitor</div>
+                <div class="card-value" id="monitorStatus">Checking...</div>
+            </div>
+
+            <div class="monitor-card" id="stateCard">
+                <div class="card-label">CNC State</div>
+                <div class="card-value" id="cncState">-</div>
+            </div>
+
+            <div class="monitor-card yellow">
+                <div class="card-label">Current Job</div>
+                <div class="card-value small" id="currentJob">None</div>
+            </div>
+
+            <div class="monitor-card" id="reportCard">
+                <div class="card-label">Last Report</div>
+                <div class="card-value small" id="reportStatus">No report</div>
+            </div>
+        </div>
+
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+            <div class="progress-text" id="progressText">0%</div>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-header">Job Details</div>
+            <div class="status-row">
+                <span class="status-label">Actual Runtime:</span>
+                <span class="status-value" id="actualTime">0s</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Estimated Time:</span>
+                <span class="status-value" id="estimatedTime">0s</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Remaining Time:</span>
+                <span class="status-value" id="remainingTime">0s</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Progress:</span>
+                <span class="status-value" id="progressMm">0 / 0 mm</span>
+            </div>
+        </div>
+
+        <div class="log" id="log">
+            <div class="log-entry">
+                <span class="log-time">[System]</span>
+                <span class="log-info">Live monitoring started - Polling every 1 second</span>
+            </div>
+        </div>
+
+        <div class="update-time" id="updateTime">Last update: Never</div>
+
+        <a href="/" class="back-link">← Back to Home</a>
+        <a href="/test" class="back-link" style="margin-left: 15px;">Test Page</a>
+        <a href="#" id="lastReportLink" class="back-link" style="margin-left: 15px;">📄 View Last Report</a>
+    </div>
+
+    <script>
+        let pollingInterval = null;
+        let lastState = null;
+        let wasRunning = false;
+        let jobFinishedShown = false;
+        let lastJobName = '';
+
+        const STATE_MAP = {
+            0: 'Power-up',
+            1: 'Idle',
+            2: 'Ready',
+            3: 'Execution error',
+            4: 'Internal error',
+            5: 'Aborted',
+            6: 'Running job',
+            7: 'Running line',
+            8: 'Running sub',
+            11: 'Paused (line)',
+            12: 'Paused (job)',
+        };
+
+        function addLog(message, type = 'info') {
+            const log = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `
+                <span class="log-time">[${time}]</span>
+                <span class="log-${type}">${message}</span>
+            `;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+
+            // Keep only last 100 entries
+            while (log.children.length > 100) {
+                log.removeChild(log.firstChild);
+            }
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) {
+                return `${seconds.toFixed(1)}s`;
+            } else if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins}m ${secs}s`;
+            } else {
+                const hours = Math.floor(seconds / 3600);
+                const mins = Math.floor((seconds % 3600) / 60);
+                return `${hours}h ${mins}m`;
+            }
+        }
+
+        async function updateStatus() {
+            try {
+                // Get job status
+                const statusResponse = await fetch('/api/cnc/job/status');
+                const statusData = await statusResponse.json();
+
+                // Get monitor status
+                const monitorResponse = await fetch('/api/cnc/monitor/status');
+                const monitorData = await monitorResponse.json();
+
+                // Update live indicator
+                const liveIndicator = document.getElementById('liveIndicator');
+                liveIndicator.className = 'live-indicator active';
+
+                // Update monitor status card
+                const monitorCard = document.getElementById('monitorCard');
+                const monitorStatus = document.getElementById('monitorStatus');
+                if (monitorData.monitoring) {
+                    monitorStatus.textContent = 'RUNNING';
+                    monitorCard.className = 'monitor-card green';
+                } else {
+                    monitorStatus.textContent = 'STOPPED';
+                    monitorCard.className = 'monitor-card red';
+                }
+
+                // Update report status card
+                const reportCard = document.getElementById('reportCard');
+                const reportStatus = document.getElementById('reportStatus');
+                const lastReport = monitorData.last_report_status;
+
+                if (lastReport) {
+                    if (lastReport.success) {
+                        reportStatus.textContent = '✓ SUCCESS';
+                        reportCard.className = 'monitor-card green';
+                        const reportTime = new Date(lastReport.timestamp).toLocaleTimeString();
+                        reportStatus.title = `Sent at ${reportTime}\nMachine: ${lastReport.machine}\nJob: ${lastReport.job_number}\nStep: ${lastReport.step}`;
+
+                        // Update the View Last Report link with actual data
+                        const reportLink = document.getElementById('lastReportLink');
+                        reportLink.href = `/actions/cnc_job_done.php?m=${lastReport.machine}&c=${lastReport.job_number}&s=${lastReport.step}`;
+                        reportLink.style.display = 'inline-block';
+                    } else {
+                        reportStatus.textContent = '✗ FAILED';
+                        reportCard.className = 'monitor-card red';
+                        reportStatus.title = `Failed: ${lastReport.error}\nTime: ${new Date(lastReport.timestamp).toLocaleTimeString()}`;
+
+                        // Hide the link if report failed
+                        document.getElementById('lastReportLink').style.display = 'none';
+                    }
+                } else {
+                    reportStatus.textContent = 'No report';
+                    reportCard.className = 'monitor-card';
+                    reportStatus.title = 'No job done report sent yet';
+
+                    // Hide the link if no report yet
+                    document.getElementById('lastReportLink').style.display = 'none';
+                }
+
+                // Update CNC state card
+                const stateCard = document.getElementById('stateCard');
+                const cncState = document.getElementById('cncState');
+                const stateText = STATE_MAP[statusData.state] || `State ${statusData.state}`;
+                cncState.textContent = stateText;
+
+                // Color code the state card
+                if (statusData.state === 6) {
+                    stateCard.className = 'monitor-card green';
+                } else if (statusData.state === 2) {
+                    stateCard.className = 'monitor-card';
+                } else if (statusData.state === 1) {
+                    stateCard.className = 'monitor-card yellow';
+                } else {
+                    stateCard.className = 'monitor-card red';
+                }
+
+                // Update current job
+                const jobName = statusData.jobName || 'None';
+                const shortName = jobName.split('\\').pop() || jobName.split('/').pop() || jobName;
+                document.getElementById('currentJob').textContent = shortName;
+
+                // Detect new job loaded
+                if (jobName !== lastJobName && jobName !== 'None' && jobName !== '') {
+                    addLog(`New job loaded: ${shortName}`, 'info');
+                    lastJobName = jobName;
+                    jobFinishedShown = false;
+                }
+
+                // Update progress bar
+                const progress = Math.min(100, Math.max(0, statusData.jobProgressPercentage || 0));
+                document.getElementById('progressBar').style.width = `${progress}%`;
+                document.getElementById('progressText').textContent = `${progress.toFixed(1)}%`;
+
+                // Update timing info
+                document.getElementById('actualTime').textContent = formatTime(statusData.jobActualRunningTimeSeconds || 0);
+                document.getElementById('estimatedTime').textContent = formatTime(statusData.jobEstimatedTimeSeconds || 0);
+                document.getElementById('remainingTime').textContent = formatTime(Math.max(0, statusData.jobRemainingRunningTimeSeconds || 0));
+                document.getElementById('progressMm').textContent =
+                    `${(statusData.jobProgressMm || 0).toFixed(1)} / ${(statusData.totalJobLengthMm || 0).toFixed(1)} mm`;
+
+                // Detect job running
+                if (statusData.state === 6) {
+                    if (!wasRunning) {
+                        addLog(`Job execution started: ${shortName}`, 'success');
+                        wasRunning = true;
+                        jobFinishedShown = false;
+                        document.getElementById('jobFinishedBanner').classList.add('hidden');
+                    }
+                }
+
+                // Detect job completion
+                if (wasRunning && statusData.state === 2 && !jobFinishedShown) {
+                    const actualTime = statusData.jobActualRunningTimeSeconds || 0;
+                    const estimatedTime = statusData.jobEstimatedTimeSeconds || 0;
+                    const timeDiff = actualTime - estimatedTime;
+
+                    // Get job info from monitor status
+                    const jobInfo = monitorData.job_info || {};
+                    const machineNumber = jobInfo.machine_number || 'N/A';
+                    const jobNumber = jobInfo.job_number || 'N/A';
+                    const stepNumber = jobInfo.step || 'N/A';
+
+                    addLog('════════════════════════════════════════════════════', 'success');
+                    addLog(`✅ JOB FINISHED: ${shortName}`, 'success');
+                    addLog(`   Machine: ${machineNumber} | Job: ${jobNumber} | Step: ${stepNumber}`, 'success');
+                    addLog(`   Actual time: ${formatTime(actualTime)}`, 'success');
+                    addLog(`   Estimated: ${formatTime(estimatedTime)}`, 'success');
+                    if (Math.abs(timeDiff) > 1) {
+                        const diffPercent = estimatedTime > 0 ? (timeDiff / estimatedTime * 100).toFixed(1) : 0;
+                        addLog(`   Difference: ${formatTime(Math.abs(timeDiff))} (${diffPercent > 0 ? '+' : ''}${diffPercent}%)`, 'info');
+                    }
+
+                    // Log report status if available
+                    if (lastReport) {
+                        if (lastReport.success) {
+                            addLog(`   📡 Report sent successfully to server`, 'success');
+                        } else {
+                            addLog(`   ⚠ Report failed: ${lastReport.error}`, 'warning');
+                        }
+                    }
+
+                    addLog('════════════════════════════════════════════════════', 'success');
+
+                    // Show banner with job info
+                    const finishTime = new Date().toLocaleTimeString();
+                    document.getElementById('jobFinishedInfo').textContent =
+                        `Machine: ${machineNumber} | Job: ${jobNumber} | Step: ${stepNumber}`;
+                    document.getElementById('finishTime').textContent = `Completed at ${finishTime} - Runtime: ${formatTime(actualTime)}`;
+                    document.getElementById('jobFinishedBanner').classList.remove('hidden');
+
+                    wasRunning = false;
+                    jobFinishedShown = true;
+                }
+
+                // Detect job aborted or error
+                if (wasRunning && (statusData.state === 5 || statusData.state === 3)) {
+                    const stateText = statusData.state === 5 ? 'ABORTED' : 'ERROR';
+                    addLog(`❌ JOB ${stateText}: ${shortName}`, 'error');
+                    wasRunning = false;
+                    jobFinishedShown = true;
+                }
+
+                // Log state changes
+                if (lastState !== null && lastState !== statusData.state) {
+                    const oldState = STATE_MAP[lastState] || `State ${lastState}`;
+                    const newState = STATE_MAP[statusData.state] || `State ${statusData.state}`;
+                    addLog(`State changed: ${oldState} → ${newState}`, 'warning');
+                }
+                lastState = statusData.state;
+
+                // Update last update time
+                document.getElementById('updateTime').textContent =
+                    `Last update: ${new Date().toLocaleTimeString()}`;
+
+            } catch (error) {
+                console.error('Status update error:', error);
+                document.getElementById('liveIndicator').className = 'live-indicator';
+                addLog(`⚠ Update error: ${error.message}`, 'error');
+            }
+        }
+
+        // Start polling
+        pollingInterval = setInterval(updateStatus, 1000);
+        updateStatus(); // Immediate first update
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+        });
+    </script>
+</body>
+</html>
+
