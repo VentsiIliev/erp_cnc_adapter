@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(git mv:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(schtasks:*)",
+      "Bash(cmd //c 'schtasks /Query /TN \"\"ERPCNCAdapter\"\" /V /FO LIST')",
+      "Bash(echo:*)",
+      "Bash(cd:*)",
+      "Bash(.venv/Scripts/python -m pytest tests/test_installer_machine_id.py -v)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(grep:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python -c \"from src.installer.constants import VERSION; print\\(VERSION\\)\")"
     ]
   }
 }

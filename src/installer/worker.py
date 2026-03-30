@@ -1,6 +1,7 @@
 """
 ERP-CNC Adapter Installer — Install Worker (QThread).
 """
+import json
 import os
 import sys
 import shutil
@@ -20,9 +21,10 @@ class InstallWorker(QThread):
     progress_value = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)  # success, message
 
-    def __init__(self, install_path: str):
+    def __init__(self, install_path: str, machine_number: str = "CNC1"):
         super().__init__()
         self.install_path = Path(install_path)
+        self.machine_number = machine_number
 
     # Helper ───────────────────────────────────────────────────────────────
     @staticmethod
@@ -219,6 +221,24 @@ class InstallWorker(QThread):
             installation_log.flush()
 
             self.log_message.emit(f"\u2713 Installation log: {installation_log_path}")
+
+            # Write machine_number to config.json
+            config_path = self.install_path / "config.json"
+            config_data = {}
+            if config_path.exists():
+                try:
+                    config_data = json.loads(config_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    config_data = {}
+            config_data["machine_number"] = self.machine_number
+            config_path.write_text(
+                json.dumps(config_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            self.log_message.emit(f"\u2713 Machine ID set to: {self.machine_number}")
+            installation_log.write(f"Machine ID: {self.machine_number}\n")
+            installation_log.flush()
+
             self.progress_value.emit(40)
 
             # 2 — Install as Startup Task (not Windows Service) ...................
@@ -270,25 +290,36 @@ class InstallWorker(QThread):
             )
 
             # Create task that runs at system startup (with working directory)
-            ps_cmd = (
-                f'$action = New-ScheduledTaskAction '
-                f'-Execute \'"{exe_path}"\' '
-                f'-WorkingDirectory \'"{self.install_path}"\'; '
-                f'$trigger = New-ScheduledTaskTrigger -AtStartup; '
-                f'$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" '
-                f'-LogonType ServiceAccount -RunLevel Highest; '
-                f'$settings = New-ScheduledTaskSettingsSet '
-                f'-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries '
-                f'-RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1); '
-                f'Register-ScheduledTask -TaskName "ERPCNCAdapter" '
-                f'-Action $action -Trigger $trigger -Principal $principal '
-                f'-Settings $settings -Force'
+            # Write PowerShell script to temp file to avoid command-line quoting
+            # issues with paths containing spaces
+            ps_script = (
+                f"$action = New-ScheduledTaskAction "
+                f"-Execute '{exe_path}' "
+                f"-WorkingDirectory '{self.install_path}'\n"
+                f"$trigger = New-ScheduledTaskTrigger -AtStartup\n"
+                f"$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' "
+                f"-LogonType ServiceAccount -RunLevel Highest\n"
+                f"$settings = New-ScheduledTaskSettingsSet "
+                f"-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
+                f"-RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\n"
+                f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
+                f"-Action $action -Trigger $trigger -Principal $principal "
+                f"-Settings $settings -Force\n"
             )
-            result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps_cmd],
-                capture_output=True, text=True,
-                startupinfo=self._startupinfo(),
+            ps_file = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".ps1", delete=False, encoding="utf-8",
             )
+            ps_file.write(ps_script)
+            ps_file.close()
+            try:
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                     "-File", ps_file.name],
+                    capture_output=True, text=True,
+                    startupinfo=self._startupinfo(),
+                )
+            finally:
+                os.unlink(ps_file.name)
 
             installation_log.write(f"Exit code: {result.returncode}\n")
             installation_log.write(f"STDOUT:\n{result.stdout}\n")

@@ -2,6 +2,7 @@ import atexit
 import logging
 import os
 import signal
+import subprocess
 import threading
 
 from fastapi import Request
@@ -70,7 +71,32 @@ class AppState:
         # Safety net: disconnect even on unhandled crashes
         atexit.register(self.cnc_client.disconnect)
 
+    def _auto_start_cnc_server(self) -> None:
+        """Launch CncServer.exe on startup if it exists and isn't already running."""
+        if self.settings.dev_mode:
+            return
+
+        cnc_dir = os.path.dirname(self.settings.dll_path)
+        cnc_server_exe = os.path.join(cnc_dir, "CncServer.exe")
+
+        if not os.path.isfile(cnc_server_exe):
+            logger.warning("Auto-start: CncServer.exe not found at %s", cnc_server_exe)
+            return
+
+        try:
+            subprocess.Popen(
+                [cnc_server_exe],
+                cwd=cnc_dir,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            logger.info("Auto-started CncServer.exe from %s", cnc_server_exe)
+        except Exception as e:
+            logger.error("Auto-start CncServer.exe failed: %s", e)
+
     def start(self) -> None:
+        self._auto_start_cnc_server()
         self.connection_manager.start()
         # Start job monitor to continuously watch for job state changes
         import asyncio

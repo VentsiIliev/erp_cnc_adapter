@@ -41,6 +41,18 @@ class Settings:
                     self.base_dir = user_config["base_dir"]
                     logger.info("Loaded persisted base_dir: %s", self.base_dir)
 
+                if "cnc_retry_interval" in user_config:
+                    self.cnc_retry_interval = user_config["cnc_retry_interval"]
+                    logger.info("Loaded persisted cnc_retry_interval: %s", self.cnc_retry_interval)
+
+                if "cnc_health_interval" in user_config:
+                    self.cnc_health_interval = user_config["cnc_health_interval"]
+                    logger.info("Loaded persisted cnc_health_interval: %s", self.cnc_health_interval)
+
+                if "job_monitor_poll_interval" in user_config:
+                    self.job_monitor_poll_interval = user_config["job_monitor_poll_interval"]
+                    logger.info("Loaded persisted job_monitor_poll_interval: %s", self.job_monitor_poll_interval)
+
                 logger.info("Configuration loaded with persisted overrides")
         except Exception as e:
             logger.warning("Could not load persisted config: %s", e)

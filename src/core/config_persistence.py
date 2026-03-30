@@ -2,13 +2,17 @@
 
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-# Configuration file location
-CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "config.json"
+# Configuration file location — next to the exe when frozen, project root in dev
+if getattr(sys, "frozen", False):
+    CONFIG_FILE = Path(sys.executable).parent / "config.json"
+else:
+    CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "config.json"
 
 
 def load_user_config() -> Dict[str, Any]:

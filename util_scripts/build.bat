@@ -15,6 +15,9 @@ if "%VERSION%"=="" (
     exit /b 1
 )
 
+REM Stamp today's date into version.py
+python -c "import re, datetime; path='version.py'; s=open(path).read(); s=re.sub(r'BUILD_DATE\s*=\s*\"[^\"]*\"', 'BUILD_DATE = \"' + datetime.date.today().isoformat() + '\"', s); open(path,'w').write(s)"
+
 echo ========================================
 echo  Building ERP-CNC Adapter v%VERSION%
 echo ========================================

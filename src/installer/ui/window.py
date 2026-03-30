@@ -177,7 +177,10 @@ class InstallerWindow(QWidget):
     def _start_install(self):
         self._go_to(self.PAGE_INSTALL)
 
-        self.worker = InstallWorker(self.path_page.path_edit.text())
+        self.worker = InstallWorker(
+            self.path_page.path_edit.text(),
+            self.path_page.machine_edit.text().strip() or "CNC1",
+        )
         self.worker.log_message.connect(self._on_log)
         self.worker.step_changed.connect(self._on_step)
         self.worker.progress_value.connect(self._on_progress)

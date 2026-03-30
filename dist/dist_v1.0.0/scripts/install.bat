@@ -64,8 +64,20 @@ echo.
 echo Step 2: Creating startup task (with working directory)...
 
 set INSTALL_DIR=%CD%
-powershell -NoProfile -Command "$action = New-ScheduledTaskAction -Execute '\"%EXE_PATH%\"' -WorkingDirectory '\"%INSTALL_DIR%\"'; $trigger = New-ScheduledTaskTrigger -AtStartup; $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1); Register-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force"
-if %errorlevel% neq 0 (
+
+REM Write PowerShell script to temp file to avoid quoting issues with spaces in paths
+set PS_SCRIPT=%TEMP%\erp_cnc_install_task.ps1
+(
+echo $action = New-ScheduledTaskAction -Execute '%EXE_PATH%' -WorkingDirectory '%INSTALL_DIR%'
+echo $trigger = New-ScheduledTaskTrigger -AtStartup
+echo $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+echo $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval ^(New-TimeSpan -Minutes 1^)
+echo Register-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
+) > "%PS_SCRIPT%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%"
+set PS_RESULT=%errorlevel%
+del /q "%PS_SCRIPT%" >nul 2>&1
+if %PS_RESULT% neq 0 (
     echo ERROR: Failed to create startup task
     pause
     exit /b 1

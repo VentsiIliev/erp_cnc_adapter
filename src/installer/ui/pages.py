@@ -95,6 +95,23 @@ class PathPage(QWidget):
         self._update_disk_info()
         self.path_edit.textChanged.connect(lambda _: self._update_disk_info())
 
+        lay.addSpacing(8)
+
+        # Machine ID input
+        machine_label = QLabel("Machine ID")
+        machine_label.setObjectName("PageSubtitle")
+        lay.addWidget(machine_label)
+
+        machine_hint = QLabel("Identifier for this CNC machine, e.g. CNC1, CNC2, MILL1")
+        machine_hint.setObjectName("DiskLabel")
+        lay.addWidget(machine_hint)
+
+        self.machine_edit = QLineEdit("CNC1")
+        self.machine_edit.setObjectName("PathInput")
+        self.machine_edit.setMaximumWidth(200)
+        self.machine_edit.setMinimumHeight(38)
+        lay.addWidget(self.machine_edit)
+
         lay.addStretch()
 
     def _browse(self):

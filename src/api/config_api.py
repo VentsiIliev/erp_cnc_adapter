@@ -14,6 +14,9 @@ class ConfigUpdate(BaseModel):
     machine_number: str | None = Field(None, min_length=1, max_length=50, description="Machine identifier (e.g., CNC1, CNC2)")
     job_done_report_url: str | None = Field(None, min_length=1, max_length=500, description="URL to report job completion")
     base_dir: str | None = Field(None, min_length=1, max_length=500, description="Base directory for job files")
+    cnc_retry_interval: int | None = Field(None, ge=1, le=300, description="Seconds between connection retries")
+    cnc_health_interval: int | None = Field(None, ge=1, le=300, description="Seconds between heartbeat checks")
+    job_monitor_poll_interval: float | None = Field(None, ge=0.1, le=60.0, description="Seconds between job monitor status checks")
 
 
 class ConfigResponse(BaseModel):
@@ -26,6 +29,9 @@ class ConfigResponse(BaseModel):
     host: str
     port: int
     log_level: str
+    cnc_retry_interval: int
+    cnc_health_interval: int
+    job_monitor_poll_interval: float
 
 
 @router.get("/api/config", response_model=ConfigResponse)
@@ -46,6 +52,9 @@ async def get_config(request: Request):
             host=settings.host,
             port=settings.port,
             log_level=settings.log_level,
+            cnc_retry_interval=settings.cnc_retry_interval,
+            cnc_health_interval=settings.cnc_health_interval,
+            job_monitor_poll_interval=settings.job_monitor_poll_interval,
         )
     except Exception as e:
         logger.error("Error getting configuration: %s", e)
@@ -101,6 +110,39 @@ async def update_config(request: Request, config: ConfigUpdate):
             changes.append(f"base_dir: '{old_value}' -> '{config.base_dir}'")
             logger.info("Updated base_dir: %s -> %s", old_value, config.base_dir)
 
+        # Update CNC retry interval
+        if config.cnc_retry_interval is not None:
+            old_value = settings.cnc_retry_interval
+            settings.cnc_retry_interval = config.cnc_retry_interval
+            changes.append(f"cnc_retry_interval: {old_value} -> {config.cnc_retry_interval}")
+            logger.info("Updated cnc_retry_interval: %s -> %s", old_value, config.cnc_retry_interval)
+
+            if hasattr(services, 'connection_manager') and services.connection_manager is not None:
+                services.connection_manager._retry_interval = config.cnc_retry_interval
+                logger.info("Updated active connection manager retry interval")
+
+        # Update CNC health interval
+        if config.cnc_health_interval is not None:
+            old_value = settings.cnc_health_interval
+            settings.cnc_health_interval = config.cnc_health_interval
+            changes.append(f"cnc_health_interval: {old_value} -> {config.cnc_health_interval}")
+            logger.info("Updated cnc_health_interval: %s -> %s", old_value, config.cnc_health_interval)
+
+            if hasattr(services, 'connection_manager') and services.connection_manager is not None:
+                services.connection_manager._health_interval = config.cnc_health_interval
+                logger.info("Updated active connection manager health interval")
+
+        # Update job monitor poll interval
+        if config.job_monitor_poll_interval is not None:
+            old_value = settings.job_monitor_poll_interval
+            settings.job_monitor_poll_interval = config.job_monitor_poll_interval
+            changes.append(f"job_monitor_poll_interval: {old_value} -> {config.job_monitor_poll_interval}")
+            logger.info("Updated job_monitor_poll_interval: %s -> %s", old_value, config.job_monitor_poll_interval)
+
+            if hasattr(services, 'job_monitor') and services.job_monitor is not None:
+                services.job_monitor._poll_interval = config.job_monitor_poll_interval
+                logger.info("Updated active job monitor poll interval")
+
         if not changes:
             return {
                 "success": True,
@@ -116,6 +158,12 @@ async def update_config(request: Request, config: ConfigUpdate):
             persist_dict["job_done_report_url"] = config.job_done_report_url
         if config.base_dir is not None:
             persist_dict["base_dir"] = config.base_dir
+        if config.cnc_retry_interval is not None:
+            persist_dict["cnc_retry_interval"] = config.cnc_retry_interval
+        if config.cnc_health_interval is not None:
+            persist_dict["cnc_health_interval"] = config.cnc_health_interval
+        if config.job_monitor_poll_interval is not None:
+            persist_dict["job_monitor_poll_interval"] = config.job_monitor_poll_interval
 
         if persist_dict:
             if update_persisted_config(persist_dict):

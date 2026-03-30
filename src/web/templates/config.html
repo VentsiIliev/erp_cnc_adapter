@@ -51,7 +51,21 @@
             font-size: 14px;
         }
 
-        input[type="text"] {
+        .section-separator {
+            border: none;
+            border-top: 1px solid #e5e5e5;
+            margin: 30px 0 25px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"],
+        input[type="number"] {
             width: 100%;
             padding: 10px 12px;
             border: 1px solid #e5e5e5;
@@ -61,7 +75,8 @@
             transition: border-color 0.2s;
         }
 
-        input[type="text"]:focus {
+        input[type="text"]:focus,
+        input[type="number"]:focus {
             outline: none;
             border-color: #3b82f6;
         }
@@ -211,6 +226,30 @@
                 <div class="current-value">Current: <span id="currentBaseDir">Loading...</span></div>
             </div>
 
+            <hr class="section-separator">
+            <div class="section-title">Timing Settings</div>
+
+            <div class="form-group">
+                <label for="cncRetryInterval">CNC Retry Interval (seconds)</label>
+                <input type="number" id="cncRetryInterval" name="cnc_retry_interval" min="1" max="300" step="1" placeholder="e.g., 5">
+                <div class="help-text">How often to retry connecting when disconnected (1-300)</div>
+                <div class="current-value">Current: <span id="currentRetryInterval">Loading...</span></div>
+            </div>
+
+            <div class="form-group">
+                <label for="cncHealthInterval">CNC Health Interval (seconds)</label>
+                <input type="number" id="cncHealthInterval" name="cnc_health_interval" min="1" max="300" step="1" placeholder="e.g., 10">
+                <div class="help-text">How often to check if CNC connection is alive (1-300)</div>
+                <div class="current-value">Current: <span id="currentHealthInterval">Loading...</span></div>
+            </div>
+
+            <div class="form-group">
+                <label for="jobMonitorPollInterval">Job Monitor Poll Interval (seconds)</label>
+                <input type="number" id="jobMonitorPollInterval" name="job_monitor_poll_interval" min="0.1" max="60" step="0.1" placeholder="e.g., 1.0">
+                <div class="help-text">How often to poll for job status updates (0.1-60)</div>
+                <div class="current-value">Current: <span id="currentPollInterval">Loading...</span></div>
+            </div>
+
             <div class="button-group">
                 <button type="submit" class="btn-save" id="saveBtn">
                     Save Changes
@@ -238,11 +277,17 @@
                 document.getElementById('currentMachine').textContent = data.machine_number;
                 document.getElementById('currentUrl').textContent = data.job_done_report_url;
                 document.getElementById('currentBaseDir').textContent = data.base_dir;
+                document.getElementById('currentRetryInterval').textContent = data.cnc_retry_interval + 's';
+                document.getElementById('currentHealthInterval').textContent = data.cnc_health_interval + 's';
+                document.getElementById('currentPollInterval').textContent = data.job_monitor_poll_interval + 's';
 
                 // Clear form inputs (show placeholders)
                 document.getElementById('machineNumber').value = '';
                 document.getElementById('reportUrl').value = '';
                 document.getElementById('baseDir').value = '';
+                document.getElementById('cncRetryInterval').value = '';
+                document.getElementById('cncHealthInterval').value = '';
+                document.getElementById('jobMonitorPollInterval').value = '';
 
             } catch (error) {
                 showMessage('error', 'Failed to load current configuration: ' + error.message);
@@ -288,9 +333,16 @@
             const reportUrl = document.getElementById('reportUrl').value.trim();
             const baseDir = document.getElementById('baseDir').value.trim();
 
+            const cncRetryInterval = document.getElementById('cncRetryInterval').value;
+            const cncHealthInterval = document.getElementById('cncHealthInterval').value;
+            const jobMonitorPollInterval = document.getElementById('jobMonitorPollInterval').value;
+
             if (machineNumber) updates.machine_number = machineNumber;
             if (reportUrl) updates.job_done_report_url = reportUrl;
             if (baseDir) updates.base_dir = baseDir;
+            if (cncRetryInterval) updates.cnc_retry_interval = parseInt(cncRetryInterval);
+            if (cncHealthInterval) updates.cnc_health_interval = parseInt(cncHealthInterval);
+            if (jobMonitorPollInterval) updates.job_monitor_poll_interval = parseFloat(jobMonitorPollInterval);
 
             if (Object.keys(updates).length === 0) {
                 showMessage('error', 'No changes to save. Enter new values in the fields above.');

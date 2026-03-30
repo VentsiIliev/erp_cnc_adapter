@@ -4,7 +4,7 @@ ERP-CNC Adapter Installer — Constants, colors, stylesheet, and helpers.
 import sys
 from pathlib import Path
 
-VERSION = "1.0.0"
+from version import VERSION
 
 
 def _icon_path() -> str | None:
