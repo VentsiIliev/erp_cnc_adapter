@@ -20,7 +20,7 @@ async def start_job(
     settings: Settings = Depends(get_settings),
 ):
     """Start a CNC job. The persistent monitor will detect state changes automatically."""
-    logger.info("START JOB request")
+    logger.debug("START JOB request")
 
     try:
         # Check monitor state first to avoid unnecessary API call
@@ -79,13 +79,16 @@ async def start_job(
             logger.debug("Could not check state before start: %s", state_exc)
 
         # Call the CNC API to start/resume job
+        logger.debug("About to call client.run_job()")
         result = client.run_job()
+        logger.debug("Start job result code: %d", result)
 
         if result != 0:
             # Translate error code to human-readable message
             error_info = translate_error(result)
             message = format_error(result, "Start job")
             logger.error("%s (code: %d)", message, result)
+            logger.error("START JOB FAILED — result_code=%d, message=%s", result, message)
 
             # Special handling for common errors
             if result == 6:  # CNC_RC_ALREADY_RUNS
@@ -110,7 +113,8 @@ async def start_job(
 
         # Job started successfully
         message = "Job started successfully"
-        logger.info(message)
+        logger.debug(message)
+        logger.debug("START JOB response — status=%d, message=%s", result, message)
 
         # Ensure job monitor has the latest job info (should already be set from load_job)
         if hasattr(services, 'last_loaded_job') and services.last_loaded_job and services.job_monitor:
@@ -129,6 +133,7 @@ async def start_job(
         error_info = translate_error(result)
         message = f"Exception calling RunJob: {exc}. {error_info['suggestion']}"
         logger.error(message, exc_info=True)
+        logger.error("START JOB ERROR — Exception occurred: %s", str(exc))
         return RunJobResponse(status=result, message=message)
 
 

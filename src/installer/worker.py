@@ -21,10 +21,18 @@ class InstallWorker(QThread):
     progress_value = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)  # success, message
 
-    def __init__(self, install_path: str, machine_number: str = "CNC1"):
+    def __init__(
+        self,
+        install_path: str,
+        machine_number: str = "CNC1",
+        task_username: str = "",
+        task_password: str = "",
+    ):
         super().__init__()
         self.install_path = Path(install_path)
         self.machine_number = machine_number
+        self.task_username = task_username.strip()
+        self.task_password = task_password
 
     # Helper ───────────────────────────────────────────────────────────────
     @staticmethod
@@ -237,6 +245,12 @@ class InstallWorker(QThread):
             )
             self.log_message.emit(f"\u2713 Machine ID set to: {self.machine_number}")
             installation_log.write(f"Machine ID: {self.machine_number}\n")
+            if self.task_username:
+                self.log_message.emit(f"Task account: {self.task_username}")
+                installation_log.write(f"Task account: {self.task_username}\n")
+            else:
+                self.log_message.emit("Task account: SYSTEM")
+                installation_log.write("Task account: SYSTEM\n")
             installation_log.flush()
 
             self.progress_value.emit(40)
@@ -292,20 +306,34 @@ class InstallWorker(QThread):
             # Create task that runs at system startup (with working directory)
             # Write PowerShell script to temp file to avoid command-line quoting
             # issues with paths containing spaces
+            def ps_quote(value: str) -> str:
+                return value.replace("'", "''")
+
             ps_script = (
                 f"$action = New-ScheduledTaskAction "
-                f"-Execute '{exe_path}' "
-                f"-WorkingDirectory '{self.install_path}'\n"
+                f"-Execute '{ps_quote(str(exe_path))}' "
+                f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
                 f"$trigger = New-ScheduledTaskTrigger -AtStartup\n"
-                f"$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' "
-                f"-LogonType ServiceAccount -RunLevel Highest\n"
                 f"$settings = New-ScheduledTaskSettingsSet "
                 f"-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
                 f"-RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\n"
-                f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
-                f"-Action $action -Trigger $trigger -Principal $principal "
-                f"-Settings $settings -Force\n"
             )
+            if self.task_username:
+                ps_script += (
+                    f"$taskUser = '{ps_quote(self.task_username)}'\n"
+                    f"$taskPassword = '{ps_quote(self.task_password)}'\n"
+                    f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
+                    f"-Action $action -Trigger $trigger -Settings $settings "
+                    f"-User $taskUser -Password $taskPassword -RunLevel Highest -Force\n"
+                )
+            else:
+                ps_script += (
+                    f"$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' "
+                    f"-LogonType ServiceAccount -RunLevel Highest\n"
+                    f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
+                    f"-Action $action -Trigger $trigger -Principal $principal "
+                    f"-Settings $settings -Force\n"
+                )
             ps_file = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".ps1", delete=False, encoding="utf-8",
             )

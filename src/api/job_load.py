@@ -62,6 +62,7 @@ async def load_job(
         "LOAD JOB request — job_number=%s, step=%s, qty=%d, job_dir=%s",
         job_number, step, qty, load_request.job_dir
     )
+    logger.debug("Load job request details: job_number=%s, step=%s, base_dir=%s", job_number, step, settings.base_dir)
 
     try:
         # Check monitor state first to avoid unnecessary API call and get immediate feedback
@@ -131,10 +132,12 @@ async def load_job(
 
         # Find the .nc file matching Setup_{step}*.nc pattern
         file_path = load_request.find_nc_file()
-        logger.info("Found NC file: %s", file_path)
+        logger.debug("Found NC file: %s", file_path)
 
         # Load the job using the found file path
+        logger.debug("About to call client.load_job() with file_path: %s", file_path)
         result = client.load_job(file_path)
+        logger.info("Load job result code: %d (file: %s)", result, file_path)
         if result == 0:
             message = "Job loaded successfully"
             logger.info(message)
@@ -152,7 +155,7 @@ async def load_job(
             monitor = request.app.state.services.job_monitor
             if monitor is not None:
                 monitor.set_job_info(job_number, step, settings.machine_number)
-                logger.debug("Updated job monitor with job info")
+                # logger.debug("Updated job monitor with job info")
 
             # Always set job quantity (ensures repeat flag is configured)
             if qty >= 1:
@@ -184,6 +187,7 @@ async def load_job(
             error_info = translate_error(result)
             message = format_error(result, "Load job")
             logger.error("%s (code: %d)", message, result)
+            logger.error("LOAD JOB FAILED — job_number=%s, step=%s, result_code=%d, message=%s", job_number, step, result, message)
 
             # Special handling for -1 (machine busy/running)
             if result == -1:
@@ -230,6 +234,7 @@ async def load_job(
         logger.error(message, exc_info=True)  # Log full stack trace
         file_path = ""
 
+    logger.debug("LOAD JOB response — status=%d, message=%s, fileName=%s", result, message, file_path)
     return LoadJobResponse.model_construct(
         status=result, message=message, fileName=file_path
     )

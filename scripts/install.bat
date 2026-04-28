@@ -1,4 +1,6 @@
 @echo off
+setlocal EnableExtensions
+
 echo ========================================
 echo  ERP-CNC Adapter Installer
 echo ========================================
@@ -20,13 +22,13 @@ cd /d "%~dp0.."
 REM Check if EXE exists - check both dev mode and distribution mode
 if exist "erp-cnc-adapter.exe" (
     echo Found EXE in distribution mode
-    set EXE_PATH=%CD%\erp-cnc-adapter.exe
+    set "EXE_PATH=%CD%\erp-cnc-adapter.exe"
     goto :exe_found
 )
 
 if exist "dist\erp-cnc-adapter.exe" (
     echo Found EXE in development mode
-    set EXE_PATH=%CD%\dist\erp-cnc-adapter.exe
+    set "EXE_PATH=%CD%\dist\erp-cnc-adapter.exe"
     goto :exe_found
 )
 
@@ -44,6 +46,24 @@ exit /b 1
 echo.
 echo EXE: %EXE_PATH%
 
+set "INSTALL_DIR=%CD%"
+
+set "TASK_USER="
+echo.
+echo Task account configuration
+echo ----------------------------------------
+echo Leave this blank to run as SYSTEM.
+echo If the CNC files are on a remote share, enter a Windows account
+echo that has access to that share, for example DOMAIN\username.
+echo.
+set /p "TASK_USER=Run scheduled tasks as user: "
+if "%TASK_USER%"=="" (
+    echo Scheduled tasks will run as SYSTEM.
+) else (
+    echo Scheduled tasks will run as %TASK_USER%.
+    echo Windows will ask for this account password when creating the tasks.
+)
+
 echo.
 echo Step 1: Checking for existing installation...
 
@@ -57,50 +77,69 @@ if %errorlevel% equ 0 (
     timeout /t 2 >nul
 )
 
-REM Remove old scheduled task if exists
+REM Remove old scheduled tasks if they exist
 schtasks /Delete /TN "ERPCNCAdapter" /F >nul 2>&1
+schtasks /Delete /TN "ERPCNCAdapterWatchdog" /F >nul 2>&1
 
 echo.
 echo Step 2: Creating startup task (with working directory)...
 
-set INSTALL_DIR=%CD%
-
-REM Write PowerShell script to temp file to avoid quoting issues with spaces in paths
-set PS_SCRIPT=%TEMP%\erp_cnc_install_task.ps1
+REM Write PowerShell script to temp file to avoid quoting issues with spaces in paths.
+REM If TASK_USER is set, Register-ScheduledTask stores that credential so the task
+REM can run at boot in the background and access remote SMB shares as that account.
+set "PS_SCRIPT=%TEMP%\erp_cnc_install_task.ps1"
 (
-echo $action = New-ScheduledTaskAction -Execute '%EXE_PATH%' -WorkingDirectory '%INSTALL_DIR%'
+echo $ErrorActionPreference = 'Stop'
+echo $exePath = $env:ERP_CNC_EXE_PATH
+echo $installDir = $env:ERP_CNC_INSTALL_DIR
+echo $taskUser = $env:ERP_CNC_TASK_USER
+echo $watchdogPath = Join-Path $installDir 'scripts\watchdog.bat'
+echo $action = New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $installDir
 echo $trigger = New-ScheduledTaskTrigger -AtStartup
-echo $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 echo $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval ^(New-TimeSpan -Minutes 1^)
-echo Register-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
+echo if ^([string]::IsNullOrWhiteSpace^($taskUser^)^) {
+echo     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+echo     Register-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force ^| Out-Null
+echo } else {
+echo     $credential = Get-Credential -UserName $taskUser -Message 'Enter the password for the ERP-CNC Adapter scheduled task account.'
+echo     Register-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action -Trigger $trigger -Settings $settings -User $credential.UserName -Password $credential.GetNetworkCredential^(^).Password -RunLevel Highest -Force ^| Out-Null
+echo }
+echo if ^(Test-Path $watchdogPath^) {
+echo     $watchdogAction = New-ScheduledTaskAction -Execute $watchdogPath -WorkingDirectory $installDir
+echo     $watchdogTrigger = New-ScheduledTaskTrigger -Once -At ^(Get-Date^) -RepetitionInterval ^(New-TimeSpan -Minutes 2^) -RepetitionDuration ^(New-TimeSpan -Days 3650^)
+echo     $watchdogSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+echo     if ^([string]::IsNullOrWhiteSpace^($taskUser^)^) {
+echo         $watchdogPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+echo         Register-ScheduledTask -TaskName 'ERPCNCAdapterWatchdog' -Action $watchdogAction -Trigger $watchdogTrigger -Principal $watchdogPrincipal -Settings $watchdogSettings -Force ^| Out-Null
+echo     } else {
+echo         Register-ScheduledTask -TaskName 'ERPCNCAdapterWatchdog' -Action $watchdogAction -Trigger $watchdogTrigger -Settings $watchdogSettings -User $credential.UserName -Password $credential.GetNetworkCredential^(^).Password -RunLevel Highest -Force ^| Out-Null
+echo     }
+echo }
 ) > "%PS_SCRIPT%"
+
+set "ERP_CNC_EXE_PATH=%EXE_PATH%"
+set "ERP_CNC_INSTALL_DIR=%INSTALL_DIR%"
+set "ERP_CNC_TASK_USER=%TASK_USER%"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%"
-set PS_RESULT=%errorlevel%
+set "PS_RESULT=%errorlevel%"
+set "ERP_CNC_EXE_PATH="
+set "ERP_CNC_INSTALL_DIR="
+set "ERP_CNC_TASK_USER="
 del /q "%PS_SCRIPT%" >nul 2>&1
 if %PS_RESULT% neq 0 (
-    echo ERROR: Failed to create startup task
+    echo ERROR: Failed to create scheduled tasks
     pause
     exit /b 1
 )
 echo   Startup task created successfully
-
-echo.
-echo Step 3: Creating watchdog task...
-
-if exist "scripts\watchdog.bat" (
-    schtasks /Delete /TN "ERPCNCAdapterWatchdog" /F >nul 2>&1
-    schtasks /Create /TN "ERPCNCAdapterWatchdog" /TR "\"%CD%\scripts\watchdog.bat\"" /SC MINUTE /MO 2 /RU SYSTEM /RL HIGHEST /F
-    if %errorlevel% equ 0 (
-        echo   Watchdog task created (checks every 2 minutes)
-    ) else (
-        echo   WARNING: Watchdog task creation failed (non-critical)
-    )
+if exist "%INSTALL_DIR%\scripts\watchdog.bat" (
+    echo   Watchdog task created (checks every 2 minutes)
 ) else (
     echo   Watchdog script not found, skipping
 )
 
 echo.
-echo Step 4: Configuring Windows Firewall...
+echo Step 3: Configuring Windows Firewall...
 netsh advfirewall firewall delete rule name="ERP-CNC Adapter" >nul 2>&1
 netsh advfirewall firewall add rule name="ERP-CNC Adapter" dir=in action=allow protocol=TCP localport=8002 enable=yes profile=any description="Allow incoming connections to ERP-CNC Adapter API"
 if %errorlevel% equ 0 (
@@ -110,7 +149,7 @@ if %errorlevel% equ 0 (
 )
 
 echo.
-echo Step 5: Starting application...
+echo Step 4: Starting application...
 start "" /D "%INSTALL_DIR%" "%EXE_PATH%"
 timeout /t 3 >nul
 tasklist /FI "IMAGENAME eq erp-cnc-adapter.exe" 2>nul | find /I "erp-cnc-adapter.exe" >nul 2>&1
@@ -121,6 +160,11 @@ if %errorlevel% equ 0 (
     echo ========================================
     echo.
     echo Task Name:    ERPCNCAdapter
+    if "%TASK_USER%"=="" (
+        echo Run As:       SYSTEM
+    ) else (
+        echo Run As:       %TASK_USER%
+    )
     echo Status:       Running
     echo Startup:      Automatic (on boot)
     echo.

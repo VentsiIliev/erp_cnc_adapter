@@ -153,7 +153,7 @@ class CncClient:
 
         # Get job name and log for debugging
         job_name = s.jobName if s.jobName else ""
-        logger.debug("jobName from structure: '%s' (len=%d)", job_name, len(job_name))
+        # logger.debug("jobName from structure: '%s' (len=%d)", job_name, len(job_name))
 
         return {
             "jobName": job_name,

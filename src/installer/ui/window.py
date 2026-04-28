@@ -28,13 +28,13 @@ class InstallerWindow(QWidget):
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(680, 560)
+        self.setFixedSize(680, 640)
         self._center_on_screen()
 
         # Container (rounded card)
         self.container = QWidget(self)
         self.container.setObjectName("InstallerWindow")
-        self.container.setGeometry(0, 0, 680, 560)
+        self.container.setGeometry(0, 0, 680, 640)
 
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(30)
@@ -87,7 +87,7 @@ class InstallerWindow(QWidget):
         root.addWidget(sep3)
 
         self.btn_bar = QHBoxLayout()
-        self.btn_bar.setContentsMargins(48, 16, 48, 20)
+        self.btn_bar.setContentsMargins(48, 12, 48, 16)
 
         self.btn_secondary = QPushButton("Cancel")
         self.btn_secondary.setObjectName("SecondaryButton")
@@ -177,9 +177,17 @@ class InstallerWindow(QWidget):
     def _start_install(self):
         self._go_to(self.PAGE_INSTALL)
 
+        task_username = ""
+        task_password = ""
+        if self.path_page.run_as_user_check.isChecked():
+            task_username = self.path_page.username_edit.text().strip()
+            task_password = self.path_page.password_edit.text()
+
         self.worker = InstallWorker(
             self.path_page.path_edit.text(),
             self.path_page.machine_edit.text().strip() or "CNC1",
+            task_username,
+            task_password,
         )
         self.worker.log_message.connect(self._on_log)
         self.worker.step_changed.connect(self._on_step)

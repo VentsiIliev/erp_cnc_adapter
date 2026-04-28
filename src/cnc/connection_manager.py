@@ -170,7 +170,7 @@ class ConnectionManager:
                     asyncio.to_thread(self._client.is_server_connected),
                     timeout=5.0,
                 )
-                logger.debug("Heartbeat check: alive=%s", alive)
+                # logger.info("Heartbeat check: alive=%s", alive)
             except asyncio.TimeoutError:
                 logger.warning("Heartbeat check timed out (DLL hung)")
                 alive = False

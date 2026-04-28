@@ -74,6 +74,18 @@ class TestInstallWorkerInit:
         worker = InstallWorker(r"C:\fake\path", "CNC2")
         assert worker.install_path == Path(r"C:\fake\path")
 
+    def test_task_credentials_default_empty(self):
+        from src.installer.worker import InstallWorker
+        worker = InstallWorker(r"C:\fake\path")
+        assert worker.task_username == ""
+        assert worker.task_password == ""
+
+    def test_task_credentials_stored(self):
+        from src.installer.worker import InstallWorker
+        worker = InstallWorker(r"C:\fake\path", "CNC2", r"DOMAIN\adapter", "secret")
+        assert worker.task_username == r"DOMAIN\adapter"
+        assert worker.task_password == "secret"
+
 
 class TestInstallWorkerConfigWrite:
     """Verify the config.json merge logic used by the worker."""
@@ -165,7 +177,7 @@ class TestWindowPassesMachineNumber:
         window.path_page.machine_edit.setText("CNC3")
         window._start_install()
 
-        MockWorker.assert_called_once_with(r"C:\test\install", "CNC3")
+        MockWorker.assert_called_once_with(r"C:\test\install", "CNC3", "", "")
         window.close()
         window.deleteLater()
 
@@ -181,7 +193,7 @@ class TestWindowPassesMachineNumber:
         window.path_page.machine_edit.setText("   ")  # whitespace only
         window._start_install()
 
-        MockWorker.assert_called_once_with(r"C:\test\install", "CNC1")
+        MockWorker.assert_called_once_with(r"C:\test\install", "CNC1", "", "")
         window.close()
         window.deleteLater()
 
@@ -197,6 +209,27 @@ class TestWindowPassesMachineNumber:
         window.path_page.machine_edit.setText("  MILL1  ")
         window._start_install()
 
-        MockWorker.assert_called_once_with(r"C:\test\install", "MILL1")
+        MockWorker.assert_called_once_with(r"C:\test\install", "MILL1", "", "")
+        window.close()
+        window.deleteLater()
+
+    @patch("src.installer.ui.window.InstallWorker")
+    def test_task_credentials_passed_when_enabled(self, MockWorker):
+        from src.installer.ui.window import InstallerWindow
+
+        mock_instance = MagicMock()
+        MockWorker.return_value = mock_instance
+
+        window = InstallerWindow()
+        window.path_page.path_edit.setText(r"C:\test\install")
+        window.path_page.machine_edit.setText("CNC4")
+        window.path_page.run_as_user_check.setChecked(True)
+        window.path_page.username_edit.setText(r"DOMAIN\adapter")
+        window.path_page.password_edit.setText("secret")
+        window._start_install()
+
+        MockWorker.assert_called_once_with(
+            r"C:\test\install", "CNC4", r"DOMAIN\adapter", "secret"
+        )
         window.close()
         window.deleteLater()

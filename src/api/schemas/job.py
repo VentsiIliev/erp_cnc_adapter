@@ -1,11 +1,15 @@
 import glob
 import os
 from pydantic import BaseModel, Field
+import logging
+from pathlib import Path
+import getpass
 
+_logger = logging.getLogger(__name__)
 
 class LoadJobRequest(BaseModel):
-    job_number: str = Field(..., min_length=12, max_length=12, pattern=r'^\d{12}$')
-    step: str = Field(..., pattern=r'^\d+$')
+    job_number: str = Field(..., min_length=12, max_length=12, pattern=r"^\d{12}$")
+    step: str = Field(..., pattern=r"^\d+$")
     base_dir: str = Field(default=r"\\192.168.2.11\Production\CNC\Mills")
 
     model_config = {"populate_by_name": True}
@@ -16,25 +20,66 @@ class LoadJobRequest(BaseModel):
         return os.path.join(self.base_dir, self.job_number)
 
     def find_nc_file(self) -> str:
-        """Find the .nc or .cnc file that starts with Setup_{step} in the job directory.
-
-        Returns:
-            Full path to the .nc or .cnc file
-
-        Raises:
-            FileNotFoundError: If no matching file is found
-            ValueError: If multiple matching files are found
-        """
-        # Try both .nc and .cnc extensions, use set to deduplicate
         pattern_nc = os.path.join(self.job_dir, f"Setup_{self.step}*.nc")
         pattern_cnc = os.path.join(self.job_dir, f"Setup_{self.step}*.cnc")
 
-        # Combine and deduplicate results
+        _logger.info(f"Running as Windows user: {getpass.getuser()}")
+        _logger.info(f"Base dir: {self.base_dir}")
+        _logger.info(f"Job number: {self.job_number}")
+        _logger.info(f"Step: {self.step}")
+        _logger.info(f"Job dir: {self.job_dir}")
+        _logger.info(f"Finding NC file: {pattern_nc}")
+        _logger.info(f"Finding CNC file: {pattern_cnc}")
+
+        # Keep glob first so your existing tests/mocks still work
         matches = list(set(glob.glob(pattern_nc) + glob.glob(pattern_cnc)))
+
+        if matches:
+            _logger.info(f"Matching files from glob: {matches}")
+
+            if len(matches) > 1:
+                raise ValueError(
+                    f"Multiple files found matching Setup_{self.step}*: {matches}"
+                )
+
+            return matches[0]
+
+        # Real filesystem diagnostics if glob found nothing
+        _logger.warning("glob found no matches. Checking directory manually.")
+
+        if not os.path.isdir(self.job_dir):
+            raise FileNotFoundError(
+                f"Job directory does not exist or is not accessible: {self.job_dir}"
+            )
+
+        try:
+            files = os.listdir(self.job_dir)
+        except PermissionError as e:
+            raise PermissionError(
+                f"No permission to access job directory: {self.job_dir}"
+            ) from e
+        except OSError as e:
+            raise OSError(
+                f"Could not read job directory: {self.job_dir}. Error: {e}"
+            ) from e
+
+        _logger.info(f"Files found in job directory: {files}")
+
+        prefix = f"setup_{self.step}".lower()
+
+        matches = [
+            os.path.join(self.job_dir, file_name)
+            for file_name in files
+            if file_name.lower().startswith(prefix)
+               and file_name.lower().endswith((".nc", ".cnc"))
+        ]
+
+        _logger.info(f"Matching .nc/.cnc files from manual scan: {matches}")
 
         if not matches:
             raise FileNotFoundError(
-                f"No .nc/.cnc file found matching Setup_{self.step}*.nc or Setup_{self.step}*.cnc in {self.job_dir}"
+                f"No .nc/.cnc file found matching Setup_{self.step}* "
+                f"in {self.job_dir}. Files found: {files}"
             )
 
         if len(matches) > 1:
@@ -43,8 +88,6 @@ class LoadJobRequest(BaseModel):
             )
 
         return matches[0]
-
-
 class JobStatusResponse(BaseModel):
     # Core status fields
     state: int

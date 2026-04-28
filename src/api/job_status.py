@@ -42,12 +42,12 @@ STATE_MAP = {
 async def get_job_status(
     client: CncClientProtocol = Depends(get_cnc_client),
 ):
-    logger.info("GET job status request")
+    # logger.info("GET job status request")
     try:
         state = client.get_state()
         state_text = STATE_MAP.get(state, f"Unknown state: {state}")
         job = client.get_job_status()
-        logger.info("State: %s (code %d), job: %s", state_text, state, job.get("jobName", ""))
+        # logger.info("State: %s (code %d), job: %s", state_text, state, job.get("jobName", ""))
 
         # Calculate job progress percentage
         total_length = job.get("totalJobLengthMm", 0.0)

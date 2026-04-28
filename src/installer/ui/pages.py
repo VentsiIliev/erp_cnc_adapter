@@ -8,6 +8,7 @@ from pathlib import Path
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QFileDialog, QProgressBar, QTextEdit,
+    QCheckBox,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
@@ -61,8 +62,8 @@ class PathPage(QWidget):
         )
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(48, 32, 48, 24)
-        lay.setSpacing(16)
+        lay.setContentsMargins(48, 24, 48, 16)
+        lay.setSpacing(10)
 
         title = QLabel("Choose Installation Path")
         title.setObjectName("PageTitle")
@@ -71,8 +72,6 @@ class PathPage(QWidget):
         subtitle = QLabel("Select the folder where the adapter will be installed.")
         subtitle.setObjectName("PageSubtitle")
         lay.addWidget(subtitle)
-
-        lay.addSpacing(8)
 
         # Path input row
         row = QHBoxLayout()
@@ -95,8 +94,6 @@ class PathPage(QWidget):
         self._update_disk_info()
         self.path_edit.textChanged.connect(lambda _: self._update_disk_info())
 
-        lay.addSpacing(8)
-
         # Machine ID input
         machine_label = QLabel("Machine ID")
         machine_label.setObjectName("PageSubtitle")
@@ -112,7 +109,52 @@ class PathPage(QWidget):
         self.machine_edit.setMinimumHeight(38)
         lay.addWidget(self.machine_edit)
 
+        self.run_as_user_check = QCheckBox("Run adapter as a Windows account")
+        self.run_as_user_check.setObjectName("PageSubtitle")
+        lay.addWidget(self.run_as_user_check)
+
+        credential_hint = QLabel(
+            "Use an account that has access to the CNC network share. "
+            "Leave disabled to run as SYSTEM."
+        )
+        credential_hint.setObjectName("DiskLabel")
+        credential_hint.setWordWrap(True)
+        lay.addWidget(credential_hint)
+
+        self.username_edit = QLineEdit(self._default_username())
+        self.username_edit.setObjectName("PathInput")
+        self.username_edit.setPlaceholderText(r"DOMAIN\username or .\username")
+        self.username_edit.setMinimumHeight(38)
+        self.username_edit.setEnabled(False)
+        self.username_edit.hide()
+        lay.addWidget(self.username_edit)
+
+        self.password_edit = QLineEdit()
+        self.password_edit.setObjectName("PathInput")
+        self.password_edit.setPlaceholderText("Windows password")
+        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setMinimumHeight(38)
+        self.password_edit.setEnabled(False)
+        self.password_edit.hide()
+        lay.addWidget(self.password_edit)
+
+        self.run_as_user_check.toggled.connect(self._toggle_credentials)
+
         lay.addStretch()
+
+    @staticmethod
+    def _default_username() -> str:
+        domain = os.environ.get("USERDOMAIN", "").strip()
+        username = os.environ.get("USERNAME", "").strip()
+        if domain and username:
+            return rf"{domain}\{username}"
+        return username
+
+    def _toggle_credentials(self, enabled: bool):
+        self.username_edit.setEnabled(enabled)
+        self.username_edit.setVisible(enabled)
+        self.password_edit.setEnabled(enabled)
+        self.password_edit.setVisible(enabled)
 
     def _browse(self):
         path = QFileDialog.getExistingDirectory(self, "Select Installation Folder",
