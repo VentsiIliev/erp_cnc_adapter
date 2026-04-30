@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from src.core.app_state import _kill_stale_adapter, _write_pid_file, AppState, PID_FILE
+from src.core.cnc_server_process import CncServerStartResult
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +131,32 @@ class TestAppStateInit:
 
 class TestAppStateLifecycle:
 
+
+    @patch("src.core.app_state.os.path.isfile", return_value=True)
+    @patch("src.core.app_state.start_cnc_server_if_needed")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    @patch("src.core.app_state.CncClient", side_effect=RuntimeError("DLL unavailable"))
+    def test_auto_start_skips_when_cnc_server_already_running(
+        self, _cnc_client, _atexit, _kill, _write, mock_start, _isfile
+    ):
+        from src.core.config import Settings
+
+        mock_start.return_value = CncServerStartResult(status="already_running")
+        settings = Settings(
+            dll_path=r"C:\CNC\cncapi.dll",
+            ini_path=r"C:\CNC\cnc.ini",
+            dev_mode=False,
+        )
+        state = AppState(settings)
+        state.connection_manager = MagicMock()
+        state.job_monitor = MagicMock()
+
+        state._auto_start_cnc_server()
+
+        mock_start.assert_called_once_with(r"C:\CNC\CncServer.exe")
+
     @patch("src.core.app_state._write_pid_file")
     @patch("src.core.app_state._kill_stale_adapter")
     @patch("src.core.app_state.atexit.register")
@@ -155,6 +182,7 @@ class TestAppStateLifecycle:
             state.connection_manager.start.assert_called_once()
             # Verify job monitor start_monitoring was called via create_task
             mock_create_task.assert_called_once()
+            mock_create_task.call_args.args[0].close()
 
     @patch("src.core.app_state._write_pid_file")
     @patch("src.core.app_state._kill_stale_adapter")

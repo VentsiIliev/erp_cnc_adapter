@@ -1,11 +1,11 @@
 import asyncio
 import logging
 import os
-import subprocess
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from src.core.cnc_server_process import start_cnc_server_if_needed
 from src.core.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -31,41 +31,22 @@ async def start_cnc(request: Request):
             status_code=404,
         )
 
-    logger.info("Starting CNC Server: %s", cnc_server_exe)
+    result = start_cnc_server_if_needed(cnc_server_exe)
+    if result.already_running:
+        manager = request.app.state.services.connection_manager
+        manager.nudge()
+        return RedirectResponse(url="/", status_code=303)
 
-    try:
-        # Start CncServer.exe as a detached background process.
-        # Use DEVNULL so pipes don't block the child if it writes output.
-        process = subprocess.Popen(
-            [cnc_server_exe],
-            cwd=cnc_dir,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+    if not result.started:
+        return JSONResponse(content={"error": result.message}, status_code=500)
 
-        logger.info("CNC Server started with PID: %d", process.pid)
+    # Give server a moment to initialize (non-blocking)
+    await asyncio.sleep(1)
 
-        # Give server a moment to initialize (non-blocking)
-        await asyncio.sleep(1)
+    if result.pid is not None:
+        logger.info("CNC Server start request completed for PID: %d", result.pid)
 
-        # Verify it's still running
-        if process.poll() is None:
-            # Wake up the ConnectionManager so it retries immediately
-            manager = request.app.state.services.connection_manager
-            manager.nudge()
-
-            return RedirectResponse(url="/", status_code=303)
-        else:
-            logger.error("CNC Server exited immediately with code: %d", process.returncode)
-            return JSONResponse(
-                content={"error": f"CNC Server exited immediately (code {process.returncode})"},
-                status_code=500,
-            )
-
-    except Exception as e:
-        logger.error("Failed to start CNC Server: %s", str(e), exc_info=True)
-        return JSONResponse(
-            content={"error": f"Failed to start CNC Server: {str(e)}"},
-            status_code=500,
-        )
+    # Wake up the ConnectionManager so it retries immediately
+    manager = request.app.state.services.connection_manager
+    manager.nudge()
+    return RedirectResponse(url="/", status_code=303)

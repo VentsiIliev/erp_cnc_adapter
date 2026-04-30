@@ -33,13 +33,15 @@ async def log_http_request_response(request: Request, call_next: Callable) -> Re
     started = time.perf_counter()
     request_body = await request.body()
     request_path = request.url.path
+    client_ip = _get_client_ip(request)
     if request.url.query:
         request_path = f"{request_path}?{request.url.query}"
 
     logger.info(
-        "HTTP REQUEST %s %s body=%s",
+        "HTTP REQUEST %s %s client_ip=%s body=%s",
         request.method,
         request_path,
+        client_ip,
         _format_body(request_body, request.headers.get("content-type", "")),
     )
 
@@ -50,9 +52,10 @@ async def log_http_request_response(request: Request, call_next: Callable) -> Re
 
     elapsed_ms = (time.perf_counter() - started) * 1000
     logger.info(
-        "HTTP RESPONSE %s %s -> %d %.1fms body=%s",
+        "HTTP RESPONSE %s %s client_ip=%s -> %d %.1fms body=%s",
         request.method,
         request_path,
+        client_ip,
         response.status_code,
         elapsed_ms,
         _format_body(response_body, response.headers.get("content-type", "")),
@@ -65,6 +68,20 @@ async def log_http_request_response(request: Request, call_next: Callable) -> Re
         media_type=response.media_type,
         background=response.background,
     )
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or "unknown"
+
+    real_ip = request.headers.get("x-real-ip", "")
+    if real_ip:
+        return real_ip.strip() or "unknown"
+
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 
 def _format_body(body: bytes, content_type: str) -> str:

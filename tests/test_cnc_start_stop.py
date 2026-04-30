@@ -5,7 +5,9 @@ the HTTP-level behavior with mocked system calls.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+from src.core.cnc_server_process import CncServerStartResult
 
 
 pytestmark = pytest.mark.asyncio
@@ -21,59 +23,51 @@ class TestCncStart:
         body = resp.json()
         assert "not found" in body["error"].lower()
 
-    @patch("src.api.cnc_start.subprocess.Popen")
+    @patch("src.api.cnc_start.start_cnc_server_if_needed")
     @patch("src.api.cnc_start.os.path.isfile", return_value=True)
-    async def test_start_success_redirects(self, mock_isfile, mock_popen, client):
-        proc = MagicMock()
-        proc.poll.return_value = None  # still running
-        proc.pid = 1234
-        mock_popen.return_value = proc
+    async def test_start_success_redirects(self, mock_isfile, mock_start, client):
+        mock_start.return_value = CncServerStartResult(status="started", pid=1234)
 
         resp = await client.get("/api/cnc/start", follow_redirects=False)
 
         assert resp.status_code == 303
         assert resp.headers["location"] == "/"
 
-    @patch("src.api.cnc_start.subprocess.Popen")
+    @patch("src.api.cnc_start.start_cnc_server_if_needed")
     @patch("src.api.cnc_start.os.path.isfile", return_value=True)
-    async def test_start_process_exits_immediately(self, mock_isfile, mock_popen, client):
-        proc = MagicMock()
-        proc.poll.return_value = 1  # exited
-        proc.returncode = 1
-        proc.pid = 1234
-        mock_popen.return_value = proc
+    async def test_start_helper_failure(self, mock_isfile, mock_start, client):
+        mock_start.return_value = CncServerStartResult(status="failed", message="boom")
 
         resp = await client.get("/api/cnc/start")
 
         assert resp.status_code == 500
         body = resp.json()
-        assert "exited immediately" in body["error"].lower()
+        assert "boom" in body["error"].lower()
 
-    @patch("src.api.cnc_start.subprocess.Popen", side_effect=OSError("access denied"))
-    @patch("src.api.cnc_start.os.path.isfile", return_value=True)
-    async def test_start_popen_exception(self, mock_isfile, mock_popen, client):
-        resp = await client.get("/api/cnc/start")
-
-        assert resp.status_code == 500
-        body = resp.json()
-        assert "failed to start" in body["error"].lower()
-
-    @patch("src.api.cnc_start.subprocess.Popen")
+    @patch("src.api.cnc_start.start_cnc_server_if_needed")
     @patch("src.api.cnc_start.os.path.isfile", return_value=True)
     async def test_start_nudges_connection_manager(
-        self, mock_isfile, mock_popen, client, connection_manager
+        self, mock_isfile, mock_start, client, connection_manager
     ):
         """After starting CncServer, the handler should nudge the manager."""
-        proc = MagicMock()
-        proc.poll.return_value = None
-        proc.pid = 1234
-        mock_popen.return_value = proc
+        mock_start.return_value = CncServerStartResult(status="started", pid=1234)
 
         await client.get("/api/cnc/start", follow_redirects=False)
 
-        # The nudge event should have been set
         assert connection_manager._nudge_event.is_set()
 
+    @patch("src.api.cnc_start.start_cnc_server_if_needed")
+    @patch("src.api.cnc_start.os.path.isfile", return_value=True)
+    async def test_start_already_running_redirects_without_spawning(
+        self, mock_isfile, mock_start, client, connection_manager
+    ):
+        mock_start.return_value = CncServerStartResult(status="already_running")
+
+        resp = await client.get("/api/cnc/start", follow_redirects=False)
+
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/"
+        assert connection_manager._nudge_event.is_set()
 
 class TestCncStop:
 

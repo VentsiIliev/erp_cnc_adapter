@@ -20,11 +20,11 @@ def test_testing_section_has_unload_job_button():
     assert "Unload Job" in dashboard
 
 
-def test_unload_job_button_posts_to_unload_endpoint():
+def test_unload_job_button_gets_unload_endpoint():
     dashboard = _dashboard_html()
 
     assert "async function unloadReferenceJob()" in dashboard
-    assert 'fetchJson("/api/cnc/job/unload", { method: "POST" })' in dashboard
+    assert 'fetchJson("/api/cnc/job/unload")' in dashboard
     assert 'document.getElementById("unloadJobBtn").addEventListener("click", unloadReferenceJob)' in dashboard
 
 

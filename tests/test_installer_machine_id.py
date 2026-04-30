@@ -197,6 +197,122 @@ class TestInstallWorkerConfigWrite:
         assert warning == ""
 
 
+
+class TestInstallWorkerTaskHandling:
+    """Verify installer task/process handling around reinstall and startup."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        _ensure_qapp()
+
+    @patch("src.installer.worker.time.sleep")
+    @patch("src.installer.worker.subprocess.run")
+    def test_stop_existing_adapter_ends_tasks_and_kills_process(self, mock_run, _sleep):
+        from src.installer.worker import InstallWorker
+
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        worker = InstallWorker(r"C:\fake\path")
+        worker._stop_existing_adapter()
+
+        commands = [call.args[0] for call in mock_run.call_args_list]
+        assert ["schtasks", "/End", "/TN", "ERPCNCAdapter"] in commands
+        assert ["schtasks", "/End", "/TN", "ERPCNCAdapterWatchdog"] in commands
+        assert ["taskkill", "/F", "/T", "/IM", "erp-cnc-adapter.exe"] in commands
+
+    @patch("src.installer.worker.subprocess.run")
+    def test_watchdog_defaults_to_system(self, mock_run, tmp_path):
+        from src.installer.worker import InstallWorker
+        import io
+
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        worker = InstallWorker(str(tmp_path))
+        worker._create_watchdog_task(tmp_path / "watchdog.bat", io.StringIO())
+
+        command = mock_run.call_args.args[0]
+        assert "/RU" in command
+        assert command[command.index("/RU") + 1] == "SYSTEM"
+        assert "/RP" not in command
+
+    @patch("src.installer.worker.subprocess.run")
+    def test_watchdog_uses_configured_task_account(self, mock_run, tmp_path):
+        from src.installer.worker import InstallWorker
+        import io
+
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DOMAIN\adapter", "secret")
+        worker._create_watchdog_task(tmp_path / "watchdog.bat", io.StringIO())
+
+        command = mock_run.call_args.args[0]
+        assert command[command.index("/RU") + 1] == r"DOMAIN\adapter"
+        assert command[command.index("/RP") + 1] == "secret"
+
+    def test_hidden_launcher_runs_adapter_without_console(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1")
+        launcher = worker._write_hidden_launcher(tmp_path / "erp-cnc-adapter.exe")
+        text = launcher.read_text(encoding="utf-8")
+
+        assert launcher.name == "launch_adapter_hidden.vbs"
+        assert "WScript.Shell" in text
+        assert "shell.Run" in text
+        assert ", 0, False" in text
+        assert "erp-cnc-adapter.exe" in text
+
+    def test_interactive_logon_task_uses_no_password(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DESKTOP-EMJIESP\CNC5", "secret")
+        script = worker._build_interactive_logon_task_script(tmp_path / "launch_adapter_hidden.vbs")
+
+        assert "New-ScheduledTaskTrigger -AtLogOn" in script
+        assert "-Execute 'wscript.exe'" in script
+        assert "launch_adapter_hidden.vbs" in script
+        assert "-LogonType Interactive" in script
+        assert r"DESKTOP-EMJIESP\CNC5" in script
+        assert "-Password" not in script
+        assert "secret" not in script
+
+
+    def test_credential_diagnostics_do_not_log_password(self, tmp_path):
+        from src.installer.worker import InstallWorker
+        import io
+
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DOMAIN\adapter", " secret ")
+        log = io.StringIO()
+
+        worker._write_task_credential_diagnostics(log)
+        text = log.getvalue()
+
+        assert "password_length: 8" in text
+        assert "password_has_leading_or_trailing_space: True" in text
+        assert " secret " not in text
+
+    def test_startup_task_treats_stderr_as_failure(self):
+        from src.installer.worker import InstallWorker
+
+        result = MagicMock(
+            returncode=0,
+            stdout="",
+            stderr="Register-ScheduledTask : The user name or password is incorrect.",
+        )
+
+        error = InstallWorker._scheduled_task_creation_error(result)
+
+        assert "password is incorrect" in error
+
+    @patch("src.installer.worker.subprocess.run")
+    def test_start_adapter_uses_scheduled_task(self, mock_run, tmp_path):
+        from src.installer.worker import InstallWorker
+        import io
+
+        mock_run.return_value = MagicMock(returncode=0, stdout="SUCCESS", stderr="")
+        worker = InstallWorker(str(tmp_path))
+
+        assert worker._start_adapter_task(io.StringIO()) is True
+        mock_run.assert_called_once()
+        assert mock_run.call_args.args[0] == ["schtasks", "/Run", "/TN", "ERPCNCAdapter"]
+
 # ---------------------------------------------------------------------------
 # Window integration (pass-through from PathPage to Worker)
 # ---------------------------------------------------------------------------

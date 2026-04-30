@@ -1493,7 +1493,7 @@
             button.disabled = true;
             addEvent("test", "Unloading current job.", "info");
             try {
-                const { body } = await fetchJson("/api/cnc/job/unload", { method: "POST" });
+                const { body } = await fetchJson("/api/cnc/job/unload");
                 if (body.status !== 0) throw new Error(body.message || "Unload failed.");
                 addEvent("test", "Job unloaded successfully.", "success");
                 document.getElementById("startJobBtn").disabled = true;

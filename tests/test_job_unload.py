@@ -1,4 +1,4 @@
-"""Tests for POST /api/cnc/job/unload."""
+"""Tests for GET /api/cnc/job/unload."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -17,7 +17,7 @@ async def test_unload_loads_placeholder_job(client, fake_client, test_app, tmp_p
     test_app.state.services.job_monitor._was_running = True
 
     with patch("src.api.job_unload.get_placeholder_job_path", return_value=placeholder):
-        resp = await client.post("/api/cnc/job/unload")
+        resp = await client.get("/api/cnc/job/unload")
 
     assert resp.status_code == 200
     body = resp.json()
@@ -35,7 +35,7 @@ async def test_unload_rejects_running_job(client, fake_client, tmp_path):
     placeholder = tmp_path / "no_job_loaded.cnc"
 
     with patch("src.api.job_unload.get_placeholder_job_path", return_value=placeholder):
-        resp = await client.post("/api/cnc/job/unload")
+        resp = await client.get("/api/cnc/job/unload")
 
     assert resp.status_code == 200
     body = resp.json()
@@ -48,7 +48,7 @@ async def test_unload_placeholder_missing_returns_file_error(client):
     missing = Path(r"C:\missing\no_job_loaded.cnc")
 
     with patch("src.api.job_unload.get_placeholder_job_path", side_effect=FileNotFoundError(missing)):
-        resp = await client.post("/api/cnc/job/unload")
+        resp = await client.get("/api/cnc/job/unload")
 
     assert resp.status_code == 200
     body = resp.json()

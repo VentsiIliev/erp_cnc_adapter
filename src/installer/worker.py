@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import urllib.request
 import tempfile
+import time
 from pathlib import Path
 from datetime import datetime
 
@@ -216,6 +217,154 @@ class InstallWorker(QThread):
             )
         return exe
 
+    def _stop_existing_adapter(self, installation_log=None) -> None:
+        """Stop existing adapter tasks/processes before replacing files."""
+        commands = [
+            ["schtasks", "/End", "/TN", "ERPCNCAdapter"],
+            ["schtasks", "/End", "/TN", "ERPCNCAdapterWatchdog"],
+            ["taskkill", "/F", "/T", "/IM", "erp-cnc-adapter.exe"],
+        ]
+        for command in commands:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                startupinfo=self._startupinfo(),
+            )
+            if installation_log:
+                installation_log.write(
+                    f"Pre-copy stop command: {' '.join(command)} -> {result.returncode}\n"
+                )
+                if result.stdout:
+                    installation_log.write(f"STDOUT: {result.stdout}\n")
+                if result.stderr:
+                    installation_log.write(f"STDERR: {result.stderr}\n")
+        time.sleep(2)
+
+    def _create_watchdog_task(self, watchdog_path: Path, installation_log) -> subprocess.CompletedProcess:
+        command = [
+            "schtasks", "/Create",
+            "/TN", "ERPCNCAdapterWatchdog",
+            "/TR", f'"{watchdog_path}"',
+            "/SC", "MINUTE",
+            "/MO", "2",
+            "/RL", "HIGHEST",
+            "/F",
+        ]
+        if self.task_username:
+            command.extend(["/RU", self.task_username, "/RP", self.task_password])
+            installation_log.write(f"Watchdog Run As: {self.task_username}\n")
+        else:
+            command.extend(["/RU", "SYSTEM"])
+            installation_log.write("Watchdog Run As: SYSTEM\n")
+
+        return subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            startupinfo=self._startupinfo(),
+        )
+
+    def _write_hidden_launcher(self, exe_path: Path, installation_log=None) -> Path:
+        """Create a wscript launcher so scheduled tasks do not show a console window."""
+        launcher_path = self.install_path / "scripts" / "launch_adapter_hidden.vbs"
+        launcher_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def vbs_quote(value: str) -> str:
+            return value.replace("\"", "\"\"")
+
+        launcher_path.write_text(
+            "Set shell = CreateObject(\"WScript.Shell\")\n"
+            f"shell.CurrentDirectory = \"{vbs_quote(str(self.install_path))}\"\n"
+            f"shell.Run \"\"\"{vbs_quote(str(exe_path))}\"\"\", 0, False\n",
+            encoding="utf-8",
+        )
+        if installation_log:
+            installation_log.write(f"Hidden launcher: {launcher_path}\n")
+        return launcher_path
+
+
+    def _build_interactive_logon_task_script(self, launcher_path: Path) -> str:
+        def ps_quote(value: str) -> str:
+            return value.replace("'", "''")
+
+        return (
+            "$ErrorActionPreference = 'Stop'\n"
+            f"$action = New-ScheduledTaskAction "
+            f"-Execute 'wscript.exe' "
+            f"-Argument '\"{ps_quote(str(launcher_path))}\"' "
+            f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
+            f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User '{ps_quote(self.task_username)}'\n"
+            f"$principal = New-ScheduledTaskPrincipal -UserId '{ps_quote(self.task_username)}' "
+            f"-LogonType Interactive -RunLevel Highest\n"
+            f"$settings = New-ScheduledTaskSettingsSet "
+            f"-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
+            f"-RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\n"
+            f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
+            f"-Action $action -Trigger $trigger -Principal $principal "
+            f"-Settings $settings -Force -ErrorAction Stop | Out-Null\n"
+        )
+
+
+    def _create_interactive_logon_task(self, launcher_path: Path, installation_log) -> bool:
+        """Fallback for passwordless local users: run when that user logs on."""
+        ps_script = self._build_interactive_logon_task_script(launcher_path)
+        ps_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ps1", delete=False, encoding="utf-8",
+        )
+        ps_file.write(ps_script)
+        ps_file.close()
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                 "-File", ps_file.name],
+                capture_output=True, text=True,
+                startupinfo=self._startupinfo(),
+            )
+        finally:
+            os.unlink(ps_file.name)
+
+        installation_log.write("Interactive logon fallback task registration:\n")
+        installation_log.write(f"Exit code: {result.returncode}\n")
+        if result.stdout:
+            installation_log.write(f"STDOUT:\n{result.stdout}\n")
+        if result.stderr:
+            installation_log.write(f"STDERR:\n{result.stderr}\n")
+        return self._scheduled_task_creation_error(result) == ""
+
+
+    def _start_adapter_task(self, installation_log) -> bool:
+        result = subprocess.run(
+            ["schtasks", "/Run", "/TN", "ERPCNCAdapter"],
+            capture_output=True,
+            text=True,
+            startupinfo=self._startupinfo(),
+        )
+        installation_log.write(f"schtasks /Run exit code: {result.returncode}\n")
+        if result.stdout:
+            installation_log.write(f"STDOUT:\n{result.stdout}\n")
+        if result.stderr:
+            installation_log.write(f"STDERR:\n{result.stderr}\n")
+        return result.returncode == 0
+
+    def _write_task_credential_diagnostics(self, installation_log) -> None:
+        """Log non-secret credential diagnostics for scheduled task failures."""
+        password = self.task_password or ""
+        installation_log.write("Credential diagnostics:\n")
+        installation_log.write(f"  username: {self.task_username or 'SYSTEM'}\n")
+        installation_log.write(f"  username_length: {len(self.task_username)}\n")
+        installation_log.write(f"  password_length: {len(password)}\n")
+        installation_log.write(f"  password_blank: {not bool(password)}\n")
+        installation_log.write(f"  password_has_leading_or_trailing_space: {password != password.strip()}\n")
+        installation_log.write(f"  password_contains_non_ascii: {any(ord(ch) > 127 for ch in password)}\n")
+
+    @staticmethod
+    def _scheduled_task_creation_error(result) -> str:
+        task_error = (result.stderr or "").strip()
+        if result.returncode != 0 or task_error:
+            return task_error or result.stdout or "Unknown scheduled task registration error"
+        return ""
+
     # Main work ────────────────────────────────────────────────────────────
     def run(self):  # noqa: C901 — sequential installer steps
         installation_log = None
@@ -229,6 +378,8 @@ class InstallWorker(QThread):
             self.step_changed.emit("Extracting files...")
             self.progress_value.emit(10)
             self.log_message.emit(f"Installing to: {self.install_path}")
+            self.log_message.emit("Stopping existing adapter before replacing files...")
+            self._stop_existing_adapter()
 
             self.install_path.mkdir(parents=True, exist_ok=True)
             self._extract_files()
@@ -299,7 +450,6 @@ class InstallWorker(QThread):
                     ["taskkill", "/F", "/IM", "erp-cnc-adapter.exe"],
                     capture_output=True, startupinfo=self._startupinfo(),
                 )
-                import time
                 time.sleep(2)
 
                 subprocess.run(
@@ -327,9 +477,13 @@ class InstallWorker(QThread):
             def ps_quote(value: str) -> str:
                 return value.replace("'", "''")
 
+            launcher_path = self._write_hidden_launcher(exe_path, installation_log)
+            task_start_mode = "boot"
             ps_script = (
+                "$ErrorActionPreference = 'Stop'\n"
                 f"$action = New-ScheduledTaskAction "
-                f"-Execute '{ps_quote(str(exe_path))}' "
+                f"-Execute 'wscript.exe' "
+                f"-Argument '\"{ps_quote(str(launcher_path))}\"' "
                 f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
                 f"$trigger = New-ScheduledTaskTrigger -AtStartup\n"
                 f"$settings = New-ScheduledTaskSettingsSet "
@@ -342,7 +496,7 @@ class InstallWorker(QThread):
                     f"$taskPassword = '{ps_quote(self.task_password)}'\n"
                     f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
                     f"-Action $action -Trigger $trigger -Settings $settings "
-                    f"-User $taskUser -Password $taskPassword -RunLevel Highest -Force\n"
+                    f"-User $taskUser -Password $taskPassword -RunLevel Highest -Force -ErrorAction Stop | Out-Null\n"
                 )
             else:
                 ps_script += (
@@ -350,7 +504,7 @@ class InstallWorker(QThread):
                     f"-LogonType ServiceAccount -RunLevel Highest\n"
                     f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
                     f"-Action $action -Trigger $trigger -Principal $principal "
-                    f"-Settings $settings -Force\n"
+                    f"-Settings $settings -Force -ErrorAction Stop | Out-Null\n"
                 )
             ps_file = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".ps1", delete=False, encoding="utf-8",
@@ -373,15 +527,51 @@ class InstallWorker(QThread):
                 installation_log.write(f"STDERR:\n{result.stderr}\n")
             installation_log.flush()
 
-            if result.returncode != 0:
-                msg = result.stderr or result.stdout
-                installation_log.write(f"ERROR: Task creation failed!\n")
+            msg = self._scheduled_task_creation_error(result)
+            if msg:
+                installation_log.write("ERROR: Task creation failed!\n")
+                self._write_task_credential_diagnostics(installation_log)
+                if self.task_username:
+                    installation_log.write(
+                        "Trying interactive logon fallback task without storing a password.\n"
+                    )
+                    self.log_message.emit(
+                        "Startup task with password failed; trying logon-only task..."
+                    )
+                    if self._create_interactive_logon_task(launcher_path, installation_log):
+                        task_start_mode = "logon"
+                        installation_log.write(
+                            "Interactive logon task created; app starts when that user logs on.\n"
+                        )
+                        self.log_message.emit(
+                            "\u2713 Logon-only startup task created for selected user"
+                        )
+                    else:
+                        installation_log.flush()
+                        raise RuntimeError(f"Startup task creation failed: {msg}\n\nCheck installation.log for details")
+                else:
+                    installation_log.flush()
+                    raise RuntimeError(f"Startup task creation failed: {msg}\n\nCheck installation.log for details")
+            verify_result = subprocess.run(
+                ["schtasks", "/Query", "/TN", "ERPCNCAdapter"],
+                capture_output=True, text=True,
+                startupinfo=self._startupinfo(),
+            )
+            installation_log.write(f"Task verification exit code: {verify_result.returncode}\n")
+            if verify_result.stderr:
+                installation_log.write(f"Task verification STDERR:\n{verify_result.stderr}\n")
+            if verify_result.returncode != 0:
+                msg = verify_result.stderr or verify_result.stdout
+                installation_log.write("ERROR: Task was not created.\n")
                 installation_log.flush()
-                raise RuntimeError(f"Startup task creation failed: {msg}\n\nCheck installation.log for details")
+                raise RuntimeError(f"Startup task was not created: {msg}\n\nCheck installation.log for details")
 
             self.log_message.emit("\u2713 Startup task created successfully")
             installation_log.write("\u2713 Startup task created successfully\n")
-            installation_log.write("Application will start automatically on boot\n")
+            if task_start_mode == "logon":
+                installation_log.write(f"Application will start when {self.task_username} logs on\n")
+            else:
+                installation_log.write("Application will start automatically on boot\n")
             installation_log.flush()
             self.progress_value.emit(50)
 
@@ -396,20 +586,7 @@ class InstallWorker(QThread):
                     capture_output=True, startupinfo=self._startupinfo(),
                 )
 
-                result = subprocess.run(
-                    [
-                        "schtasks", "/Create",
-                        "/TN", "ERPCNCAdapterWatchdog",
-                        "/TR", f'"{watchdog_path}"',
-                        "/SC", "MINUTE",
-                        "/MO", "2",
-                        "/RU", "SYSTEM",
-                        "/RL", "HIGHEST",
-                        "/F"
-                    ],
-                    capture_output=True, text=True,
-                    startupinfo=self._startupinfo(),
-                )
+                result = self._create_watchdog_task(watchdog_path, installation_log)
 
                 if result.returncode == 0:
                     self.log_message.emit("\u2713 Watchdog task created (checks every 2 minutes)")
@@ -417,6 +594,7 @@ class InstallWorker(QThread):
                 else:
                     self.log_message.emit("\u26a0 Watchdog task creation failed (non-critical)")
                     installation_log.write(f"\u26a0 Watchdog failed: {result.stderr}\n")
+                    self._write_task_credential_diagnostics(installation_log)
             installation_log.flush()
             self.progress_value.emit(55)
 
@@ -463,42 +641,24 @@ class InstallWorker(QThread):
             installation_log.write("\nSTEP 3: Starting Application\n")
             installation_log.write("-" * 70 + "\n")
 
-            # Launch the exe directly with the correct working directory
-            # (schtasks /Run starts in System32 which breaks relative paths)
-            installation_log.write(f"Launching: {exe_path}\n")
-            installation_log.write(f"Working dir: {self.install_path}\n")
+            deferred_start_message = "next boot"
+            if task_start_mode == "logon":
+                deferred_start_message = f"when {self.task_username} logs on"
+            # Start through the scheduled task so SYSTEM/user account selection is respected.
+            installation_log.write("Starting scheduled task: ERPCNCAdapter\n")
             try:
-                CREATE_NEW_PROCESS_GROUP = 0x00000200
-                DETACHED_PROCESS = 0x00000008
-                subprocess.Popen(
-                    [str(exe_path)],
-                    cwd=str(self.install_path),
-                    creationflags=CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
-                    close_fds=True,
-                    startupinfo=self._startupinfo(),
-                )
-                import time
-                time.sleep(3)
-
-                # Verify the process is actually running
-                check = subprocess.run(
-                    ["tasklist", "/FI", f"IMAGENAME eq {exe_path.name}"],
-                    capture_output=True, text=True,
-                    startupinfo=self._startupinfo(),
-                )
-                if exe_path.name.lower() in check.stdout.lower():
-                    self.log_message.emit("\u2713 Application started successfully")
+                if self._start_adapter_task(installation_log):
+                    self.log_message.emit("\u2713 Application start requested via scheduled task")
                     self.log_message.emit("\u2713 Access at: http://localhost:8002")
-                    installation_log.write("\u2713 Application started successfully\n")
+                    installation_log.write("\u2713 Scheduled task start requested successfully\n")
                 else:
-                    self.log_message.emit("\u26a0 Application may not have started — check logs")
-                    installation_log.write("\u26a0 Process not found after launch\n")
+                    self.log_message.emit(f"\u26a0 Could not start task now - application will start {deferred_start_message}")
+                    installation_log.write(f"\u26a0 Scheduled task start failed; application will start {deferred_start_message}\n")
             except Exception as start_err:
                 self.log_message.emit(f"\u26a0 Could not start now: {start_err}")
-                self.log_message.emit("\u2713 Application will start on next boot")
+                self.log_message.emit(f"\u2713 Application will start {deferred_start_message}")
                 installation_log.write(f"\u26a0 Launch error: {start_err}\n")
-                installation_log.write("Application will start on next boot\n")
-
+                installation_log.write(f"Application will start {deferred_start_message}\n")
             installation_log.write("\n" + "=" * 70 + "\n")
             installation_log.write("INSTALLATION COMPLETED SUCCESSFULLY\n")
             installation_log.write(f"Completion time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -537,5 +697,11 @@ class InstallWorker(QThread):
             if item.is_file():
                 dest = self.install_path / item.relative_to(payload)
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(item, dest)
+                try:
+                    shutil.copy2(item, dest)
+                except PermissionError as exc:
+                    raise PermissionError(
+                        f"Cannot write {dest}. Stop the running adapter or run the installer as Administrator. "
+                        "If installing to Program Files, elevation is required."
+                    ) from exc
         self.log_message.emit(f"\u2713 Files extracted to {self.install_path}")

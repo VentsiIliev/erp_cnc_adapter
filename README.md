@@ -132,7 +132,7 @@ The main settings include:
 - `GET /api/cnc/job/status`  
   Returns current CNC state, job metadata, progress, timing, and repeat counters. No request parameters.
 
-- `POST /api/cnc/job/unload`  
+- `GET /api/cnc/job/unload`  
   Loads the placeholder no-job file so the adapter behaves as if no job is loaded. No request parameters.
 
 - `GET /api/cnc/monitor/status`  

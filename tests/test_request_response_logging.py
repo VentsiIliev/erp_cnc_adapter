@@ -32,16 +32,44 @@ async def test_logs_request_and_response_body(caplog):
     assert any(
         "HTTP REQUEST" in message
         and "POST /echo" in message
+        and "client_ip=127.0.0.1" in message
         and '"job":"123456789012"' in message
         for message in messages
     )
     assert any(
         "HTTP RESPONSE" in message
-        and "POST /echo -> 200" in message
+        and "POST /echo client_ip=127.0.0.1 -> 200" in message
         and '"received":{"job":"123456789012","step":10}' in message
         for message in messages
     )
 
+
+async def test_logs_forwarded_caller_ip(caplog):
+    app = FastAPI()
+    app.middleware("http")(log_http_request_response)
+
+    @app.get("/forwarded")
+    async def forwarded():
+        return {"ok": True}
+
+    with caplog.at_level(logging.INFO, logger="src.core.http_logging"):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get(
+                "/forwarded",
+                headers={"x-forwarded-for": "10.20.30.40, 127.0.0.1"},
+            )
+
+    assert resp.status_code == 200
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "HTTP REQUEST GET /forwarded client_ip=10.20.30.40" in message
+        for message in messages
+    )
+    assert any(
+        "HTTP RESPONSE GET /forwarded client_ip=10.20.30.40 -> 200" in message
+        for message in messages
+    )
 
 async def test_logging_preserves_response_headers_and_body(caplog):
     app = FastAPI()

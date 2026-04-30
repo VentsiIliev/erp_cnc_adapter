@@ -2,12 +2,12 @@ import atexit
 import logging
 import os
 import signal
-import subprocess
 import threading
 
 from fastapi import Request
 
 from src.core.config import Settings
+from src.core.cnc_server_process import start_cnc_server_if_needed
 from src.cnc.cnc_client import CncClient
 from src.cnc.cnc_client_protocol import CncClientProtocol
 from src.cnc.connection_manager import ConnectionManager
@@ -88,17 +88,13 @@ class AppState:
             logger.warning("Auto-start: CncServer.exe not found at %s", cnc_server_exe)
             return
 
-        try:
-            subprocess.Popen(
-                [cnc_server_exe],
-                cwd=cnc_dir,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+        result = start_cnc_server_if_needed(cnc_server_exe)
+        if result.started:
             logger.info("Auto-started CncServer.exe from %s", cnc_server_exe)
-        except Exception as e:
-            logger.error("Auto-start CncServer.exe failed: %s", e)
+        elif result.already_running:
+            logger.info("Auto-start skipped because CncServer.exe is already running")
+        else:
+            logger.error("Auto-start CncServer.exe failed: %s", result.message)
 
     def start(self) -> None:
         self._auto_start_cnc_server()

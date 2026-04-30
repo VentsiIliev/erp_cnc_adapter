@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/api/cnc/job/unload", response_model=LoadJobResponse)
+@router.get("/api/cnc/job/unload", response_model=LoadJobResponse)
 async def unload_job(
     request: Request,
     client: CncClientProtocol = Depends(get_cnc_client),

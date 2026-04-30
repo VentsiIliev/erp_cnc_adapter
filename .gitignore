@@ -19,6 +19,7 @@ dist/
 # Logs
 logs/*.log
 *.log
+logs/
 
 # User configuration (machine-specific)
 config.json

@@ -135,4 +135,4 @@ echo.
 echo No external tools or installers needed!
 echo.
 
-pause
+if "%BUILD_NO_PAUSE%"=="" pause
