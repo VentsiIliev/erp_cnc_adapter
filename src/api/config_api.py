@@ -1,6 +1,7 @@
 """Configuration management API endpoints."""
 
 import logging
+import socket
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from src.core.config_persistence import update_persisted_config
@@ -25,6 +26,7 @@ class ConfigUpdate(BaseModel):
     task_username: str | None = Field(None, min_length=1, max_length=200, description=r"Windows account in DOMAIN\username or .\username form")
     task_password: str | None = Field(None, min_length=1, max_length=500, description="Windows password for the scheduled task account")
     restart_adapter_task: bool | None = Field(None, description="Restart the scheduled adapter task immediately after applying configuration")
+    port: int | None = Field(None, ge=1, le=65535, description="HTTP port for the adapter; restart required to bind the new port")
     cnc_retry_interval: int | None = Field(None, ge=1, le=300, description="Seconds between connection retries")
     cnc_health_interval: int | None = Field(None, ge=1, le=300, description="Seconds between heartbeat checks")
     job_monitor_poll_interval: float | None = Field(None, ge=0.1, le=60.0, description="Seconds between job monitor status checks")
@@ -41,6 +43,7 @@ class ConfigResponse(BaseModel):
     dll_path: str
     ini_path: str
     host: str
+    local_ip: str
     port: int
     log_level: str
     cnc_retry_interval: int
@@ -48,10 +51,26 @@ class ConfigResponse(BaseModel):
     job_monitor_poll_interval: float
 
 
+def get_machine_ip() -> str:
+    """Best-effort LAN IP for operators to reach this adapter."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))
+        ip = sock.getsockname()[0]
+    except OSError:
+        try:
+            ip = socket.gethostbyname(socket.gethostname())
+        except OSError:
+            ip = "127.0.0.1"
+    finally:
+        sock.close()
+    return ip
+
+
 @router.get("/api/config", response_model=ConfigResponse)
 async def get_config(request: Request):
     """Get current configuration."""
-    logger.info("GET /api/config - Retrieve current configuration")
+    logger.debug("GET /api/config - Retrieve current configuration")
 
     try:
         services = request.app.state.services
@@ -76,6 +95,7 @@ async def get_config(request: Request):
             dll_path=settings.dll_path,
             ini_path=settings.ini_path,
             host=settings.host,
+            local_ip=get_machine_ip(),
             port=settings.port,
             log_level=settings.log_level,
             cnc_retry_interval=settings.cnc_retry_interval,
@@ -152,6 +172,13 @@ async def update_config(request: Request, config: ConfigUpdate):
             settings.base_dir = config.base_dir
             changes.append(f"base_dir: '{old_value}' -> '{config.base_dir}'")
             logger.info("Updated base_dir: %s -> %s", old_value, config.base_dir)
+
+        # Update CNC retry interval
+        if config.port is not None:
+            old_value = settings.port
+            settings.port = config.port
+            changes.append(f"port: {old_value} -> {config.port} (restart required)")
+            logger.info("Updated adapter port: %s -> %s", old_value, config.port)
 
         # Update CNC retry interval
         if config.cnc_retry_interval is not None:
@@ -253,6 +280,8 @@ async def update_config(request: Request, config: ConfigUpdate):
             persist_dict["base_dir"] = config.base_dir
         if task_config_changed:
             persist_dict["task_username"] = settings.task_username
+        if config.port is not None:
+            persist_dict["port"] = config.port
         if config.cnc_retry_interval is not None:
             persist_dict["cnc_retry_interval"] = config.cnc_retry_interval
         if config.cnc_health_interval is not None:

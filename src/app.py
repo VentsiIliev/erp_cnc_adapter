@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from src.core.config import Settings
 from src.core.app_state import AppState
 from src.api import api_router
+from src.core.http_logging import log_http_request_response
 from src.core.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await services.shutdown()
 
     app = FastAPI(title="ERP-CNC Adapter API", lifespan=lifespan)
+    app.middleware("http")(log_http_request_response)
 
     @app.exception_handler(Exception)
     async def _unhandled_exception(request: Request, exc: Exception):

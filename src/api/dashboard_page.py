@@ -24,12 +24,24 @@ def render_dashboard(initial_view: str = "overview") -> str:
     return html.replace("__VERSION__", VERSION).replace("__INITIAL_VIEW__", initial_view)
 
 
+def dashboard_response(initial_view: str = "overview", status_code: int = 200) -> HTMLResponse:
+    return HTMLResponse(
+        content=render_dashboard(initial_view),
+        status_code=status_code,
+        headers={
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page():
     """Unified dashboard for health, monitor, config, test and update tools."""
     logger.info("GET /dashboard - Unified dashboard request")
 
     try:
-        return HTMLResponse(content=render_dashboard("overview"))
+        return dashboard_response("overview")
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Dashboard page not found</h1>", status_code=404)

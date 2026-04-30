@@ -1,296 +1,212 @@
 # ERP-CNC Adapter
 
-A REST API service that bridges ERP systems with CNC machines, enabling automated job loading, starting, and status monitoring.
+ERP-CNC Adapter is a FastAPI service that sits between ERP software and a CNC controller. It connects to the CNC server, loads and starts jobs from shared job folders, reports job state, exposes a small operations dashboard, and supports in-place updates with rollback.
 
-## Features
+## What It Does
 
-- **REST API** - FastAPI-based endpoints for CNC control
-- **Web UI** - Manual update interface with file upload
-- **Auto-start** - Runs on boot via Windows Task Scheduler
-- **Auto-update** - Self-updating mechanism with rollback support
-- **Connection Management** - Automatic reconnection to CNC server
-- **Zero Dependencies** - Python-free installation (self-contained EXE)
+- Starts and stops the CNC server process
+- Loads CNC jobs from the configured job directory
+- Starts, unloads, and monitors the current job
+- Exposes health, monitor, log, and configuration endpoints
+- Provides a browser dashboard for operations and maintenance
+- Supports staged EXE updates and rollback from backups
+- Persists configuration updates without wiping `config.json`
 
-## Quick Start
+## Environment Setup
 
-### Installation
-
-1. Download `ERP-CNC-Adapter-Setup-v1.0.6.exe`
-2. Right-click → **Run as administrator**
-3. Follow the installation wizard
-4. Done! Service starts automatically
-
-**Installation time**: ~15 seconds  
-**Requirements**: Windows 10/11, Administrator rights
-
-### API Endpoints
-
-```
-GET  /              - Health dashboard (HTML) or status (JSON)
-GET  /api/health    - Health check & version (JSON)
-POST /api/cnc/start - Start CNC server
-POST /api/cnc/stop  - Stop CNC server
-POST /api/cnc/job/load   - Load G-code job
-POST /api/cnc/job/start  - Start loaded job
-GET  /api/cnc/job/status - Get job status
-POST /api/update         - Upload new version
-GET  /api/update/backups - List backup versions
-POST /api/update/rollback - Rollback to previous version
-GET  /update             - Manual update page (HTML)
-```
-
-### Example Usage
-
-```bash
-# Check health
-curl http://localhost:8002/api/health
-
-# Start CNC
-curl -X POST http://localhost:8002/api/cnc/start
-
-# Load job
-curl -X POST http://localhost:8002/api/cnc/job/load \
-  -H "Content-Type: application/json" \
-  -d '{"fileName": "C:/Jobs/part.nc"}'
-
-# Start job
-curl -X POST http://localhost:8002/api/cnc/job/start
-
-# Get job status
-curl http://localhost:8002/api/cnc/job/status
-```
-
-## Architecture
-
-```
-┌─────────────────────────────┐
-│  ERP System                 │
-│  (REST API Client)          │
-└─────────┬───────────────────┘
-          │ HTTP
-          ↓
-┌─────────────────────────────┐
-│  ERP-CNC Adapter            │
-│  • FastAPI Server           │
-│  • Connection Manager       │
-│  • Update Worker            │
-└─────────┬───────────────────┘
-          │ CNC API
-          ↓
-┌─────────────────────────────┐
-│  CNC Machine                │
-│  (cncapi.dll)               │
-└─────────────────────────────┘
-```
-
-## Technology Stack
-
-- **Python 3.11** (32-bit) - Embedded in EXE
-- **FastAPI** - REST API framework
-- **Uvicorn** - ASGI server
-- **Pytest** - Testing framework
-- **PyInstaller** - EXE packaging
-- **PyQt5** - Installer GUI
-
-## Development
-
-### Prerequisites
-
-- Python 3.11 (32-bit)
-- Git
-- Administrator rights (for testing service)
-
-### Setup
+This project is Windows-first. For source development, use Python 3.11 and create a virtual environment in the project root.
 
 ```powershell
-# Clone repository
-git clone https://github.com/VentsiIliev/erp_cnc_adapter.git
-cd erp_cnc_adapter
-
-# Create virtual environment
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Run Tests
+Local development entry point:
+
+```powershell
+python main.py
+```
+
+The server listens on the host and port from `Settings` in `src/core/config.py` and defaults to `0.0.0.0:8002`.
+
+## Build Process
+
+The repository already includes the build scripts used by the project.
+
+### Test First
 
 ```powershell
 cd util_scripts
 .\run_tests.bat
 ```
 
-### Build EXE
+### Build the Application Package
 
 ```powershell
 cd util_scripts
 .\build.bat
 ```
 
-### Build Installer
+`build.bat` does the following:
+
+1. Reads the version from `version.py`
+2. Stamps the build date into `version.py`
+3. Runs the test suite with `pytest`
+4. Builds `erp-cnc-adapter.exe` with PyInstaller
+5. Creates a versioned distribution folder under `dist\dist_v<version>\`
+6. Copies the EXE, scripts, resources, logs folder, and build metadata
+
+### Build the Installer
 
 ```powershell
 cd util_scripts
 .\build_installer.bat
 ```
 
-## Project Structure
+`build_installer.bat` first calls `build.bat`, then packages the GUI installer into a single self-contained EXE and places it in the same versioned distribution folder.
 
-```
-erp_cnc_adapter/
-├── cncapi/                  # CNC DLL interface (ctypes structs)
-├── src/
-│   ├── api/                 # API endpoint handlers
-│   │   ├── schemas/         # Pydantic request/response models
-│   │   ├── health.py, cnc_start.py, cnc_stop.py
-│   │   ├── job_load.py, job_start.py, job_status.py
-│   │   └── update.py, update_page.py
-│   ├── core/                # Config, app state, logging
-│   │   ├── app_state.py, config.py, logging_config.py
-│   ├── cnc/                 # CNC client & connection management
-│   │   ├── cnc_client.py, cnc_client_protocol.py
-│   │   ├── connection_manager.py, mock_cnc_client.py
-│   ├── web/                 # Static assets & HTML templates
-│   │   ├── static/css/, static/js/
-│   │   └── templates/
-│   ├── installer/           # PyQt5 installer GUI
-│   │   ├── ui/              # UI pages & window
-│   │   ├── constants.py, installer.py, worker.py
-│   ├── app.py               # FastAPI app factory
-│   └── update_worker.py     # Detached update process
-├── tests/                   # Test suite (pytest)
-├── scripts/                 # Installation & management scripts
-├── util_scripts/            # Build & dev scripts
-├── main.py                  # Application entry point
-├── run_installer.py         # Installer entry point
-├── version.py               # Version info
-└── requirements.txt         # Dependencies
-```
+## Configuration
 
-## Installation Methods
+Runtime settings are persisted in `config.json`. The configuration API updates only the fields you send and keeps the rest of the file intact. That means existing machine, path, and timing values are preserved unless you explicitly change them.
 
-### Method 1: Graphical Installer (Recommended)
-- Double-click EXE
-- Auto-detects installation type
-- Configures everything automatically
+The main settings include:
 
-### Method 2: Manual (Advanced)
-```powershell
-# Extract files
-xcopy /E /I dist\dist_v1.0.6 "C:\Program Files\ERP-CNC Adapter"
+- `machine_number`
+- `dll_path`
+- `ini_path`
+- `job_done_report_url`
+- `base_dir`
+- `run_as_windows_user`
+- `task_username`
+- `task_password`
+- `port`
+- `cnc_retry_interval`
+- `cnc_health_interval`
+- `job_monitor_poll_interval`
 
-# Create scheduled task
-schtasks /Create /TN ERPCNCAdapter \
-  /TR "C:\Program Files\ERP-CNC Adapter\erp-cnc-adapter.exe" \
-  /SC ONSTART /RU SYSTEM /RL HIGHEST /F
+## API Endpoints
 
-# Configure firewall
-netsh advfirewall firewall add rule name="ERP-CNC Adapter" \
-  dir=in action=allow protocol=TCP localport=8002
+### Status and Dashboard
 
-# Start task
-schtasks /Run /TN ERPCNCAdapter
-```
+- `GET /`  
+  Returns JSON status by default, or the HTML health dashboard when the request accepts `text/html`.
 
-## Update Process
+- `GET /api/health`  
+  JSON health check with CNC connection state, retry count, uptime, and version.
 
-### Automatic (via API)
-```bash
-curl -X POST http://localhost:8002/api/update \
-  -F "file=@erp-cnc-adapter.exe"
-```
+- `GET /dashboard`  
+  Unified dashboard in the overview view.
 
-### Manual (via Web UI)
-1. Open http://localhost:8002/update
-2. Select new EXE file
-3. Click "Upload and Update"
-4. Wait for automatic restart
+- `GET /config`  
+  Unified dashboard focused on configuration.
 
-### What Happens
-1. Upload validates new EXE
-2. Saves to `staged-update.exe`
-3. Spawns update worker
-4. Stops current app
-5. Backs up current version
-6. Replaces EXE
-7. Starts new version
-8. Verifies startup (rollback if fails)
+- `GET /monitor`  
+  Unified dashboard focused on live monitoring.
 
-## Service Management
+- `GET /test`  
+  Unified dashboard focused on testing tools.
 
-### Check Status
-```powershell
-schtasks /Query /TN ERPCNCAdapter
-Get-Process erp-cnc-adapter -ErrorAction SilentlyContinue
-```
+- `GET /update`  
+  Unified dashboard focused on maintenance and updates.
 
-### Start
-```powershell
-schtasks /Run /TN ERPCNCAdapter
-```
+### CNC Control
 
-### Stop
-```powershell
-taskkill /F /IM erp-cnc-adapter.exe
-```
+- `GET /api/cnc/start`  
+  Starts `CncServer.exe`. No request parameters.
 
-### Uninstall
-```powershell
-schtasks /Delete /TN ERPCNCAdapter /F
-```
+- `GET /api/cnc/stop`  
+  Stops `cnc.exe` and `CncServer.exe`. No request parameters.
 
-## Logs
+- `GET /api/cnc/job/load/{job_number}/{step}/{qty}`  
+  Path parameters:
+  - `job_number`: exactly 12 digits
+  - `step`: numeric step identifier
+  - `qty`: quantity/repeat count, validated from 1 to 9999
 
-- **Application**: `logs/adapter.log`
-- **Installation**: `logs/installation.log`
-- **Update**: `logs/update.log`
-- **Service**: `logs/service.log`
+  The adapter looks for `Setup_{step}*.nc` or `Setup_{step}*.cnc` inside `base_dir/<job_number>/`. The handler currently accepts `qty` for validation but sets the CNC quantity to `1` in code.
 
-## Troubleshooting
+- `GET /api/cnc/job/start`  
+  Starts or resumes the loaded job. No request parameters.
 
-### Service Not Running?
-```powershell
-# Check logs
-type "C:\Program Files\ERP-CNC Adapter\logs\adapter.log"
+- `GET /api/cnc/job/status`  
+  Returns current CNC state, job metadata, progress, timing, and repeat counters. No request parameters.
 
-# Start manually
-schtasks /Run /TN ERPCNCAdapter
-```
+- `POST /api/cnc/job/unload`  
+  Loads the placeholder no-job file so the adapter behaves as if no job is loaded. No request parameters.
 
-### Port 8002 In Use?
-```powershell
-netstat -ano | findstr :8002
-taskkill /F /PID [PID]
-```
+- `GET /api/cnc/monitor/status`  
+  Returns the live monitor snapshot together with current CNC state and job data. No request parameters.
 
-### Update Failed?
-Check `logs/update.log` for details. The update worker automatically rolls back on failure.
+### Update Management
 
-## Version History
+- `POST /api/update`  
+  Multipart form upload with one required field:
+  - `file`: the new application EXE, and it must end in `.exe`
 
-- **v1.0.6** - Task Scheduler installation, update worker improvements
-- **v1.0.5** - Enhanced update logging with version tracking
-- **v1.0.4** - Update mechanism fixes
-- **v1.0.3** - Python-free installer
-- **v1.0.2** - Initial Windows Service implementation
-- **v1.0.1** - Basic API functionality
-- **v1.0.0** - Initial release
+  The uploaded file is staged as `staged-update.exe`, backups are rotated, and the detached update worker is started.
 
-## License
+- `POST /api/update/rollback`  
+  Re-stages the newest backup and starts the rollback worker. No request parameters.
 
-Proprietary - All rights reserved
+- `GET /api/update/backups`  
+  Lists available backup EXEs. No request parameters.
 
-## Contributing
+### Configuration API
 
-This is a private repository. Contact the maintainer for access.
+- `GET /api/config`  
+  Returns current configuration plus derived values such as the machine IP and scheduled-task launch settings. No request parameters.
 
-## Support
+- `POST /api/config`  
+  JSON body with any of these optional fields:
+  - `machine_number`
+  - `dll_path`
+  - `ini_path`
+  - `job_done_report_url`
+  - `base_dir`
+  - `run_as_windows_user`
+  - `task_username`
+  - `task_password`
+  - `restart_adapter_task`
+  - `port`
+  - `cnc_retry_interval`
+  - `cnc_health_interval`
+  - `job_monitor_poll_interval`
 
-For issues or questions, open an issue on GitHub or contact the development team.
+  Only supplied fields are applied and persisted. Task credential updates require a username and password when `run_as_windows_user` is enabled. Port changes are saved immediately but require an adapter restart before the HTTP listener moves to the new port.
 
----
+### Logging and Test Hooks
 
-**Built with ❤️ for CNC automation**
+- `GET /api/logs?lines=200`  
+  Returns the last `lines` entries from `logs/adapter.log`. The `lines` query parameter is optional and defaults to `200`.
 
+- `GET /actions/cnc_job_done.php?m=...&c=...&s=...`  
+  Local test endpoint for job-done callbacks.
+  - `m`: machine number
+  - `c`: job number
+  - `s`: step number
+
+### Support Routes
+
+- `GET /favicon.ico`  
+  Returns the configured favicon when present.
+
+- `GET /static/*`  
+  Serves static assets used by the dashboard.
+
+## Repository Layout
+
+- `src/` - application code, API handlers, CNC client wrappers, config, installer UI, and web assets
+- `tests/` - pytest suite
+- `scripts/` - installation and service management helpers
+- `util_scripts/` - build and test scripts
+- `resources/` - icons and job placeholders
+- `main.py` - application entry point
+- `run_installer.py` - installer entry point
+- `version.py` - version and build metadata
+
+## Notes
+
+- The adapter is designed for a Windows deployment with Task Scheduler-based startup.
+- Update operations are staged and rolled back through backups if startup verification fails.
+- The README intentionally matches the current route set so operators can trace each endpoint back to its request parameters.

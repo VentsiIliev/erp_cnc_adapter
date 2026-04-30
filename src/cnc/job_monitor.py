@@ -151,7 +151,7 @@ class JobMonitor:
                 else:
                     # Log progress periodically
                     progress_pct = job_status.get("jobProgressPercentage", 0.0)
-                    logger.debug("Job running: %.1f%% complete", progress_pct)
+                    # logger.debug("Job running: %.1f%% complete", progress_pct)
 
             # Detect job completion
             elif self._was_running and state in (STATE_READY, STATE_IDLE):

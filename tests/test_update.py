@@ -245,6 +245,22 @@ class TestUploadUpdate:
             assert body["status"] == 0
             assert body["version_info"] != ""
 
+    async def test_update_does_not_touch_existing_config(self, update_client):
+        with patch("src.api.update._get_exe_path", return_value=r"C:\Install\erp-cnc-adapter.exe"), \
+             patch("src.api.update._get_exe_dir", return_value=r"C:\Install"), \
+             patch("src.api.update.os.makedirs"), \
+             patch("builtins.open", MagicMock()), \
+             patch("src.api.update._rotate_backups"), \
+             patch("src.api.update._spawn_updater") as spawn:
+            resp = await update_client.post(
+                "/api/update",
+                files={"file": ("app.exe", b"\x00" * 100, "application/octet-stream")},
+            )
+
+        assert resp.json()["status"] == 0
+        command_args = spawn.call_args.args
+        assert r"C:\Install\config.json" not in command_args
+
     async def test_rejects_empty_filename(self, update_client):
         """Empty string filename results in rejection (422 or status=1)."""
         resp = await update_client.post(

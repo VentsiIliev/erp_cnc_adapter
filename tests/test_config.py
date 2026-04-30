@@ -45,6 +45,7 @@ class TestSettings:
             "cnc_retry_interval": 20,
             "cnc_health_interval": 30,
             "job_monitor_poll_interval": 5.0,
+            "port": 8010,
             "task_username": r"DOMAIN\adapter",
         }))
 
@@ -56,6 +57,7 @@ class TestSettings:
         assert s.cnc_retry_interval == 20
         assert s.cnc_health_interval == 30
         assert s.job_monitor_poll_interval == 5.0
+        assert s.port == 8010
         assert s.task_username == r"DOMAIN\adapter"
 
 
@@ -64,7 +66,8 @@ class TestConfigAPI:
     @pytest.mark.asyncio
     async def test_get_config_includes_timing(self, client):
         """GET /api/config returns timing fields."""
-        with patch("src.api.config_api.get_task_launch_settings") as mock_task:
+        with patch("src.api.config_api.get_task_launch_settings") as mock_task, \
+             patch("src.api.config_api.get_machine_ip", return_value="192.168.2.55"):
             mock_task.return_value = {
                 "run_as_windows_user": True,
                 "task_username": r"DOMAIN\adapter",
@@ -80,10 +83,11 @@ class TestConfigAPI:
         assert data["run_as_windows_user"] is True
         assert data["task_username"] == r"DOMAIN\adapter"
         assert data["task_password_configured"] is True
+        assert data["local_ip"] == "192.168.2.55"
 
     @pytest.mark.asyncio
-    async def test_post_config_updates_timing(self, client, settings, tmp_path):
-        """POST /api/config updates timing values in memory and persists."""
+    async def test_post_config_updates_timing_and_port(self, client, settings, tmp_path):
+        """POST /api/config updates timing and port values in memory and persists."""
         config_file = tmp_path / "config.json"
         config_file.write_text("{}")
 
@@ -93,23 +97,26 @@ class TestConfigAPI:
                 "cnc_retry_interval": 15,
                 "cnc_health_interval": 25,
                 "job_monitor_poll_interval": 3.5,
+                "port": 8010,
             })
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
-        assert len(data["changes"]) == 3
+        assert len(data["changes"]) == 4
 
         # Verify in-memory settings updated
         assert settings.cnc_retry_interval == 15
         assert settings.cnc_health_interval == 25
         assert settings.job_monitor_poll_interval == 3.5
+        assert settings.port == 8010
 
         # Verify persist was called with timing keys
         persist_call = mock_persist.call_args[0][0]
         assert persist_call["cnc_retry_interval"] == 15
         assert persist_call["cnc_health_interval"] == 25
         assert persist_call["job_monitor_poll_interval"] == 3.5
+        assert persist_call["port"] == 8010
 
     @pytest.mark.asyncio
     async def test_post_config_updates_dll_and_ini_paths(self, client, settings):

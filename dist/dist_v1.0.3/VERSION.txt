@@ -1,5 +1,0 @@
-ERP-CNC Adapter
-Version: 1.0.3
-Build Date: 30/03/2026  6:35:56.63
-
-This is a distribution package ready for deployment.

@@ -230,6 +230,12 @@
             font-weight: 700;
         }
 
+        .hero-chip-note {
+            margin-top: 4px;
+            font-size: 12px;
+            opacity: 0.72;
+        }
+
         .hero-actions,
         .inline-actions,
         .form-actions,
@@ -683,11 +689,20 @@
                     <div class="hero-panel">
                         <div class="eyebrow">Plant Visibility</div>
                         <h2 id="heroTitle">Machine readiness at a glance</h2>
-                        <p id="heroCopy">The dashboard tracks adapter connectivity, current CNC execution state, monitor activity, and maintenance actions without switching pages.</p>
+                        <p id="heroCopy"></p>
                         <div class="hero-meta">
                             <div class="hero-chip">
                                 <div class="hero-chip-label">Adapter Version</div>
                                 <div class="hero-chip-value">v__VERSION__</div>
+                            </div>
+                            <div class="hero-chip">
+                                <div class="hero-chip-label">Machine ID</div>
+                                <div class="hero-chip-value" id="heroMachineId">Loading...</div>
+                            </div>
+                            <div class="hero-chip">
+                                <div class="hero-chip-label">Adapter IP</div>
+                                <div class="hero-chip-value" id="heroAdapterIp">Loading...</div>
+                                <div class="hero-chip-note" id="heroBindAddress"></div>
                             </div>
                             <div class="hero-chip">
                                 <div class="hero-chip-label">Last Refresh</div>
@@ -914,6 +929,11 @@
                             <div class="helper">Current: <span id="currentPollInterval">Loading...</span></div>
                         </div>
                         <div class="field">
+                            <label for="adapterPort">Adapter Port</label>
+                            <input type="number" id="adapterPort" name="port" min="1" max="65535" step="1" placeholder="8002">
+                            <div class="helper">Current: <span id="currentAdapterPort">Loading...</span> (restart required)</div>
+                        </div>
+                        <div class="field">
                             <label>Network Bind</label>
                             <div class="detail-item">
                                 <div class="detail-value"><span id="configHost">--</span>:<span id="configPort">--</span></div>
@@ -980,6 +1000,7 @@
                     <div class="test-actions">
                         <button type="button" class="btn-primary" id="loadJobBtn">Load Reference Job</button>
                         <button type="button" class="btn-secondary" id="startJobBtn" disabled>Start Loaded Job</button>
+                        <button type="button" class="btn-danger" id="unloadJobBtn">Unload Job</button>
                     </div>
                     <div class="detail-grid" style="margin-top: 18px;">
                         <div class="detail-item">
@@ -1074,7 +1095,6 @@
                     : "log-info";
                 return '<div class="log-entry ' + tone + '">' + escapeHtml(entry) + "</div>";
             }).join("");
-            element.scrollTop = element.scrollHeight;
         }
 
         function setActiveView(view) {
@@ -1228,6 +1248,12 @@
         async function refreshConfig() {
             const { body } = await fetchJson("/api/config");
             state.config = body;
+            document.getElementById("heroMachineId").textContent = body.machine_number;
+            const adapterAddress = (body.local_ip || body.host) + ":" + body.port;
+            document.getElementById("heroAdapterIp").textContent = adapterAddress;
+            document.getElementById("heroBindAddress").textContent = body.host && body.host !== body.local_ip
+                ? "Bind: " + body.host + ":" + body.port
+                : "";
             document.getElementById("currentMachine").textContent = body.machine_number;
             document.getElementById("currentReportUrl").textContent = body.job_done_report_url;
             document.getElementById("currentBaseDir").textContent = body.base_dir;
@@ -1243,6 +1269,7 @@
             document.getElementById("currentRetryInterval").textContent = body.cnc_retry_interval + "s";
             document.getElementById("currentHealthInterval").textContent = body.cnc_health_interval + "s";
             document.getElementById("currentPollInterval").textContent = body.job_monitor_poll_interval + "s";
+            document.getElementById("currentAdapterPort").textContent = body.port;
             document.getElementById("configHost").textContent = body.host;
             document.getElementById("configPort").textContent = body.port;
             document.getElementById("runAsUserToggle").checked = Boolean(body.run_as_windows_user);
@@ -1251,7 +1278,7 @@
         }
 
         function resetConfigForm() {
-            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "retryInterval", "healthInterval", "pollInterval"].forEach((id) => {
+            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "retryInterval", "healthInterval", "pollInterval", "adapterPort"].forEach((id) => {
                 document.getElementById(id).value = "";
             });
         }
@@ -1341,6 +1368,7 @@
             const retry = document.getElementById("retryInterval").value;
             const health = document.getElementById("healthInterval").value;
             const poll = document.getElementById("pollInterval").value;
+            const adapterPort = document.getElementById("adapterPort").value;
 
             if (machineNumber) payload.machine_number = machineNumber;
             if (dllPath) payload.dll_path = dllPath;
@@ -1355,6 +1383,7 @@
             if (retry) payload.cnc_retry_interval = parseInt(retry, 10);
             if (health) payload.cnc_health_interval = parseInt(health, 10);
             if (poll) payload.job_monitor_poll_interval = parseFloat(poll);
+            if (adapterPort) payload.port = parseInt(adapterPort, 10);
             if (options.restartAdapterTask) payload.restart_adapter_task = true;
 
             if (!Object.keys(payload).length) {
@@ -1459,6 +1488,23 @@
             }
         }
 
+        async function unloadReferenceJob() {
+            const button = document.getElementById("unloadJobBtn");
+            button.disabled = true;
+            addEvent("test", "Unloading current job.", "info");
+            try {
+                const { body } = await fetchJson("/api/cnc/job/unload", { method: "POST" });
+                if (body.status !== 0) throw new Error(body.message || "Unload failed.");
+                addEvent("test", "Job unloaded successfully.", "success");
+                document.getElementById("startJobBtn").disabled = true;
+                await refreshDashboard();
+            } catch (error) {
+                addEvent("test", "Unload failed: " + error.message, "error");
+            } finally {
+                button.disabled = false;
+            }
+        }
+
         function wireEvents() {
             document.querySelectorAll("#nav button").forEach((button) => {
                 button.addEventListener("click", () => setActiveView(button.dataset.view));
@@ -1473,6 +1519,7 @@
             document.getElementById("refreshBackupsBtn").addEventListener("click", refreshBackups);
             document.getElementById("loadJobBtn").addEventListener("click", loadReferenceJob);
             document.getElementById("startJobBtn").addEventListener("click", startReferenceJob);
+            document.getElementById("unloadJobBtn").addEventListener("click", unloadReferenceJob);
             document.getElementById("runAsUserToggle").addEventListener("change", (event) => {
                 toggleTaskCredentialInputs(event.target.checked);
             });

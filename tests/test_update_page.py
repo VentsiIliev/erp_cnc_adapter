@@ -11,6 +11,7 @@ class TestUpdatePage:
         response = await client.get("/update")
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
+        assert response.headers["cache-control"] == "no-store"
         assert "Operations Dashboard" in response.text
         assert "Upload Update" in response.text
 
@@ -49,6 +50,21 @@ class TestUpdatePage:
         response = await client.get("/update")
         from version import VERSION
         assert f"v{VERSION}" in response.text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("path", "view"),
+        [
+            ("/config", "config"),
+            ("/monitor", "monitor"),
+        ],
+    )
+    async def test_dashboard_subpages_disable_cache(self, client, path, view):
+        response = await client.get(path)
+
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        assert f'const INITIAL_VIEW = "{view}"' in response.text
 
 
 

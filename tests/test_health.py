@@ -148,6 +148,7 @@ class TestHomeEndpoint:
 
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
+        assert resp.headers["cache-control"] == "no-store"
         assert "Operations Dashboard" in resp.text
         assert 'const INITIAL_VIEW = "overview"' in resp.text
 

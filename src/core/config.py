@@ -66,6 +66,10 @@ class Settings:
                     self.job_monitor_poll_interval = user_config["job_monitor_poll_interval"]
                     logger.info("Loaded persisted job_monitor_poll_interval: %s", self.job_monitor_poll_interval)
 
+                if "port" in user_config:
+                    self.port = int(user_config["port"])
+                    logger.info("Loaded persisted port: %s", self.port)
+
                 logger.info("Configuration loaded with persisted overrides")
         except Exception as e:
             logger.warning("Could not load persisted config: %s", e)

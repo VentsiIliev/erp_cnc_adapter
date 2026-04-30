@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 python-multipart
+pydantic
 
 # Build / test dependencies
 pyinstaller
