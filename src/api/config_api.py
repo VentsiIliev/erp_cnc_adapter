@@ -4,6 +4,11 @@ import logging
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from src.core.config_persistence import update_persisted_config
+from src.core.task_config import (
+    configure_task_launch_account,
+    get_task_launch_settings,
+    restart_scheduled_adapter_task,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -12,8 +17,14 @@ router = APIRouter()
 class ConfigUpdate(BaseModel):
     """Configuration update request."""
     machine_number: str | None = Field(None, min_length=1, max_length=50, description="Machine identifier (e.g., CNC1, CNC2)")
+    dll_path: str | None = Field(None, min_length=1, max_length=500, description="Path to cncapi.dll")
+    ini_path: str | None = Field(None, min_length=1, max_length=500, description="Path to cnc.ini")
     job_done_report_url: str | None = Field(None, min_length=1, max_length=500, description="URL to report job completion")
     base_dir: str | None = Field(None, min_length=1, max_length=500, description="Base directory for job files")
+    run_as_windows_user: bool | None = Field(None, description="Run scheduled startup tasks under a Windows user instead of SYSTEM")
+    task_username: str | None = Field(None, min_length=1, max_length=200, description=r"Windows account in DOMAIN\username or .\username form")
+    task_password: str | None = Field(None, min_length=1, max_length=500, description="Windows password for the scheduled task account")
+    restart_adapter_task: bool | None = Field(None, description="Restart the scheduled adapter task immediately after applying configuration")
     cnc_retry_interval: int | None = Field(None, ge=1, le=300, description="Seconds between connection retries")
     cnc_health_interval: int | None = Field(None, ge=1, le=300, description="Seconds between heartbeat checks")
     job_monitor_poll_interval: float | None = Field(None, ge=0.1, le=60.0, description="Seconds between job monitor status checks")
@@ -24,6 +35,9 @@ class ConfigResponse(BaseModel):
     machine_number: str
     job_done_report_url: str
     base_dir: str
+    run_as_windows_user: bool
+    task_username: str
+    task_password_configured: bool
     dll_path: str
     ini_path: str
     host: str
@@ -42,11 +56,23 @@ async def get_config(request: Request):
     try:
         services = request.app.state.services
         settings = services.settings
+        try:
+            launch_settings = get_task_launch_settings()
+        except Exception as task_exc:
+            logger.warning("Could not query scheduled task launch settings: %s", task_exc)
+            launch_settings = {
+                "run_as_windows_user": bool(settings.task_username),
+                "task_username": settings.task_username,
+                "task_password_configured": bool(settings.task_username),
+            }
 
         return ConfigResponse(
             machine_number=settings.machine_number,
             job_done_report_url=settings.job_done_report_url,
             base_dir=settings.base_dir,
+            run_as_windows_user=bool(launch_settings["run_as_windows_user"]),
+            task_username=str(launch_settings["task_username"]),
+            task_password_configured=bool(launch_settings["task_password_configured"]),
             dll_path=settings.dll_path,
             ini_path=settings.ini_path,
             host=settings.host,
@@ -71,6 +97,10 @@ async def update_config(request: Request, config: ConfigUpdate):
         settings = services.settings
 
         changes = []
+        task_config_changed = any(
+            value is not None
+            for value in (config.run_as_windows_user, config.task_username, config.task_password)
+        )
 
         # Update machine number
         if config.machine_number is not None:
@@ -90,6 +120,19 @@ async def update_config(request: Request, config: ConfigUpdate):
             if hasattr(services, 'last_loaded_job') and services.last_loaded_job:
                 services.last_loaded_job["machine_number"] = config.machine_number
                 logger.info("Updated last_loaded_job machine number to: %s", config.machine_number)
+
+        # Update report URL
+        if config.dll_path is not None:
+            old_value = settings.dll_path
+            settings.dll_path = config.dll_path
+            changes.append(f"dll_path: '{old_value}' -> '{config.dll_path}'")
+            logger.info("Updated dll_path: %s -> %s", old_value, config.dll_path)
+
+        if config.ini_path is not None:
+            old_value = settings.ini_path
+            settings.ini_path = config.ini_path
+            changes.append(f"ini_path: '{old_value}' -> '{config.ini_path}'")
+            logger.info("Updated ini_path: %s -> %s", old_value, config.ini_path)
 
         # Update report URL
         if config.job_done_report_url is not None:
@@ -143,6 +186,52 @@ async def update_config(request: Request, config: ConfigUpdate):
                 services.job_monitor._poll_interval = config.job_monitor_poll_interval
                 logger.info("Updated active job monitor poll interval")
 
+        if task_config_changed:
+            requested_run_as_user = (
+                config.run_as_windows_user
+                if config.run_as_windows_user is not None
+                else bool(settings.task_username)
+            )
+            requested_username = (
+                config.task_username.strip()
+                if config.task_username is not None
+                else settings.task_username
+            )
+            requested_password = config.task_password or ""
+
+            if requested_run_as_user:
+                if not requested_username:
+                    return {
+                        "success": False,
+                        "message": "A Windows task username is required when 'Run as Windows user' is enabled.",
+                        "changes": [],
+                    }
+                if not requested_password:
+                    return {
+                        "success": False,
+                        "message": "A Windows task password is required to create or update scheduled task credentials.",
+                        "changes": [],
+                    }
+            else:
+                requested_username = ""
+
+            launch_settings = configure_task_launch_account(
+                task_username=requested_username,
+                task_password=requested_password,
+            )
+            old_username = settings.task_username
+            settings.task_username = str(launch_settings["task_username"])
+            if requested_run_as_user:
+                changes.append(f"task_username: '{old_username or 'SYSTEM'}' -> '{requested_username}'")
+            else:
+                changes.append(f"task_username: '{old_username or 'SYSTEM'}' -> 'SYSTEM'")
+            logger.info("Updated scheduled task launch account")
+
+        if config.restart_adapter_task:
+            restart_scheduled_adapter_task()
+            changes.append("adapter_task: restart requested")
+            logger.info("Requested scheduled adapter task restart")
+
         if not changes:
             return {
                 "success": True,
@@ -154,10 +243,16 @@ async def update_config(request: Request, config: ConfigUpdate):
         persist_dict = {}
         if config.machine_number is not None:
             persist_dict["machine_number"] = config.machine_number
+        if config.dll_path is not None:
+            persist_dict["dll_path"] = config.dll_path
+        if config.ini_path is not None:
+            persist_dict["ini_path"] = config.ini_path
         if config.job_done_report_url is not None:
             persist_dict["job_done_report_url"] = config.job_done_report_url
         if config.base_dir is not None:
             persist_dict["base_dir"] = config.base_dir
+        if task_config_changed:
+            persist_dict["task_username"] = settings.task_username
         if config.cnc_retry_interval is not None:
             persist_dict["cnc_retry_interval"] = config.cnc_retry_interval
         if config.cnc_health_interval is not None:

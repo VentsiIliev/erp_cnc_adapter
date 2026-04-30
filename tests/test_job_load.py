@@ -132,8 +132,9 @@ class TestJobLoad:
         # Verify the full path is returned
         assert body["fileName"] == r"\\192.168.2.11\Production\CNC\Mills\999999999999\Setup_99_Rev1.nc"
 
+    @patch('src.api.schemas.job.os.path.isdir', return_value=False)
     @patch('src.api.schemas.job.glob.glob')
-    async def test_load_file_not_found(self, mock_glob, client, fake_client):
+    async def test_load_file_not_found(self, mock_glob, mock_isdir, client, fake_client):
         """When no matching file is found, return error."""
         fake_client._load_job_rc = 0
         mock_glob.return_value = []  # No files found

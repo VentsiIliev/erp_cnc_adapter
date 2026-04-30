@@ -148,7 +148,8 @@ class TestHomeEndpoint:
 
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
-        assert "ERP-CNC Adapter" in resp.text
+        assert "Operations Dashboard" in resp.text
+        assert 'const INITIAL_VIEW = "overview"' in resp.text
 
     async def test_home_returns_json_by_default(self, client):
         resp = await client.get("/", headers={"Accept": "application/json"})
@@ -165,6 +166,7 @@ class TestHomeEndpoint:
         resp = await client.get("/", headers={"Accept": "text/html"})
 
         assert "Start CNC" in resp.text
+        assert "Operations Dashboard" in resp.text
 
     async def test_home_html_shows_stop_button_when_connected(
         self, client, connection_manager
@@ -174,3 +176,4 @@ class TestHomeEndpoint:
         resp = await client.get("/", headers={"Accept": "text/html"})
 
         assert "Stop CNC" in resp.text
+        assert "Operations Dashboard" in resp.text

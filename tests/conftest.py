@@ -32,6 +32,7 @@ class FakeCncClient:
         self._connect_rc = 0
         self._server_connected = True
         self._server_process_alive = True
+        self.loaded_jobs = []
 
     @property
     def is_connected(self) -> bool:
@@ -58,6 +59,8 @@ class FakeCncClient:
         return dict(self._job_status)
 
     def load_job(self, file_name: str) -> int:
+        self.loaded_jobs.append(file_name)
+        self._job_status["jobName"] = file_name
         return self._load_job_rc
 
     def set_job_quantity(self, quantity: int) -> int:

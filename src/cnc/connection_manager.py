@@ -124,7 +124,7 @@ class ConnectionManager:
 
             if not process_alive:
                 self._state = "cnc_not_running"
-                self._last_error = "CncServer.exe not found"
+                self._last_error = getattr(self._client, "startup_error", "CncServer.exe not found")
                 logger.info("CNC server not running, waiting...")
                 await self._interruptible_sleep(self._retry_interval)
                 continue

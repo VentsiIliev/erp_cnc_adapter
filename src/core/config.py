@@ -15,6 +15,7 @@ class Settings:
     cnc_health_interval: int = 10  # seconds between heartbeat checks
     job_monitor_poll_interval: float = 1.0  # seconds between job monitor status checks
     machine_number: str = "CNC1"  # Machine identifier (e.g., CNC1, CNC2, MILL1, etc.)
+    task_username: str = ""
     # job_done_report_url: str = "http://localhost:8002/actions/cnc_job_done.php"  # Local testing
     job_done_report_url: str = "https://pl.skycode.com/actions/cnc_job_done.php"  # Production URL (HTTPS)
     dev_mode: bool = False
@@ -33,9 +34,21 @@ class Settings:
                     self.machine_number = user_config["machine_number"]
                     logger.info("Loaded persisted machine_number: %s", self.machine_number)
 
+                if "dll_path" in user_config:
+                    self.dll_path = user_config["dll_path"]
+                    logger.info("Loaded persisted dll_path: %s", self.dll_path)
+
+                if "ini_path" in user_config:
+                    self.ini_path = user_config["ini_path"]
+                    logger.info("Loaded persisted ini_path: %s", self.ini_path)
+
                 if "job_done_report_url" in user_config:
                     self.job_done_report_url = user_config["job_done_report_url"]
                     logger.info("Loaded persisted job_done_report_url: %s", self.job_done_report_url)
+
+                if "task_username" in user_config:
+                    self.task_username = user_config["task_username"]
+                    logger.info("Loaded persisted task_username: %s", self.task_username)
 
                 if "base_dir" in user_config:
                     self.base_dir = user_config["base_dir"]

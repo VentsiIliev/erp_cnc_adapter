@@ -1,6 +1,16 @@
 @echo off
 cd /d "%~dp0.."
 
+set "VENV_PYTHON=.venv\Scripts\python.exe"
+set "VENV_PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+
+if not exist "%VENV_PYTHON%" (
+    echo ERROR: Virtual environment Python not found at %VENV_PYTHON%
+    echo Create the project venv and install requirements before building.
+    pause
+    exit /b 1
+)
+
 REM Get version from version.py - simple findstr approach
 for /f "tokens=3 delims= " %%a in ('findstr /B "VERSION" version.py') do (
     set VERSION=%%a
@@ -16,7 +26,7 @@ if "%VERSION%"=="" (
 )
 
 REM Stamp today's date into version.py
-python -c "import re, datetime; path='version.py'; s=open(path).read(); s=re.sub(r'BUILD_DATE\s*=\s*\"[^\"]*\"', 'BUILD_DATE = \"' + datetime.date.today().isoformat() + '\"', s); open(path,'w').write(s)"
+"%VENV_PYTHON%" -c "import re, datetime; path='version.py'; s=open(path).read(); s=re.sub(r'BUILD_DATE\s*=\s*\"[^\"]*\"', 'BUILD_DATE = \"' + datetime.date.today().isoformat() + '\"', s); open(path,'w').write(s)"
 
 echo ========================================
 echo  Building ERP-CNC Adapter v%VERSION%
@@ -25,7 +35,7 @@ echo.
 
 REM Step 0: Run tests first — abort on any failure
 echo Step 0: Running test suite...
-python -m pytest tests/ --timeout=15 -q
+"%VENV_PYTHON%" -m pytest tests/ --timeout=15 -q
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: Tests failed! Fix failing tests before building.
@@ -37,7 +47,7 @@ echo.
 
 REM Step 1: Build EXE
 echo Step 1: Building EXE with PyInstaller...
-.venv\Scripts\pyinstaller.exe util_scripts\erp-cnc-adapter.spec --clean
+"%VENV_PYINSTALLER%" util_scripts\erp-cnc-adapter.spec --clean
 
 if %errorlevel% neq 0 (
     echo ERROR: Build failed!

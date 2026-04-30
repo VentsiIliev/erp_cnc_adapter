@@ -104,6 +104,25 @@ class TestAppStateInit:
         state = AppState(settings)
         mock_atexit.assert_called_once_with(state.cnc_client.disconnect)
 
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    @patch("src.core.app_state.CncClient", side_effect=RuntimeError("Failed to load CNC DLL"))
+    def test_falls_back_to_unavailable_client_when_dll_load_fails(
+        self, _cnc_client, mock_atexit, _kill, _write
+    ):
+        from src.core.config import Settings
+        from src.cnc.unavailable_cnc_client import UnavailableCncClient
+
+        settings = Settings(
+            dll_path=r"C:\missing\cncapi.dll",
+            ini_path=r"C:\missing\cnc.ini",
+            dev_mode=False,
+        )
+        state = AppState(settings)
+        assert isinstance(state.cnc_client, UnavailableCncClient)
+        assert "Failed to load CNC DLL" in state.cnc_client.startup_error
+
 
 # ---------------------------------------------------------------------------
 # AppState lifecycle

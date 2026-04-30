@@ -5,7 +5,7 @@ import webbrowser
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QStackedWidget, QGraphicsDropShadowEffect,
+    QPushButton, QStackedWidget, QGraphicsDropShadowEffect, QMessageBox,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
@@ -207,6 +207,8 @@ class InstallerWindow(QWidget):
     def _on_finished(self, success: bool, message: str):
         if success:
             self._go_to(self.PAGE_COMPLETE)
+            if message and message != "Installation completed successfully!":
+                QMessageBox.warning(self, "CNC Unavailable", message)
         else:
             self.error_page.error_label.setText(message)
             self._go_to(self.PAGE_ERROR)

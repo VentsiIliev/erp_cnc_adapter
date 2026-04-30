@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from src.core.app_state import get_connection_manager
 from src.cnc.connection_manager import ConnectionManager
+from src.api.dashboard_page import render_dashboard
 from version import VERSION
 
 logger = logging.getLogger(__name__)
@@ -132,7 +133,7 @@ async def home(
 
     accept = request.headers.get("accept", "")
     if "text/html" in accept:
-        return HTMLResponse(content=_render_html(data), status_code=status_code)
+        return HTMLResponse(content=render_dashboard("overview"), status_code=200)
 
     return JSONResponse(content=data, status_code=status_code)
 

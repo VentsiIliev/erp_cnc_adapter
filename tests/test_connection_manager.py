@@ -52,6 +52,21 @@ class TestConnectionManagerRetry:
 
         await mgr.stop()
 
+    async def test_cnc_not_running_uses_startup_error_when_present(self, fake_client, settings):
+        fake_client._server_process_alive = False
+        fake_client.startup_error = "Failed to load CNC DLL"
+        settings.cnc_retry_interval = 0.1
+
+        mgr = ConnectionManager(fake_client, settings)
+        mgr.start()
+
+        await asyncio.sleep(0.3)
+
+        assert mgr.state == "cnc_not_running"
+        assert mgr.last_error == "Failed to load CNC DLL"
+
+        await mgr.stop()
+
     async def test_retries_on_connect_failure(self, fake_client, settings):
         """When connect() returns an error code, manager should retry."""
         fake_client._server_process_alive = True

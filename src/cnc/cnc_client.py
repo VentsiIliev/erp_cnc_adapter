@@ -313,14 +313,19 @@ class CncClient:
             return dll
         except OSError as exc:
             if "193" in str(exc):
+                message = (
+                    f"DLL architecture mismatch for '{self._settings.dll_path}'. "
+                    f"Python is {python_bits}-bit and the CNC DLL is incompatible."
+                )
                 logger.critical(
                     "DLL architecture mismatch — Python is %d-bit but DLL is 32-bit. "
                     "Install 32-bit Python to fix this.",
                     python_bits,
                 )
             else:
+                message = f"Failed to load CNC DLL '{self._settings.dll_path}': {exc}"
                 logger.critical("Failed to load DLL: %s", exc)
-            sys.exit(1)
+            raise RuntimeError(message) from exc
 
     def _configure_prototypes(self) -> None:
         logger.info("Checking available DLL functions...")

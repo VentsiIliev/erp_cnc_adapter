@@ -4,18 +4,27 @@ REM This creates a single EXE that contains everything
 
 cd /d "%~dp0.."
 
+set "VENV_PYTHON=.venv\Scripts\python.exe"
+
+if not exist "%VENV_PYTHON%" (
+    echo ERROR: Virtual environment Python not found at %VENV_PYTHON%
+    echo Create the project venv and install requirements before building the installer.
+    pause
+    exit /b 1
+)
+
 echo ========================================
 echo  Building Self-Contained Installer
 echo ========================================
 echo.
 
 REM Check PyQt5 is installed (build dependency — has 32-bit Windows wheels)
-python -c "import PyQt5" >nul 2>&1
+"%VENV_PYTHON%" -c "import PyQt5" >nul 2>&1
 if %errorlevel% neq 0 (
     echo PyQt5 not found. Installing build dependency...
-    python -m pip install --only-binary :all: PyQt5
+    "%VENV_PYTHON%" -m pip install --only-binary :all: PyQt5
 )
-python -c "import PyQt5" >nul 2>&1
+"%VENV_PYTHON%" -c "import PyQt5" >nul 2>&1
 if %errorlevel% neq 0 (
     echo ERROR: Failed to install PyQt5.
     pause
@@ -64,7 +73,7 @@ if exist "resources\logo.ico" (
 
 REM Build the installer using PyInstaller
 REM PyQt6 needs explicit hidden imports when frozen
-python -m PyInstaller --clean --noconfirm ^
+"%VENV_PYTHON%" -m PyInstaller --clean --noconfirm ^
     --name "ERP-CNC-Adapter-Setup-v%VERSION%" ^
     --onefile ^
     --windowed ^

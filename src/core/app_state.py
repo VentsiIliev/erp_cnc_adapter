@@ -12,6 +12,7 @@ from src.cnc.cnc_client import CncClient
 from src.cnc.cnc_client_protocol import CncClientProtocol
 from src.cnc.connection_manager import ConnectionManager
 from src.cnc.mock_cnc_client import MockCncClient
+from src.cnc.unavailable_cnc_client import UnavailableCncClient
 from src.cnc.job_monitor import JobMonitor
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,11 @@ class AppState:
             logger.warning("DEV_MODE enabled — using mock CNC client")
             self.cnc_client: CncClientProtocol = MockCncClient()
         else:
-            self.cnc_client: CncClientProtocol = CncClient(settings)
+            try:
+                self.cnc_client = CncClient(settings)
+            except Exception as exc:
+                logger.error("CNC client initialization failed, starting in degraded mode: %s", exc)
+                self.cnc_client = UnavailableCncClient(str(exc))
         self.connection_manager = ConnectionManager(self.cnc_client, settings)
 
         # Initialize job monitor (runs continuously to detect job starts/finishes)

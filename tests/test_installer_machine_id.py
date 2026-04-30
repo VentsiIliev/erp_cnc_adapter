@@ -118,6 +118,22 @@ class TestInstallWorkerConfigWrite:
         assert result["job_done_report_url"] == "http://example.com/done"
         assert result["base_dir"] == r"\\server\share"
 
+    def test_merges_task_username_into_config_json(self, tmp_path):
+        """Persists the scheduled-task username chosen during install."""
+        config_path = tmp_path / "config.json"
+        existing = {"machine_number": "CNC1"}
+        config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+        config_data = json.loads(config_path.read_text(encoding="utf-8"))
+        config_data["task_username"] = r"DOMAIN\adapter"
+        config_path.write_text(
+            json.dumps(config_data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+        result = json.loads(config_path.read_text(encoding="utf-8"))
+        assert result["machine_number"] == "CNC1"
+        assert result["task_username"] == r"DOMAIN\adapter"
+
     def test_overwrites_existing_machine_number(self, tmp_path):
         """Replaces old machine_number value."""
         config_path = tmp_path / "config.json"
@@ -152,6 +168,33 @@ class TestInstallWorkerConfigWrite:
 
         result = json.loads(config_path.read_text(encoding="utf-8"))
         assert result["machine_number"] == "CNC5"
+
+    def test_post_install_warning_when_dll_missing(self):
+        from src.installer.worker import InstallWorker
+
+        warning = InstallWorker._post_install_warning({
+            "dll_path": r"C:\missing\cncapi.dll",
+            "ini_path": r"C:\missing\cnc.ini",
+        })
+
+        assert "CNC runtime files are unavailable" in warning
+        assert "cncapi.dll" in warning
+        assert "cnc.ini" in warning
+
+    def test_post_install_warning_empty_when_runtime_files_exist(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        dll_path = tmp_path / "cncapi.dll"
+        ini_path = tmp_path / "cnc.ini"
+        dll_path.write_text("dll", encoding="utf-8")
+        ini_path.write_text("ini", encoding="utf-8")
+
+        warning = InstallWorker._post_install_warning({
+            "dll_path": str(dll_path),
+            "ini_path": str(ini_path),
+        })
+
+        assert warning == ""
 
 
 # ---------------------------------------------------------------------------
@@ -231,5 +274,16 @@ class TestWindowPassesMachineNumber:
         MockWorker.assert_called_once_with(
             r"C:\test\install", "CNC4", r"DOMAIN\adapter", "secret"
         )
+        window.close()
+        window.deleteLater()
+
+    @patch("src.installer.ui.window.QMessageBox.warning")
+    def test_finished_success_shows_warning_dialog_for_missing_cnc(self, mock_warning):
+        from src.installer.ui.window import InstallerWindow
+
+        window = InstallerWindow()
+        window._on_finished(True, "Installation finished, but CNC runtime files are unavailable.")
+
+        mock_warning.assert_called_once()
         window.close()
         window.deleteLater()

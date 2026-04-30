@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ERP-CNC Operations Dashboard</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <style>
+        :root {
+            --bg: #eef2f6;
+            --panel: rgba(255, 255, 255, 0.9);
+            --panel-strong: #ffffff;
+            --line: rgba(15, 23, 42, 0.1);
+            --text: #142033;
+            --muted: #64748b;
+            --accent: #0f766e;
+            --accent-strong: #115e59;
+            --info: #2563eb;
+            --success: #15803d;
+            --warning: #b45309;
+            --danger: #b91c1c;
+            --shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
+            --radius: 24px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 30%),
+                radial-gradient(circle at top right, rgba(37, 99, 235, 0.18), transparent 28%),
+                linear-gradient(180deg, #f7fafc 0%, #e8eef5 100%);
+        }
+
+        .shell {
+            display: grid;
+            grid-template-columns: 290px minmax(0, 1fr);
+            gap: 24px;
+            max-width: 1680px;
+            margin: 0 auto;
+            padding: 28px;
+        }
+
+        .sidebar,
+        .content-card,
+        .panel,
+        .metric,
+        .table-card,
+        .log-card {
+            background: var(--panel);
+            backdrop-filter: blur(14px);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 24px;
+            align-self: start;
+            border-radius: var(--radius);
+            padding: 24px;
+        }
+
+        .brand {
+            margin-bottom: 20px;
+        }
+
+        .eyebrow {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 12px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 28px;
+            line-height: 1.05;
+        }
+
+        .brand p,
+        .section-copy,
+        .muted,
+        .nav-meta,
+        .helper {
+            color: var(--muted);
+        }
+
+        .brand p {
+            margin: 10px 0 0;
+            line-height: 1.5;
+        }
+
+        .nav {
+            display: grid;
+            gap: 10px;
+            margin: 24px 0;
+        }
+
+        .nav button {
+            width: 100%;
+            text-align: left;
+            border: 1px solid transparent;
+            background: #f8fafc;
+            color: var(--text);
+            border-radius: 18px;
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: 0.2s ease;
+        }
+
+        .nav button:hover,
+        .nav button.active {
+            background: linear-gradient(135deg, #0f766e, #1d4ed8);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+
+        .nav-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .nav-meta {
+            font-size: 12px;
+        }
+
+        .nav button.active .nav-meta,
+        .nav button:hover .nav-meta {
+            color: rgba(255, 255, 255, 0.82);
+        }
+
+        .sidebar-footer {
+            border-top: 1px solid var(--line);
+            padding-top: 18px;
+            font-size: 13px;
+        }
+
+        .main {
+            display: grid;
+            gap: 20px;
+        }
+
+        .content-card {
+            border-radius: 30px;
+            padding: 28px;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.9fr);
+            gap: 20px;
+            align-items: stretch;
+        }
+
+        .hero-panel {
+            background: linear-gradient(145deg, #0f172a 0%, #16324f 58%, #0f766e 100%);
+            color: #fff;
+            border-radius: 26px;
+            padding: 26px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-panel::after {
+            content: "";
+            position: absolute;
+            inset: auto -10% -35% auto;
+            width: 260px;
+            height: 260px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .hero-panel h2,
+        .section-header h2,
+        .panel h3,
+        .table-card h3,
+        .log-card h3 {
+            margin: 0;
+        }
+
+        .hero-panel p {
+            margin: 10px 0 18px;
+            max-width: 720px;
+            color: rgba(255, 255, 255, 0.82);
+            line-height: 1.55;
+        }
+
+        .hero-meta,
+        .metrics,
+        .detail-grid,
+        .split-grid,
+        .ops-grid,
+        .maintenance-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .hero-meta {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .hero-chip {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
+            padding: 14px 16px;
+        }
+
+        .hero-chip-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            opacity: 0.75;
+        }
+
+        .hero-chip-value {
+            margin-top: 8px;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .hero-actions,
+        .inline-actions,
+        .form-actions,
+        .update-actions,
+        .test-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .btn,
+        button,
+        input[type="file"]::file-selector-button {
+            font: inherit;
+        }
+
+        .btn,
+        .form-actions button,
+        .update-actions button,
+        .test-actions button,
+        .inline-actions button {
+            border: none;
+            border-radius: 14px;
+            padding: 12px 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.2s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #1d4ed8);
+            color: #fff;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: var(--text);
+        }
+
+        .btn-danger {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        .btn:hover,
+        .form-actions button:hover,
+        .update-actions button:hover,
+        .test-actions button:hover,
+        .inline-actions button:hover {
+            transform: translateY(-1px);
+        }
+
+        .status-stack {
+            display: grid;
+            gap: 14px;
+        }
+
+        .status-card {
+            background: var(--panel-strong);
+            border-radius: 22px;
+            padding: 22px;
+            border: 1px solid var(--line);
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: currentColor;
+            box-shadow: 0 0 0 6px rgba(21, 128, 61, 0.12);
+        }
+
+        .status-pill.healthy {
+            background: #dcfce7;
+            color: var(--success);
+        }
+
+        .status-pill.degraded {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        .status-pill.pending {
+            background: #fef3c7;
+            color: var(--warning);
+        }
+
+        .metrics {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .metric {
+            border-radius: 22px;
+            padding: 20px;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .metric-value {
+            margin-top: 12px;
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .metric-note {
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            gap: 20px;
+            margin-bottom: 16px;
+        }
+
+        .section-copy {
+            margin-top: 6px;
+            line-height: 1.55;
+        }
+
+        .split-grid {
+            grid-template-columns: 1.2fr 0.8fr;
+        }
+
+        .ops-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .panel,
+        .table-card,
+        .log-card {
+            border-radius: 24px;
+            padding: 22px;
+        }
+
+        .runtime-alert {
+            display: none;
+            margin-top: 18px;
+            padding: 18px 20px;
+            border-radius: 20px;
+            border: 1px solid #fecaca;
+            background: linear-gradient(135deg, #fff1f2, #fee2e2);
+            color: #7f1d1d;
+        }
+
+        .runtime-alert.visible {
+            display: block;
+        }
+
+        .runtime-alert strong {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 15px;
+        }
+
+        .detail-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .detail-item {
+            padding: 14px 16px;
+            background: #f8fafc;
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+        }
+
+        .detail-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .detail-value {
+            font-size: 16px;
+            font-weight: 700;
+            word-break: break-word;
+        }
+
+        .progress-shell {
+            margin-top: 14px;
+        }
+
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .progress-track {
+            height: 14px;
+            border-radius: 999px;
+            background: #dbe5ef;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #0f766e, #1d4ed8);
+            transition: width 0.4s ease;
+        }
+
+        .kv-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 14px;
+        }
+
+        .kv-table td {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+        }
+
+        .kv-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .kv-table td:first-child {
+            color: var(--muted);
+            width: 42%;
+        }
+
+        .maintenance-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .field {
+            display: grid;
+            gap: 8px;
+        }
+
+        .field.full {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="file"] {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: var(--text);
+            border-radius: 14px;
+            padding: 12px 14px;
+        }
+
+        input:focus {
+            outline: 2px solid rgba(37, 99, 235, 0.2);
+            border-color: #60a5fa;
+        }
+
+        .message {
+            display: none;
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            font-size: 14px;
+        }
+
+        .message.success {
+            display: block;
+            background: #dcfce7;
+            color: var(--success);
+        }
+
+        .message.error {
+            display: block;
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        .message.info {
+            display: block;
+            background: #dbeafe;
+            color: var(--info);
+        }
+
+        .backup-list,
+        .log {
+            margin-top: 14px;
+            background: #0f172a;
+            color: #d7e3f4;
+            border-radius: 18px;
+            padding: 16px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.55;
+            max-height: 320px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .backup-list ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+        }
+
+        .log-entry:last-child {
+            margin-bottom: 0;
+        }
+
+        .log-success { color: #86efac; }
+        .log-error { color: #fca5a5; }
+        .log-warning { color: #fcd34d; }
+        .log-info { color: #93c5fd; }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 1220px) {
+            .shell,
+            .hero,
+            .split-grid,
+            .maintenance-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .metrics,
+            .ops-grid,
+            .form-grid,
+            .detail-grid,
+            .hero-meta {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .sidebar {
+                position: static;
+            }
+        }
+
+        @media (max-width: 760px) {
+            .shell {
+                padding: 16px;
+            }
+
+            .content-card,
+            .sidebar {
+                padding: 18px;
+                border-radius: 22px;
+            }
+
+            .metrics,
+            .ops-grid,
+            .form-grid,
+            .detail-grid,
+            .hero-meta {
+                grid-template-columns: 1fr;
+            }
+
+            .section-header,
+            .status-row {
+                align-items: start;
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="eyebrow">ERP-CNC Adapter</div>
+                <h1>Operations Dashboard</h1>
+                <p>Single control surface for connection health, live job telemetry, configuration, updates, and service testing.</p>
+            </div>
+
+            <nav class="nav" id="nav">
+                <button type="button" data-view="overview">
+                    <div class="nav-title">Overview</div>
+                    <div class="nav-meta">Connection status and operator controls</div>
+                </button>
+                <button type="button" data-view="monitor">
+                    <div class="nav-title">Live Monitor</div>
+                    <div class="nav-meta">Realtime job state, progress, and reports</div>
+                </button>
+                <button type="button" data-view="config">
+                    <div class="nav-title">Configuration</div>
+                    <div class="nav-meta">Machine identity and timing settings</div>
+                </button>
+                <button type="button" data-view="maintenance">
+                    <div class="nav-title">Maintenance</div>
+                    <div class="nav-meta">Update package upload and rollback</div>
+                </button>
+                <button type="button" data-view="testing">
+                    <div class="nav-title">Testing</div>
+                    <div class="nav-meta">Manual job load and execution checks</div>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div><strong>Version</strong> <span id="sidebarVersion">v__VERSION__</span></div>
+                <div class="helper" style="margin-top: 8px;">JSON API: <a href="/api/health">/api/health</a></div>
+                <div class="helper" style="margin-top: 6px;">Docs: <a href="/docs">/docs</a></div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <section class="content-card">
+                <div class="hero">
+                    <div class="hero-panel">
+                        <div class="eyebrow">Plant Visibility</div>
+                        <h2 id="heroTitle">Machine readiness at a glance</h2>
+                        <p id="heroCopy">The dashboard tracks adapter connectivity, current CNC execution state, monitor activity, and maintenance actions without switching pages.</p>
+                        <div class="hero-meta">
+                            <div class="hero-chip">
+                                <div class="hero-chip-label">Adapter Version</div>
+                                <div class="hero-chip-value">v__VERSION__</div>
+                            </div>
+                            <div class="hero-chip">
+                                <div class="hero-chip-label">Last Refresh</div>
+                                <div class="hero-chip-value" id="lastRefresh">Starting...</div>
+                            </div>
+                            <div class="hero-chip">
+                                <div class="hero-chip-label">Current View</div>
+                                <div class="hero-chip-value" id="currentViewLabel">Overview</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="status-stack">
+                        <div class="status-card">
+                            <div class="status-row">
+                                <div>
+                                    <div class="eyebrow" style="margin-bottom: 6px;">Connection</div>
+                                    <h3 id="connectionHeadline">Checking CNC connection</h3>
+                                    <div class="muted" id="connectionSubline">Polling service state</div>
+                                </div>
+                                <div class="status-pill pending" id="statusPill"><span class="dot"></span><span id="statusPillText">Loading</span></div>
+                            </div>
+                            <table class="kv-table">
+                                <tr><td>CNC state</td><td id="healthState">Unknown</td></tr>
+                                <tr><td>Uptime</td><td id="healthUptime">--</td></tr>
+                                <tr><td>Retries</td><td id="healthRetries">0</td></tr>
+                                <tr><td>Last error</td><td id="healthError">None</td></tr>
+                            </table>
+                            <div class="hero-actions" style="margin-top: 16px;">
+                                <button type="button" class="btn btn-primary" id="startCncBtn">Start CNC</button>
+                                <button type="button" class="btn btn-danger" id="stopCncBtn">Stop CNC</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="runtime-alert" id="runtimeAlert">
+                    <strong>CNC unavailable</strong>
+                    <div id="runtimeAlertText">The adapter is running, but the CNC interface is not available.</div>
+                </div>
+            </section>
+
+            <section class="content-card" id="overviewSection" data-view="overview">
+                <div class="section-header">
+                    <div>
+                        <h2>Overview</h2>
+                        <div class="section-copy">Operational summary for the adapter, machine state, running job, and reporting pipeline.</div>
+                    </div>
+                </div>
+                <div class="metrics">
+                    <article class="metric">
+                        <div class="metric-label">Adapter Health</div>
+                        <div class="metric-value" id="metricHealth">Loading</div>
+                        <div class="metric-note" id="metricHealthNote">Waiting for service response</div>
+                    </article>
+                    <article class="metric">
+                        <div class="metric-label">Monitor</div>
+                        <div class="metric-value" id="metricMonitor">--</div>
+                        <div class="metric-note" id="metricMonitorNote">Realtime tracking status</div>
+                    </article>
+                    <article class="metric">
+                        <div class="metric-label">Current Job</div>
+                        <div class="metric-value" id="metricJob">None</div>
+                        <div class="metric-note" id="metricJobNote">No active program</div>
+                    </article>
+                    <article class="metric">
+                        <div class="metric-label">Progress</div>
+                        <div class="metric-value" id="metricProgress">0%</div>
+                        <div class="metric-note" id="metricProgressNote">0.0 / 0.0 mm</div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="content-card" id="monitorSection" data-view="monitor">
+                <div class="section-header">
+                    <div>
+                        <h2>Live Monitor</h2>
+                        <div class="section-copy">Realtime job status, execution progress, completion reporting, and live adapter logs.</div>
+                    </div>
+                </div>
+
+                <div class="ops-grid">
+                    <article class="metric">
+                        <div class="metric-label">Job Monitor</div>
+                        <div class="metric-value" id="monitorStatus">--</div>
+                        <div class="metric-note">Persistent completion watcher</div>
+                    </article>
+                    <article class="metric">
+                        <div class="metric-label">CNC State</div>
+                        <div class="metric-value" id="monitorCncState">--</div>
+                        <div class="metric-note">Current interpreter state</div>
+                    </article>
+                    <article class="metric">
+                        <div class="metric-label">Last Report</div>
+                        <div class="metric-value" id="reportStatus">None</div>
+                        <div class="metric-note" id="reportStatusNote">No completion report sent yet</div>
+                    </article>
+                    <article class="metric">
+                        <div class="metric-label">Runtime</div>
+                        <div class="metric-value" id="actualTime">0s</div>
+                        <div class="metric-note" id="remainingTimeNote">Remaining 0s</div>
+                    </article>
+                </div>
+
+                <div class="split-grid" style="margin-top: 18px;">
+                    <div class="panel">
+                        <h3>Job Progress</h3>
+                        <div class="progress-shell">
+                            <div class="progress-meta">
+                                <span id="progressLabel">Current program progress</span>
+                                <span id="progressText">0%</span>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill" id="progressBar"></div>
+                            </div>
+                        </div>
+                        <div class="detail-grid" style="margin-top: 18px;">
+                            <div class="detail-item">
+                                <div class="detail-label">Current Job</div>
+                                <div class="detail-value" id="currentJob">None</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Repeat Cycle</div>
+                                <div class="detail-value" id="repeatInfo">0 / 0</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Distance</div>
+                                <div class="detail-value" id="progressMm">0.0 / 0.0 mm</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Estimated Time</div>
+                                <div class="detail-value" id="estimatedTime">0s</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-card">
+                        <h3>Last Completion Report</h3>
+                        <table class="kv-table">
+                            <tr><td>Status code</td><td id="reportStatusCode">--</td></tr>
+                            <tr><td>Timestamp</td><td id="reportTimestamp">--</td></tr>
+                            <tr><td>Endpoint</td><td id="reportUrl">--</td></tr>
+                            <tr><td>Response</td><td id="reportResponse">No response captured</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="split-grid" style="margin-top: 18px;">
+                    <div class="log-card">
+                        <h3>Adapter Logs</h3>
+                        <div class="log" id="serverLog">Loading adapter logs...</div>
+                    </div>
+                    <div class="log-card">
+                        <h3>Monitor Events</h3>
+                        <div class="log" id="monitorEventLog">Starting monitor log...</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="content-card" id="configSection" data-view="config">
+                <div class="section-header">
+                    <div>
+                        <h2>Configuration</h2>
+                        <div class="section-copy">Edit the active machine identity and adapter timing values. Changes are applied immediately and persisted to disk.</div>
+                    </div>
+                </div>
+
+                <form id="configForm">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="machineNumber">Machine Number</label>
+                            <input type="text" id="machineNumber" name="machine_number" placeholder="CNC1">
+                            <div class="helper">Current: <span id="currentMachine">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="reportUrlInput">Job Done Report URL</label>
+                            <input type="text" id="reportUrlInput" name="job_done_report_url" placeholder="http://server/actions/cnc_job_done.php">
+                            <div class="helper">Current: <span id="currentReportUrl">Loading...</span></div>
+                        </div>
+                        <div class="field full">
+                            <label for="baseDir">Base Directory</label>
+                            <input type="text" id="baseDir" name="base_dir" placeholder="\\server\Production\CNC\Mills">
+                            <div class="helper">Current: <span id="currentBaseDir">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="dllPath">CNC DLL Path</label>
+                            <input type="text" id="dllPath" name="dll_path" placeholder="C:\CNC4.03\cncapi.dll">
+                            <div class="helper">Current: <span id="currentDllPath">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="iniPath">CNC INI Path</label>
+                            <input type="text" id="iniPath" name="ini_path" placeholder="C:\CNC4.03\cnc.ini">
+                            <div class="helper">Current: <span id="currentIniPath">Loading...</span></div>
+                        </div>
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="runAsUserToggle">
+                                Run scheduled startup tasks as a Windows user
+                            </label>
+                            <div class="helper" id="currentLaunchMode">Current: Loading...</div>
+                        </div>
+                        <div class="field">
+                            <label for="taskUsername">Task Username</label>
+                            <input type="text" id="taskUsername" name="task_username" placeholder="DOMAIN\username or .\username">
+                            <div class="helper">Current: <span id="currentTaskUsername">SYSTEM</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="taskPassword">Task Password</label>
+                            <input type="password" id="taskPassword" name="task_password" placeholder="Enter password to set or change">
+                            <div class="helper">Current: <span id="currentPasswordStatus">Not required when running as SYSTEM</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="retryInterval">CNC Retry Interval</label>
+                            <input type="number" id="retryInterval" name="cnc_retry_interval" min="1" max="300" step="1" placeholder="5">
+                            <div class="helper">Current: <span id="currentRetryInterval">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="healthInterval">CNC Health Interval</label>
+                            <input type="number" id="healthInterval" name="cnc_health_interval" min="1" max="300" step="1" placeholder="10">
+                            <div class="helper">Current: <span id="currentHealthInterval">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="pollInterval">Job Monitor Poll Interval</label>
+                            <input type="number" id="pollInterval" name="job_monitor_poll_interval" min="0.1" max="60" step="0.1" placeholder="1.0">
+                            <div class="helper">Current: <span id="currentPollInterval">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label>Network Bind</label>
+                            <div class="detail-item">
+                                <div class="detail-value"><span id="configHost">--</span>:<span id="configPort">--</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions" style="margin-top: 18px;">
+                        <button type="submit" class="btn-primary" id="saveConfigBtn">Save Configuration</button>
+                        <button type="button" class="btn-primary" id="saveAndRestartConfigBtn">Apply Credentials and Restart Task</button>
+                        <button type="button" class="btn-secondary" id="resetConfigBtn">Reset Form</button>
+                    </div>
+                    <div id="configMessage" class="message"></div>
+                </form>
+            </section>
+
+            <section class="content-card" id="maintenanceSection" data-view="maintenance">
+                <div class="section-header">
+                    <div>
+                        <h2>Maintenance</h2>
+                        <div class="section-copy">Upload a replacement adapter executable or restore the latest automatic backup.</div>
+                    </div>
+                </div>
+
+                <div class="maintenance-grid">
+                    <div class="panel">
+                        <h3>Upload Update</h3>
+                        <p class="section-copy">The service restarts after the new executable is staged and the updater is spawned.</p>
+                        <form id="updateForm">
+                            <div class="field">
+                                <label for="exeFile">Executable File</label>
+                                <input type="file" id="exeFile" accept=".exe" required>
+                                <div class="helper" id="selectedFileName">No file selected</div>
+                            </div>
+                            <div class="update-actions" style="margin-top: 16px;">
+                                <button type="submit" class="btn-primary" id="updateBtn" disabled>Upload and Update</button>
+                            </div>
+                        </form>
+                        <div id="updateMessage" class="message"></div>
+                    </div>
+
+                    <div class="panel">
+                        <h3>Rollback</h3>
+                        <p class="section-copy">Restore the latest backup package if a deployment needs to be reversed.</p>
+                        <div class="update-actions" style="margin-top: 16px;">
+                            <button type="button" class="btn-danger" id="rollbackBtn">Rollback to Previous Version</button>
+                            <button type="button" class="btn-secondary" id="refreshBackupsBtn">Refresh Backups</button>
+                        </div>
+                        <div id="rollbackMessage" class="message"></div>
+                        <div class="backup-list" id="backupList">Loading backups...</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="content-card" id="testingSection" data-view="testing">
+                <div class="section-header">
+                    <div>
+                        <h2>Testing</h2>
+                        <div class="section-copy">Manual operator test flow for loading a reference job and starting execution while watching monitor events.</div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="test-actions">
+                        <button type="button" class="btn-primary" id="loadJobBtn">Load Reference Job</button>
+                        <button type="button" class="btn-secondary" id="startJobBtn" disabled>Start Loaded Job</button>
+                    </div>
+                    <div class="detail-grid" style="margin-top: 18px;">
+                        <div class="detail-item">
+                            <div class="detail-label">Reference Job Number</div>
+                            <div class="detail-value">000000000000</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Reference Step</div>
+                            <div class="detail-value">0</div>
+                        </div>
+                    </div>
+                    <div class="log" id="testLog" style="margin-top: 18px;">Ready for manual verification.</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const DASHBOARD_VERSION = "__VERSION__";
+        const INITIAL_VIEW = "__INITIAL_VIEW__";
+        const TEST_JOB_NUMBER = "000000000000";
+        const TEST_STEP = "0";
+        const TEST_QTY = 1;
+        const state = {
+            config: null,
+            lastState: null,
+            lastJobName: "",
+            wasRunning: false,
+            jobFinishedShown: false,
+            monitorEvents: ["Monitor stream initialized."],
+            testEvents: ["Ready for manual verification."],
+        };
+
+        const viewLabels = {
+            overview: "Overview",
+            monitor: "Live Monitor",
+            config: "Configuration",
+            maintenance: "Maintenance",
+            testing: "Testing",
+        };
+
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function formatTime(seconds) {
+            const safe = Number(seconds) || 0;
+            if (safe < 60) return safe.toFixed(1).replace(".0", "") + "s";
+            if (safe < 3600) return Math.floor(safe / 60) + "m " + Math.floor(safe % 60) + "s";
+            return Math.floor(safe / 3600) + "h " + Math.floor((safe % 3600) / 60) + "m";
+        }
+
+        function formatTimestamp(value) {
+            if (!value) return "--";
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return String(value);
+            return date.toLocaleString();
+        }
+
+        function setMessage(id, type, text) {
+            const element = document.getElementById(id);
+            element.className = "message " + type;
+            element.textContent = text;
+            if (!text) {
+                element.className = "message";
+                element.style.display = "none";
+                return;
+            }
+            element.style.display = "block";
+        }
+
+        function addEvent(target, message, type) {
+            const list = target === "test" ? state.testEvents : state.monitorEvents;
+            const stamp = new Date().toLocaleTimeString();
+            list.push("[" + stamp + "] " + message + (type ? " [" + type + "]" : ""));
+            while (list.length > 120) list.shift();
+            renderEventLog(target);
+        }
+
+        function renderEventLog(target) {
+            const element = document.getElementById(target === "test" ? "testLog" : "monitorEventLog");
+            const list = target === "test" ? state.testEvents : state.monitorEvents;
+            element.innerHTML = list.map((entry) => {
+                const tone = entry.includes("[error]") ? "log-error"
+                    : entry.includes("[success]") ? "log-success"
+                    : entry.includes("[warning]") ? "log-warning"
+                    : "log-info";
+                return '<div class="log-entry ' + tone + '">' + escapeHtml(entry) + "</div>";
+            }).join("");
+            element.scrollTop = element.scrollHeight;
+        }
+
+        function setActiveView(view) {
+            const normalized = viewLabels[view] ? view : "overview";
+            document.querySelectorAll("#nav button").forEach((button) => {
+                button.classList.toggle("active", button.dataset.view === normalized);
+            });
+            document.getElementById("currentViewLabel").textContent = viewLabels[normalized];
+            const target = document.querySelector('[data-view="' + normalized + '"]');
+            if (target) {
+                target.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+            const url = new URL(window.location.href);
+            url.searchParams.set("view", normalized);
+            window.history.replaceState({}, "", url);
+        }
+
+        function setStatusPill(kind, label) {
+            const pill = document.getElementById("statusPill");
+            pill.className = "status-pill " + kind;
+            document.getElementById("statusPillText").textContent = label;
+        }
+
+        function shortJobName(path) {
+            if (!path) return "None";
+            const parts = String(path).split(/[/\\\\]/);
+            return parts[parts.length - 1] || path;
+        }
+
+        async function fetchJson(url, options) {
+            const response = await fetch(url, options);
+            const contentType = response.headers.get("content-type") || "";
+            const body = contentType.includes("application/json") ? await response.json() : await response.text();
+            return { response, body };
+        }
+
+        function updateHealthCard(data) {
+            const cnc = data.cnc || {};
+            const connected = Boolean(cnc.connected);
+            const stateText = cnc.state || "unknown";
+            const lastError = cnc.last_error || "";
+            document.getElementById("connectionHeadline").textContent = connected ? "CNC connection established" : "CNC connection degraded";
+            document.getElementById("connectionSubline").textContent = connected
+                ? "The adapter is online and communicating with the machine."
+                : "The adapter is retrying or waiting for the CNC service.";
+            document.getElementById("healthState").textContent = stateText;
+            document.getElementById("healthUptime").textContent = cnc.uptime_seconds == null ? "--" : formatTime(cnc.uptime_seconds);
+            document.getElementById("healthRetries").textContent = String(cnc.retry_count || 0);
+            document.getElementById("healthError").textContent = lastError || "None";
+            document.getElementById("metricHealth").textContent = connected ? "Healthy" : "Degraded";
+            document.getElementById("metricHealthNote").textContent = stateText;
+            setStatusPill(connected ? "healthy" : (stateText === "cnc_not_running" ? "pending" : "degraded"), connected ? "Connected" : (stateText === "cnc_not_running" ? "CNC Offline" : "Disconnected"));
+
+            const runtimeAlert = document.getElementById("runtimeAlert");
+            const runtimeAlertText = document.getElementById("runtimeAlertText");
+            const dllUnavailable = !connected && /dll|cnc dll|dynlib/i.test(lastError);
+            if (dllUnavailable) {
+                runtimeAlert.classList.add("visible");
+                runtimeAlertText.textContent = lastError + " Update the CNC DLL path and INI path in Configuration, then apply and restart the task.";
+            } else if (!connected && lastError) {
+                runtimeAlert.classList.add("visible");
+                runtimeAlertText.textContent = lastError;
+            } else {
+                runtimeAlert.classList.remove("visible");
+                runtimeAlertText.textContent = "The adapter is running, but the CNC interface is not available.";
+            }
+
+            document.getElementById("startCncBtn").disabled = stateText !== "cnc_not_running";
+            document.getElementById("stopCncBtn").disabled = !connected;
+        }
+
+        function updateMonitorCards(jobData, monitorData) {
+            const progress = Math.max(0, Math.min(100, Number(jobData.jobProgressPercentage || 0)));
+            const jobName = shortJobName(jobData.jobName || monitorData.current_job || "");
+            const stateText = jobData.stateText || monitorData.stateText || "Unknown";
+
+            document.getElementById("monitorStatus").textContent = monitorData.monitoring ? "Running" : "Stopped";
+            document.getElementById("metricMonitor").textContent = monitorData.monitoring ? "Running" : "Stopped";
+            document.getElementById("metricMonitorNote").textContent = monitorData.monitoring ? "Persistent watcher active" : "No active monitor session";
+            document.getElementById("monitorCncState").textContent = stateText;
+            document.getElementById("currentJob").textContent = jobName;
+            document.getElementById("metricJob").textContent = jobName;
+            document.getElementById("metricJobNote").textContent = stateText;
+            document.getElementById("metricProgress").textContent = progress.toFixed(1) + "%";
+            document.getElementById("metricProgressNote").textContent = (Number(jobData.jobProgressMm || 0)).toFixed(1) + " / " + (Number(jobData.totalJobLengthMm || 0)).toFixed(1) + " mm";
+
+            document.getElementById("progressBar").style.width = progress + "%";
+            document.getElementById("progressText").textContent = progress.toFixed(1) + "%";
+            document.getElementById("progressMm").textContent = (Number(jobData.jobProgressMm || 0)).toFixed(1) + " / " + (Number(jobData.totalJobLengthMm || 0)).toFixed(1) + " mm";
+            document.getElementById("progressLabel").textContent = stateText;
+            document.getElementById("actualTime").textContent = formatTime(jobData.jobActualRunningTimeSeconds || 0);
+            document.getElementById("estimatedTime").textContent = formatTime(jobData.jobEstimatedTimeSeconds || 0);
+            document.getElementById("remainingTimeNote").textContent = "Remaining " + formatTime(jobData.jobRemainingRunningTimeSeconds || 0);
+            document.getElementById("repeatInfo").textContent = String(jobData.currentRepeat || 0) + " / " + String(jobData.nrOfJobRepeatsSet || 0);
+
+            const report = monitorData.last_report_status;
+            if (report) {
+                document.getElementById("reportStatus").textContent = report.success ? "Success" : "Failed";
+                document.getElementById("reportStatusNote").textContent = report.success ? "Completion report delivered" : (report.error || "Completion report failed");
+                document.getElementById("reportStatusCode").textContent = report.status_code || "--";
+                document.getElementById("reportTimestamp").textContent = formatTimestamp(report.timestamp);
+                document.getElementById("reportUrl").textContent = report.url || "--";
+                document.getElementById("reportResponse").textContent = report.response_content || report.error || "No response captured";
+            } else {
+                document.getElementById("reportStatus").textContent = "None";
+                document.getElementById("reportStatusNote").textContent = "No completion report sent yet";
+                document.getElementById("reportStatusCode").textContent = "--";
+                document.getElementById("reportTimestamp").textContent = "--";
+                document.getElementById("reportUrl").textContent = "--";
+                document.getElementById("reportResponse").textContent = "No response captured";
+            }
+
+            if (jobName !== "None" && jobName !== state.lastJobName) {
+                addEvent("monitor", "Loaded job detected: " + jobName, "info");
+                state.lastJobName = jobName;
+                state.jobFinishedShown = false;
+            }
+
+            if (jobData.state === 6 && !state.wasRunning) {
+                state.wasRunning = true;
+                state.jobFinishedShown = false;
+                addEvent("monitor", "Job execution started: " + jobName, "success");
+            } else if (state.wasRunning && jobData.state === 2 && !state.jobFinishedShown) {
+                state.wasRunning = false;
+                state.jobFinishedShown = true;
+                addEvent("monitor", "Job completed: " + jobName, "success");
+            } else if (state.wasRunning && (jobData.state === 3 || jobData.state === 5)) {
+                state.wasRunning = false;
+                state.jobFinishedShown = true;
+                addEvent("monitor", "Job ended with machine state " + stateText, "error");
+            }
+
+            if (state.lastState !== null && state.lastState !== jobData.state) {
+                addEvent("monitor", "State changed to " + stateText, "warning");
+            }
+            state.lastState = jobData.state;
+        }
+
+        async function refreshLogs() {
+            try {
+                const { body } = await fetchJson("/api/logs?lines=120");
+                const lines = Array.isArray(body.lines) ? body.lines : [];
+                document.getElementById("serverLog").innerHTML = lines.length
+                    ? lines.map((line) => '<div class="log-entry">' + escapeHtml(line) + "</div>").join("")
+                    : "No adapter logs available.";
+            } catch (error) {
+                document.getElementById("serverLog").textContent = "Failed to load logs: " + error.message;
+            }
+        }
+
+        async function refreshConfig() {
+            const { body } = await fetchJson("/api/config");
+            state.config = body;
+            document.getElementById("currentMachine").textContent = body.machine_number;
+            document.getElementById("currentReportUrl").textContent = body.job_done_report_url;
+            document.getElementById("currentBaseDir").textContent = body.base_dir;
+            document.getElementById("currentDllPath").textContent = body.dll_path;
+            document.getElementById("currentIniPath").textContent = body.ini_path;
+            document.getElementById("currentLaunchMode").textContent = body.run_as_windows_user
+                ? "Current: Windows account"
+                : "Current: SYSTEM";
+            document.getElementById("currentTaskUsername").textContent = body.task_username || "SYSTEM";
+            document.getElementById("currentPasswordStatus").textContent = body.run_as_windows_user
+                ? (body.task_password_configured ? "Password configured in scheduled task" : "Password not confirmed")
+                : "Not required when running as SYSTEM";
+            document.getElementById("currentRetryInterval").textContent = body.cnc_retry_interval + "s";
+            document.getElementById("currentHealthInterval").textContent = body.cnc_health_interval + "s";
+            document.getElementById("currentPollInterval").textContent = body.job_monitor_poll_interval + "s";
+            document.getElementById("configHost").textContent = body.host;
+            document.getElementById("configPort").textContent = body.port;
+            document.getElementById("runAsUserToggle").checked = Boolean(body.run_as_windows_user);
+            toggleTaskCredentialInputs(Boolean(body.run_as_windows_user));
+            resetConfigForm();
+        }
+
+        function resetConfigForm() {
+            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "retryInterval", "healthInterval", "pollInterval"].forEach((id) => {
+                document.getElementById(id).value = "";
+            });
+        }
+
+        function toggleTaskCredentialInputs(enabled) {
+            document.getElementById("taskUsername").disabled = !enabled;
+            document.getElementById("taskPassword").disabled = !enabled;
+        }
+
+        async function refreshBackups() {
+            try {
+                const { body } = await fetchJson("/api/update/backups");
+                const backups = Array.isArray(body.backups) ? body.backups : [];
+                if (!backups.length) {
+                    document.getElementById("backupList").textContent = "No backups found.";
+                    return;
+                }
+                document.getElementById("backupList").innerHTML = "<ul>" + backups.map((backup) =>
+                    "<li>" + escapeHtml(backup.filename) + " | " + escapeHtml(backup.timestamp) + " | " + escapeHtml(backup.size_mb) + " MB</li>"
+                ).join("") + "</ul>";
+            } catch (error) {
+                document.getElementById("backupList").textContent = "Failed to load backups: " + error.message;
+            }
+        }
+
+        async function refreshDashboard() {
+            try {
+                const [{ body: health }, { body: jobStatus }, { body: monitorStatus }] = await Promise.all([
+                    fetchJson("/api/health"),
+                    fetchJson("/api/cnc/job/status"),
+                    fetchJson("/api/cnc/monitor/status"),
+                ]);
+
+                updateHealthCard(health);
+                updateMonitorCards(jobStatus, monitorStatus);
+                document.getElementById("lastRefresh").textContent = new Date().toLocaleTimeString();
+            } catch (error) {
+                setStatusPill("degraded", "Error");
+                document.getElementById("connectionHeadline").textContent = "Dashboard refresh failed";
+                document.getElementById("connectionSubline").textContent = error.message;
+                addEvent("monitor", "Dashboard refresh failed: " + error.message, "error");
+            }
+        }
+
+        async function startCnc() {
+            setMessage("configMessage", "info", "");
+            try {
+                const result = await fetch("/api/cnc/start", { redirect: "manual" });
+                if (result.status >= 300 && result.status < 400) {
+                    addEvent("monitor", "CNC start command accepted.", "success");
+                } else {
+                    const data = await result.json();
+                    if (data.error) throw new Error(data.error);
+                }
+                await refreshDashboard();
+            } catch (error) {
+                addEvent("monitor", "CNC start failed: " + error.message, "error");
+            }
+        }
+
+        async function stopCnc() {
+            try {
+                const result = await fetch("/api/cnc/stop", { redirect: "manual" });
+                if (result.status >= 300 && result.status < 400) {
+                    addEvent("monitor", "CNC stop command accepted.", "warning");
+                } else {
+                    const data = await result.json();
+                    if (data.error) throw new Error(data.error);
+                }
+                await refreshDashboard();
+            } catch (error) {
+                addEvent("monitor", "CNC stop failed: " + error.message, "error");
+            }
+        }
+
+        async function submitConfig(event, options = {}) {
+            if (event) event.preventDefault();
+            const payload = {};
+            const machineNumber = document.getElementById("machineNumber").value.trim();
+            const reportUrl = document.getElementById("reportUrlInput").value.trim();
+            const baseDir = document.getElementById("baseDir").value.trim();
+            const dllPath = document.getElementById("dllPath").value.trim();
+            const iniPath = document.getElementById("iniPath").value.trim();
+            const runAsWindowsUser = document.getElementById("runAsUserToggle").checked;
+            const taskUsername = document.getElementById("taskUsername").value.trim();
+            const taskPassword = document.getElementById("taskPassword").value;
+            const retry = document.getElementById("retryInterval").value;
+            const health = document.getElementById("healthInterval").value;
+            const poll = document.getElementById("pollInterval").value;
+
+            if (machineNumber) payload.machine_number = machineNumber;
+            if (dllPath) payload.dll_path = dllPath;
+            if (iniPath) payload.ini_path = iniPath;
+            if (reportUrl) payload.job_done_report_url = reportUrl;
+            if (baseDir) payload.base_dir = baseDir;
+            if (state.config && Boolean(state.config.run_as_windows_user) !== runAsWindowsUser) {
+                payload.run_as_windows_user = runAsWindowsUser;
+            }
+            if (runAsWindowsUser && taskUsername) payload.task_username = taskUsername;
+            if (runAsWindowsUser && taskPassword) payload.task_password = taskPassword;
+            if (retry) payload.cnc_retry_interval = parseInt(retry, 10);
+            if (health) payload.cnc_health_interval = parseInt(health, 10);
+            if (poll) payload.job_monitor_poll_interval = parseFloat(poll);
+            if (options.restartAdapterTask) payload.restart_adapter_task = true;
+
+            if (!Object.keys(payload).length) {
+                setMessage("configMessage", "error", "Enter at least one changed value before saving.");
+                return;
+            }
+
+            const button = document.getElementById("saveConfigBtn");
+            const restartButton = document.getElementById("saveAndRestartConfigBtn");
+            button.disabled = true;
+            restartButton.disabled = true;
+            button.textContent = options.restartAdapterTask ? "Applying..." : "Saving...";
+            restartButton.textContent = options.restartAdapterTask ? "Applying..." : "Apply Credentials and Restart Task";
+
+            try {
+                const { body } = await fetchJson("/api/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!body.success) throw new Error(body.message || "Configuration update failed.");
+                setMessage("configMessage", "success", options.restartAdapterTask ? "Configuration updated and task restart requested." : body.message);
+                await refreshConfig();
+            } catch (error) {
+                setMessage("configMessage", "error", error.message);
+            } finally {
+                button.disabled = false;
+                restartButton.disabled = false;
+                button.textContent = "Save Configuration";
+                restartButton.textContent = "Apply Credentials and Restart Task";
+            }
+        }
+
+        async function submitUpdate(event) {
+            event.preventDefault();
+            const fileInput = document.getElementById("exeFile");
+            if (!fileInput.files.length) {
+                setMessage("updateMessage", "error", "Select an .exe file first.");
+                return;
+            }
+
+            const button = document.getElementById("updateBtn");
+            button.disabled = true;
+            button.textContent = "Uploading...";
+
+            try {
+                const formData = new FormData();
+                formData.append("file", fileInput.files[0]);
+                const { body } = await fetchJson("/api/update", { method: "POST", body: formData });
+                if (body.status !== 0) throw new Error(body.message || "Update failed.");
+                setMessage("updateMessage", "success", body.message + (body.version_info ? " " + body.version_info : ""));
+                await refreshBackups();
+            } catch (error) {
+                setMessage("updateMessage", "error", error.message);
+            } finally {
+                button.disabled = false;
+                button.textContent = "Upload and Update";
+            }
+        }
+
+        async function rollbackUpdate() {
+            setMessage("rollbackMessage", "info", "Scheduling rollback...");
+            try {
+                const { body } = await fetchJson("/api/update/rollback", { method: "POST" });
+                if (body.status !== 0) throw new Error(body.message || "Rollback failed.");
+                setMessage("rollbackMessage", "success", body.message);
+                await refreshBackups();
+            } catch (error) {
+                setMessage("rollbackMessage", "error", error.message);
+            }
+        }
+
+        async function loadReferenceJob() {
+            const button = document.getElementById("loadJobBtn");
+            button.disabled = true;
+            addEvent("test", "Loading reference job " + TEST_JOB_NUMBER + " step " + TEST_STEP + ".", "info");
+            try {
+                const { body } = await fetchJson("/api/cnc/job/load/" + TEST_JOB_NUMBER + "/" + TEST_STEP + "/" + TEST_QTY);
+                if (body.status !== 0) throw new Error(body.message || "Load failed.");
+                addEvent("test", "Job loaded: " + shortJobName(body.fileName), "success");
+                document.getElementById("startJobBtn").disabled = false;
+                await refreshDashboard();
+            } catch (error) {
+                addEvent("test", "Load failed: " + error.message, "error");
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function startReferenceJob() {
+            const button = document.getElementById("startJobBtn");
+            button.disabled = true;
+            addEvent("test", "Starting loaded reference job.", "info");
+            try {
+                const { body } = await fetchJson("/api/cnc/job/start");
+                if (body.status !== 0) throw new Error(body.message || "Start failed.");
+                addEvent("test", "Job started successfully.", "success");
+                await refreshDashboard();
+            } catch (error) {
+                addEvent("test", "Start failed: " + error.message, "error");
+                button.disabled = false;
+            }
+        }
+
+        function wireEvents() {
+            document.querySelectorAll("#nav button").forEach((button) => {
+                button.addEventListener("click", () => setActiveView(button.dataset.view));
+            });
+            document.getElementById("startCncBtn").addEventListener("click", startCnc);
+            document.getElementById("stopCncBtn").addEventListener("click", stopCnc);
+            document.getElementById("configForm").addEventListener("submit", submitConfig);
+            document.getElementById("saveAndRestartConfigBtn").addEventListener("click", () => submitConfig(null, { restartAdapterTask: true }));
+            document.getElementById("resetConfigBtn").addEventListener("click", resetConfigForm);
+            document.getElementById("updateForm").addEventListener("submit", submitUpdate);
+            document.getElementById("rollbackBtn").addEventListener("click", rollbackUpdate);
+            document.getElementById("refreshBackupsBtn").addEventListener("click", refreshBackups);
+            document.getElementById("loadJobBtn").addEventListener("click", loadReferenceJob);
+            document.getElementById("startJobBtn").addEventListener("click", startReferenceJob);
+            document.getElementById("runAsUserToggle").addEventListener("change", (event) => {
+                toggleTaskCredentialInputs(event.target.checked);
+            });
+            document.getElementById("exeFile").addEventListener("change", (event) => {
+                const file = event.target.files[0];
+                document.getElementById("selectedFileName").textContent = file ? file.name : "No file selected";
+                document.getElementById("updateBtn").disabled = !file;
+            });
+        }
+
+        async function initialize() {
+            wireEvents();
+            renderEventLog("monitor");
+            renderEventLog("test");
+            await Promise.all([refreshConfig(), refreshBackups(), refreshLogs(), refreshDashboard()]);
+            setActiveView(INITIAL_VIEW || new URL(window.location.href).searchParams.get("view") || "overview");
+            setInterval(refreshDashboard, 1000);
+            setInterval(refreshLogs, 3000);
+        }
+
+        initialize();
+    </script>
+</body>
+</html>

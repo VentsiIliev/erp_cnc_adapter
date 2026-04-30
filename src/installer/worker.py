@@ -47,6 +47,23 @@ class InstallWorker(QThread):
         "https://www.python.org/ftp/python/{v}/python-{v}-amd64.exe"
     )
 
+    @staticmethod
+    def _post_install_warning(config_data: dict) -> str:
+        dll_path = config_data.get("dll_path", r"C:\CNC4.03\cncapi.dll")
+        ini_path = config_data.get("ini_path", r"C:\CNC4.03\cnc.ini")
+        missing = []
+        if not Path(dll_path).exists():
+            missing.append(f"CNC DLL not found: {dll_path}")
+        if not Path(ini_path).exists():
+            missing.append(f"CNC INI not found: {ini_path}")
+        if not missing:
+            return ""
+        return (
+            "Installation finished, but CNC runtime files are unavailable.\n"
+            + "\n".join(missing)
+            + "\n\nOpen the dashboard Configuration page, set the correct CNC DLL and INI paths, then apply and restart the task."
+        )
+
     def _find_python(self) -> str | None:
         """Return path to python.exe if available, else None."""
         if not getattr(sys, "frozen", False):
@@ -239,6 +256,7 @@ class InstallWorker(QThread):
                 except (json.JSONDecodeError, OSError):
                     config_data = {}
             config_data["machine_number"] = self.machine_number
+            config_data["task_username"] = self.task_username
             config_path.write_text(
                 json.dumps(config_data, indent=2, ensure_ascii=False),
                 encoding="utf-8",
@@ -432,6 +450,13 @@ class InstallWorker(QThread):
             installation_log.flush()
             self.progress_value.emit(75)
 
+            warning_message = self._post_install_warning(config_data)
+            if warning_message:
+                self.log_message.emit("\u26a0 CNC runtime files are not available yet")
+                installation_log.write("\nWARNING\n")
+                installation_log.write(warning_message + "\n")
+                installation_log.flush()
+
             # 4 — Start application now ........................................
             self.step_changed.emit("Starting application...")
             self.log_message.emit("Starting ERP-CNC Adapter...")
@@ -481,7 +506,7 @@ class InstallWorker(QThread):
             installation_log.flush()
 
             self.progress_value.emit(100)
-            self.finished_signal.emit(True, "Installation completed successfully!")
+            self.finished_signal.emit(True, warning_message or "Installation completed successfully!")
 
         except Exception as exc:
             if installation_log:

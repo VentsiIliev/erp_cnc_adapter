@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Depends
 
 from src.core.app_state import get_cnc_client
+from src.core.placeholder_job import is_placeholder_job
 from .schemas.job import JobStatusResponse
 from src.cnc.cnc_client_protocol import CncClientProtocol
 
@@ -47,6 +48,8 @@ async def get_job_status(
         state = client.get_state()
         state_text = STATE_MAP.get(state, f"Unknown state: {state}")
         job = client.get_job_status()
+        if is_placeholder_job(job.get("jobName")):
+            job["jobName"] = ""
         # logger.info("State: %s (code %d), job: %s", state_text, state, job.get("jobName", ""))
 
         # Calculate job progress percentage

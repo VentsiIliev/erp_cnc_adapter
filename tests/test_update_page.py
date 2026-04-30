@@ -11,8 +11,8 @@ class TestUpdatePage:
         response = await client.get("/update")
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
-        assert "Update Adapter" in response.text
-        assert "Upload New Version" in response.text
+        assert "Operations Dashboard" in response.text
+        assert "Upload Update" in response.text
 
     @pytest.mark.asyncio
     async def test_update_page_has_file_input(self, client):
@@ -23,11 +23,11 @@ class TestUpdatePage:
         assert 'accept=".exe"' in response.text
 
     @pytest.mark.asyncio
-    async def test_update_page_has_back_link(self, client):
-        """Test that the update page has a link back to health page."""
+    async def test_update_page_focuses_maintenance_view(self, client):
+        """Test that /update opens the unified dashboard maintenance view."""
         response = await client.get("/update")
-        assert 'href="/"' in response.text
-        assert "Back to Health" in response.text
+        assert 'const INITIAL_VIEW = "maintenance"' in response.text
+        assert "Rollback" in response.text
 
     @pytest.mark.asyncio
     async def test_update_page_has_rollback_button(self, client):
@@ -40,8 +40,8 @@ class TestUpdatePage:
     async def test_update_page_has_backup_list(self, client):
         """Test that the update page displays backup list."""
         response = await client.get("/update")
-        assert "Available backups" in response.text
         assert "backupList" in response.text
+        assert "Refresh Backups" in response.text
 
     @pytest.mark.asyncio
     async def test_update_page_shows_current_version(self, client):
