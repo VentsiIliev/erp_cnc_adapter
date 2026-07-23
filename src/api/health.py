@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from src.core.app_state import get_connection_manager
 from src.cnc.connection_manager import ConnectionManager
 from src.api.dashboard_page import dashboard_response
+from src.api.job_status import STATE_MAP
 from version import VERSION
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ def _build_status_data(manager) -> dict:
         "cnc": {
             "connected": connected,
             "state": manager.state,
+            "machine_state": manager.machine_state,
+            "machine_state_text": STATE_MAP.get(manager.machine_state, None),
             "retry_count": manager.retry_count,
             "last_error": manager.last_error,
             "uptime_seconds": round(uptime, 1) if uptime is not None else None,

@@ -1,10 +1,12 @@
 @echo off
+setlocal EnableDelayedExpansion
+
 echo ========================================
 echo  ERP-CNC Adapter Uninstaller
 echo ========================================
 echo.
 
-REM Check admin privileges
+REM Check admin privileges.
 net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo ERROR: This uninstaller must be run as Administrator!
@@ -14,86 +16,69 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-REM Change to project root
-cd /d "%~dp0.."
+for %%I in ("%~dp0..") do set "INSTALL_DIR=%%~fI"
+cd /d "%SystemRoot%"
 
 set FOUND_SOMETHING=0
 
-REM ── Step 1: Stop and remove Windows Service (if exists) ──────────────
+echo Step 1: Stopping and removing old Windows service...
 sc query ERPCNCAdapter >nul 2>&1
 if %errorlevel% equ 0 (
     set FOUND_SOMETHING=1
-    echo Step 1a: Stopping Windows Service...
     sc query ERPCNCAdapter | find "RUNNING" >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo   Service is running, stopping...
+    if !errorlevel! equ 0 (
+        echo   Stopping service...
         net stop ERPCNCAdapter >nul 2>&1
         timeout /t 3 >nul
-    ) else (
-        echo   Service is already stopped
     )
-
     echo   Removing service registration...
     sc delete ERPCNCAdapter >nul 2>&1
-    echo   Done.
+    echo   Service removed
 ) else (
-    echo Step 1a: No Windows Service found (skipped)
+    echo   No service found
 )
 
 echo.
-
-REM ── Step 1b: Stop and remove Scheduled Tasks (if exist) ──────────────
-schtasks /Query /TN ERPCNCAdapterWatchdog >nul 2>&1
-if %errorlevel% equ 0 (
-    set FOUND_SOMETHING=1
-    echo Step 1b: Removing Watchdog Task...
-    schtasks /End /TN ERPCNCAdapterWatchdog >nul 2>&1
-    schtasks /Delete /TN ERPCNCAdapterWatchdog /F >nul 2>&1
-    echo   Watchdog task removed
-)
-
-schtasks /Query /TN ERPCNCAdapter >nul 2>&1
-if %errorlevel% equ 0 (
-    set FOUND_SOMETHING=1
-    echo   Removing Startup Task...
-    schtasks /End /TN ERPCNCAdapter >nul 2>&1
-    timeout /t 2 >nul
-    schtasks /Delete /TN ERPCNCAdapter /F >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo   Startup task removed
-    ) else (
-        echo   WARNING: Could not remove scheduled task
+echo Step 2: Stopping and removing scheduled tasks...
+for %%T in (ERPCNCAdapterEdingHandoff ERPCNCAdapterManualStart ERPCNCAdapterWatchdog ERPCNCAdapter) do (
+    schtasks /Query /TN %%T >nul 2>&1
+    if !errorlevel! equ 0 (
+        set FOUND_SOMETHING=1
+        echo   Removing %%T...
+        schtasks /End /TN %%T >nul 2>&1
+        timeout /t 1 >nul
+        schtasks /Delete /TN %%T /F >nul 2>&1
+        if !errorlevel! equ 0 (
+            echo   %%T removed
+        ) else (
+            echo   WARNING: Could not remove %%T
+        )
     )
-) else (
-    echo Step 1b: No Scheduled Tasks found (skipped)
 )
 
 echo.
-
-REM ── Step 2: Kill any running process ─────────────────────────────────
-echo Step 2: Stopping erp-cnc-adapter.exe process...
-tasklist /FI "IMAGENAME eq erp-cnc-adapter.exe" 2>nul | find /I "erp-cnc-adapter.exe" >nul 2>&1
-if %errorlevel% equ 0 (
-    set FOUND_SOMETHING=1
-    echo   Process is running, killing...
-    taskkill /F /IM erp-cnc-adapter.exe /T >nul 2>&1
-    timeout /t 2 >nul
-    REM Verify it's actually dead
-    tasklist /FI "IMAGENAME eq erp-cnc-adapter.exe" 2>nul | find /I "erp-cnc-adapter.exe" >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo   WARNING: Process still running, retrying...
-        timeout /t 3 >nul
-        taskkill /F /IM erp-cnc-adapter.exe /T >nul 2>&1
+echo Step 3: Stopping adapter, Eding GUI, CNC Server, and script launchers...
+for %%P in (erp-cnc-adapter.exe cnc4.03.exe cnc.exe CncServer.exe wscript.exe) do (
+    tasklist /FI "IMAGENAME eq %%P" 2>nul | find /I "%%P" >nul 2>&1
+    if !errorlevel! equ 0 (
+        set FOUND_SOMETHING=1
+        echo   Stopping %%P...
+        taskkill /F /T /IM %%P >nul 2>&1
     )
-    echo   Done.
-) else (
-    echo   Process is not running
+)
+timeout /t 3 >nul
+
+echo.
+echo Step 4: Removing START-CNC desktop shortcut...
+for %%S in ("%PUBLIC%\Desktop\START-CNC.lnk" "%USERPROFILE%\Desktop\START-CNC.lnk") do (
+    if exist %%S (
+        del /F /Q %%S >nul 2>&1
+        echo   Removed %%S
+    )
 )
 
 echo.
-
-REM ── Step 3: Remove firewall rule ─────────────────────────────────────
-echo Step 3: Removing firewall rule...
+echo Step 5: Removing firewall rule...
 netsh advfirewall firewall delete rule name="ERP-CNC Adapter" >nul 2>&1
 if %errorlevel% equ 0 (
     echo   Firewall rule removed
@@ -102,19 +87,16 @@ if %errorlevel% equ 0 (
 )
 
 echo.
+echo Step 6: Removing installation folder...
+start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Sleep -Seconds 3; Remove-Item -LiteralPath '%INSTALL_DIR%' -Recurse -Force -ErrorAction SilentlyContinue" >nul 2>&1
+
+echo.
 echo ========================================
-if %FOUND_SOMETHING% equ 1 (
-    echo  SUCCESS! ERP-CNC Adapter uninstalled
-    echo ========================================
-    echo.
-    echo The adapter has been fully stopped and removed.
-) else (
-    echo  Nothing to uninstall
-    echo ========================================
-    echo.
-    echo No service, scheduled task, or running process was found.
-)
+echo  ERP-CNC Adapter uninstall requested
+echo ========================================
 echo.
-echo To reinstall: Run scripts\install.bat
+echo Installation folder: %INSTALL_DIR%
+echo If the folder remains, reboot Windows and delete it once more.
+echo To reinstall, run the installer again.
 echo.
-pause
+exit /b 0

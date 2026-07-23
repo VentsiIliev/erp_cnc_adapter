@@ -5,7 +5,13 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from src.core.app_state import _kill_stale_adapter, _write_pid_file, AppState, PID_FILE
+from src.core.app_state import (
+    _consume_manual_start_defer_gui_flag,
+    _kill_stale_adapter,
+    _write_pid_file,
+    AppState,
+    PID_FILE,
+)
 from src.core.cnc_server_process import CncServerStartResult
 
 
@@ -28,6 +34,22 @@ class TestKillStaleAdapter:
         pid_file = str(tmp_path / "no_such.pid")
         with patch("src.core.app_state.PID_FILE", pid_file):
             _kill_stale_adapter()  # should not raise
+
+
+class TestManualStartDeferGuiFlag:
+
+    def test_consumes_existing_flag(self, tmp_path):
+        flag_path = tmp_path / "manual_start_defer_gui.flag"
+        flag_path.write_text("1", encoding="utf-8")
+
+        with patch("src.core.app_state._runtime_root", return_value=str(tmp_path)):
+            assert _consume_manual_start_defer_gui_flag() is True
+
+        assert not flag_path.exists()
+
+    def test_returns_false_when_flag_missing(self, tmp_path):
+        with patch("src.core.app_state._runtime_root", return_value=str(tmp_path)):
+            assert _consume_manual_start_defer_gui_flag() is False
 
     def test_noop_when_pid_matches_current(self, tmp_path):
         pid_file = str(tmp_path / "adapter.pid")
@@ -156,6 +178,131 @@ class TestAppStateLifecycle:
         state._auto_start_cnc_server()
 
         mock_start.assert_called_once_with(r"C:\CNC\CncServer.exe")
+
+    @patch("src.core.app_state.start_cnc_server_if_needed")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    @patch("src.core.app_state.CncClient", side_effect=RuntimeError("DLL unavailable"))
+    def test_auto_start_cnc_server_skips_when_gui_auto_start_enabled(
+        self, _cnc_client, _atexit, _kill, _write, mock_start
+    ):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\CNC\cncapi.dll",
+            ini_path=r"C:\CNC\cnc.ini",
+            dev_mode=False,
+            auto_start_eding_gui=True,
+        )
+        state = AppState(settings)
+
+        state._auto_start_cnc_server()
+
+        mock_start.assert_not_called()
+
+    @patch("src.core.app_state.os.path.isfile", return_value=True)
+    @patch("src.core.app_state.start_cnc_server_if_needed")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    @patch("src.core.app_state.CncClient", side_effect=RuntimeError("DLL unavailable"))
+    def test_manual_start_defer_flag_starts_server_even_when_gui_auto_start_enabled(
+        self, _cnc_client, _atexit, _kill, _write, mock_start, _isfile
+    ):
+        from src.core.config import Settings
+
+        mock_start.return_value = CncServerStartResult(status="started", pid=123)
+        settings = Settings(
+            dll_path=r"C:\CNC\cncapi.dll",
+            ini_path=r"C:\CNC\cnc.ini",
+            dev_mode=False,
+            auto_start_eding_gui=True,
+        )
+        state = AppState(settings)
+        state._defer_gui_to_manual_launcher = True
+
+        state._auto_start_cnc_server()
+
+        mock_start.assert_called_once_with(r"C:\CNC\CncServer.exe")
+
+    @patch("src.core.app_state.start_eding_gui_if_needed")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    @patch("src.core.app_state.CncClient", side_effect=RuntimeError("DLL unavailable"))
+    def test_manual_start_defer_flag_suppresses_early_gui_start(
+        self, _cnc_client, _atexit, _kill, _write, mock_gui_start
+    ):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\CNC\cncapi.dll",
+            ini_path=r"C:\CNC\cnc.ini",
+            dev_mode=False,
+            auto_start_eding_gui=True,
+        )
+        state = AppState(settings)
+        state._defer_gui_to_manual_launcher = True
+
+        assert state._auto_start_eding_gui() is False
+        mock_gui_start.assert_not_called()
+
+    @patch("src.core.app_state.start_eding_gui_if_needed", return_value=True)
+    @patch("src.core.app_state.start_cnc_server_if_needed")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    @patch("src.core.app_state.CncClient", side_effect=RuntimeError("DLL unavailable"))
+    def test_start_launches_gui_instead_of_server_when_gui_auto_start_enabled(
+        self, _cnc_client, _atexit, _kill, _write, mock_server_start, mock_gui_start
+    ):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\CNC\cncapi.dll",
+            ini_path=r"C:\CNC\cnc.ini",
+            dev_mode=False,
+            auto_start_eding_gui=True,
+            task_username=r"DOMAIN\adapter",
+        )
+        state = AppState(settings)
+        state.connection_manager = MagicMock()
+        state.job_monitor = MagicMock()
+        async def mock_start_monitoring():
+            pass
+        state.job_monitor.start_monitoring = MagicMock(return_value=mock_start_monitoring())
+
+        with patch("asyncio.create_task") as mock_create_task:
+            state.start()
+
+        mock_gui_start.assert_called_once_with(r"C:\CNC\cncapi.dll", r"DOMAIN\adapter")
+        mock_server_start.assert_not_called()
+        state.connection_manager.start.assert_not_called()
+        assert mock_create_task.call_count == 2
+        for call in mock_create_task.call_args_list:
+            call.args[0].close()
+
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    async def test_delayed_connection_manager_start_after_gui(self, _atexit, _kill, _write):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\fake.dll",
+            ini_path=r"C:\fake.ini",
+            dev_mode=True,
+            cnc_retry_interval=5,
+        )
+        state = AppState(settings)
+        state.connection_manager = MagicMock()
+
+        with patch("src.core.app_state.asyncio.sleep") as mock_sleep:
+            await state._start_connection_manager_after_gui_delay()
+
+        mock_sleep.assert_called_once_with(10)
+        state.connection_manager.start.assert_called_once_with()
 
     @patch("src.core.app_state._write_pid_file")
     @patch("src.core.app_state._kill_stale_adapter")

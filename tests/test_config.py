@@ -22,6 +22,8 @@ class TestSettings:
         assert s.task_username == ""
         assert s.cnc_retry_interval == 5
         assert s.cnc_health_interval == 10
+        assert s.auto_start_adapter_on_logon is True
+        assert s.adapter_startup_delay_seconds == 90
         assert s.job_monitor_poll_interval == 1.0
 
     def test_custom_values(self):
@@ -47,6 +49,8 @@ class TestSettings:
             "job_monitor_poll_interval": 5.0,
             "port": 8010,
             "task_username": r"DOMAIN\adapter",
+            "auto_start_adapter_on_logon": False,
+            "adapter_startup_delay_seconds": 120,
         }))
 
         with patch("src.core.config_persistence.CONFIG_FILE", config_file):
@@ -59,6 +63,8 @@ class TestSettings:
         assert s.job_monitor_poll_interval == 5.0
         assert s.port == 8010
         assert s.task_username == r"DOMAIN\adapter"
+        assert s.auto_start_adapter_on_logon is False
+        assert s.adapter_startup_delay_seconds == 120
 
 
 class TestConfigAPI:
@@ -72,6 +78,8 @@ class TestConfigAPI:
                 "run_as_windows_user": True,
                 "task_username": r"DOMAIN\adapter",
                 "task_password_configured": True,
+                "auto_start_adapter_on_logon": False,
+                "adapter_startup_delay_seconds": 120,
             }
             resp = await client.get("/api/config")
 
@@ -83,6 +91,8 @@ class TestConfigAPI:
         assert data["run_as_windows_user"] is True
         assert data["task_username"] == r"DOMAIN\adapter"
         assert data["task_password_configured"] is True
+        assert data["auto_start_adapter_on_logon"] is False
+        assert data["adapter_startup_delay_seconds"] == 120
         assert data["local_ip"] == "192.168.2.55"
 
     @pytest.mark.asyncio
@@ -137,6 +147,52 @@ class TestConfigAPI:
         assert persist_call["ini_path"] == r"D:\custom\cnc.ini"
 
     @pytest.mark.asyncio
+    async def test_post_config_updates_cnc_startup_options(self, client, settings):
+        with patch("src.api.config_api.update_persisted_config") as mock_persist, \
+             patch("src.api.config_api.set_adapter_autostart_enabled") as mock_autostart, \
+             patch("src.api.config_api.configure_task_launch_account") as mock_task_update:
+            mock_persist.return_value = True
+            mock_task_update.return_value = {
+                "run_as_windows_user": False,
+                "task_username": "",
+                "task_password_configured": False,
+                "auto_start_adapter_on_logon": False,
+                "adapter_startup_delay_seconds": 120,
+            }
+            resp = await client.post("/api/config", json={
+                "auto_start_adapter_on_logon": False,
+                "adapter_startup_delay_seconds": 120,
+                "auto_start_cnc_server": False,
+                "auto_start_eding_gui": True,
+                "show_operator_ready_message": False,
+                "cnc_startup_ready_timeout": 90,
+            })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert settings.auto_start_adapter_on_logon is False
+        assert settings.adapter_startup_delay_seconds == 120
+        assert settings.auto_start_cnc_server is False
+        assert settings.auto_start_eding_gui is True
+        assert settings.show_operator_ready_message is False
+        assert settings.cnc_startup_ready_timeout == 90
+        mock_autostart.assert_called_once_with(False)
+        mock_task_update.assert_called_once_with(
+            task_username="",
+            task_password="",
+            auto_start_enabled=False,
+            startup_delay_seconds=120,
+        )
+        persist_call = mock_persist.call_args[0][0]
+        assert persist_call["auto_start_adapter_on_logon"] is False
+        assert persist_call["adapter_startup_delay_seconds"] == 120
+        assert persist_call["auto_start_cnc_server"] is False
+        assert persist_call["auto_start_eding_gui"] is True
+        assert persist_call["show_operator_ready_message"] is False
+        assert persist_call["cnc_startup_ready_timeout"] == 90
+
+    @pytest.mark.asyncio
     async def test_post_config_updates_task_credentials(self, client, settings):
         """POST /api/config can switch scheduled tasks to a Windows user."""
         with patch("src.api.config_api.update_persisted_config") as mock_persist, \
@@ -160,6 +216,8 @@ class TestConfigAPI:
         mock_task_update.assert_called_once_with(
             task_username=r"DOMAIN\adapter",
             task_password="secret",
+            auto_start_enabled=True,
+            startup_delay_seconds=90,
         )
         persist_call = mock_persist.call_args[0][0]
         assert persist_call["task_username"] == r"DOMAIN\adapter"
@@ -204,14 +262,56 @@ class TestConfigAPI:
         mock_restart.assert_called_once_with()
 
     @pytest.mark.asyncio
-    async def test_post_config_requires_password_for_task_user(self, client):
-        """POST /api/config rejects task-user updates without a password."""
-        resp = await client.post("/api/config", json={
-            "run_as_windows_user": True,
-            "task_username": r"DOMAIN\adapter",
-        })
+    async def test_post_config_accepts_task_user_without_password(self, client, settings):
+        """POST /api/config can switch to a logon task without stored credentials."""
+        with patch("src.api.config_api.update_persisted_config") as mock_persist, \
+             patch("src.api.config_api.configure_task_launch_account") as mock_task_update:
+            mock_persist.return_value = True
+            mock_task_update.return_value = {
+                "run_as_windows_user": True,
+                "task_username": r"DOMAIN\adapter",
+                "task_password_configured": False,
+            }
+            resp = await client.post("/api/config", json={
+                "run_as_windows_user": True,
+                "task_username": r"DOMAIN\adapter",
+            })
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["success"] is False
-        assert "password" in data["message"].lower()
+        assert data["success"] is True
+        assert settings.task_username == r"DOMAIN\adapter"
+        mock_task_update.assert_called_once_with(
+            task_username=r"DOMAIN\adapter",
+            task_password="",
+            auto_start_enabled=True,
+            startup_delay_seconds=90,
+        )
+
+    @pytest.mark.asyncio
+    async def test_post_config_task_credentials_preserve_disabled_autostart(self, client, settings):
+        """Re-registering the task keeps the manual-start setting disabled."""
+        settings.auto_start_adapter_on_logon = False
+        with patch("src.api.config_api.update_persisted_config") as mock_persist, \
+             patch("src.api.config_api.configure_task_launch_account") as mock_task_update:
+            mock_persist.return_value = True
+            mock_task_update.return_value = {
+                "run_as_windows_user": True,
+                "task_username": r"DOMAIN\adapter",
+                "task_password_configured": False,
+                "auto_start_adapter_on_logon": False,
+            }
+            resp = await client.post("/api/config", json={
+                "run_as_windows_user": True,
+                "task_username": r"DOMAIN\adapter",
+            })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        mock_task_update.assert_called_once_with(
+            task_username=r"DOMAIN\adapter",
+            task_password="",
+            auto_start_enabled=False,
+            startup_delay_seconds=90,
+        )

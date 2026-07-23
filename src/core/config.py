@@ -13,6 +13,12 @@ class Settings:
     log_level: str = "DEBUG"
     cnc_retry_interval: int = 5   # seconds between connection retries
     cnc_health_interval: int = 10  # seconds between heartbeat checks
+    cnc_startup_ready_timeout: int = 60  # seconds to wait for CNC to leave startup states
+    auto_start_adapter_on_logon: bool = True
+    adapter_startup_delay_seconds: int = 90
+    auto_start_cnc_server: bool = True
+    auto_start_eding_gui: bool = False
+    show_operator_ready_message: bool = True
     job_monitor_poll_interval: float = 1.0  # seconds between job monitor status checks
     machine_number: str = "CNC1"  # Machine identifier (e.g., CNC1, CNC2, MILL1, etc.)
     task_username: str = ""
@@ -61,6 +67,30 @@ class Settings:
                 if "cnc_health_interval" in user_config:
                     self.cnc_health_interval = user_config["cnc_health_interval"]
                     logger.info("Loaded persisted cnc_health_interval: %s", self.cnc_health_interval)
+
+                if "cnc_startup_ready_timeout" in user_config:
+                    self.cnc_startup_ready_timeout = user_config["cnc_startup_ready_timeout"]
+                    logger.info("Loaded persisted cnc_startup_ready_timeout: %s", self.cnc_startup_ready_timeout)
+
+                if "auto_start_adapter_on_logon" in user_config:
+                    self.auto_start_adapter_on_logon = bool(user_config["auto_start_adapter_on_logon"])
+                    logger.info("Loaded persisted auto_start_adapter_on_logon: %s", self.auto_start_adapter_on_logon)
+
+                if "adapter_startup_delay_seconds" in user_config:
+                    self.adapter_startup_delay_seconds = int(user_config["adapter_startup_delay_seconds"])
+                    logger.info("Loaded persisted adapter_startup_delay_seconds: %s", self.adapter_startup_delay_seconds)
+
+                if "auto_start_cnc_server" in user_config:
+                    self.auto_start_cnc_server = bool(user_config["auto_start_cnc_server"])
+                    logger.info("Loaded persisted auto_start_cnc_server: %s", self.auto_start_cnc_server)
+
+                if "auto_start_eding_gui" in user_config:
+                    self.auto_start_eding_gui = bool(user_config["auto_start_eding_gui"])
+                    logger.info("Loaded persisted auto_start_eding_gui: %s", self.auto_start_eding_gui)
+
+                if "show_operator_ready_message" in user_config:
+                    self.show_operator_ready_message = bool(user_config["show_operator_ready_message"])
+                    logger.info("Loaded persisted show_operator_ready_message: %s", self.show_operator_ready_message)
 
                 if "job_monitor_poll_interval" in user_config:
                     self.job_monitor_poll_interval = user_config["job_monitor_poll_interval"]

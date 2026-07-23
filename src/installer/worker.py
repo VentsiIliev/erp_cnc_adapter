@@ -21,6 +21,9 @@ class InstallWorker(QThread):
     step_changed = pyqtSignal(str)
     progress_value = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)  # success, message
+    DEFAULT_STARTUP_DELAY_SECONDS = 90
+    MANUAL_START_TASK_NAME = "ERPCNCAdapterManualStart"
+    EDING_HANDOFF_TASK_NAME = "ERPCNCAdapterEdingHandoff"
 
     def __init__(
         self,
@@ -28,12 +31,14 @@ class InstallWorker(QThread):
         machine_number: str = "CNC1",
         task_username: str = "",
         task_password: str = "",
+        auto_start_adapter_on_logon: bool = True,
     ):
         super().__init__()
         self.install_path = Path(install_path)
         self.machine_number = machine_number
         self.task_username = task_username.strip()
         self.task_password = task_password
+        self.auto_start_adapter_on_logon = auto_start_adapter_on_logon
 
     # Helper ───────────────────────────────────────────────────────────────
     @staticmethod
@@ -42,6 +47,10 @@ class InstallWorker(QThread):
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = subprocess.SW_HIDE
         return si
+
+    @staticmethod
+    def _ps_quote(value: str) -> str:
+        return value.replace("'", "''")
 
     PYTHON_VERSION = "3.12.8"
     PYTHON_URL = (
@@ -222,6 +231,8 @@ class InstallWorker(QThread):
         commands = [
             ["schtasks", "/End", "/TN", "ERPCNCAdapter"],
             ["schtasks", "/End", "/TN", "ERPCNCAdapterWatchdog"],
+            ["schtasks", "/End", "/TN", self.MANUAL_START_TASK_NAME],
+            ["schtasks", "/End", "/TN", self.EDING_HANDOFF_TASK_NAME],
             ["taskkill", "/F", "/T", "/IM", "erp-cnc-adapter.exe"],
         ]
         for command in commands:
@@ -283,11 +294,451 @@ class InstallWorker(QThread):
             installation_log.write(f"Hidden launcher: {launcher_path}\n")
         return launcher_path
 
+    def _write_start_cnc_hidden_launcher(self, installation_log=None) -> Path:
+        """Create a hidden launcher for the manual START-CNC shortcut."""
+        restart_path = self.install_path / "scripts" / "restart.bat"
+        log_path = self.install_path / "logs" / "start-cnc.log"
+        scripts_dir = self.install_path / "scripts"
+        task_launcher_path = scripts_dir / "run_start_cnc_hidden.vbs"
+        shortcut_launcher_path = scripts_dir / "start_cnc_hidden.vbs"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+
+        def vbs_quote(value: str) -> str:
+            return value.replace("\"", "\"\"")
+
+        task_launcher_path.write_text(
+            "Set shell = CreateObject(\"WScript.Shell\")\n"
+            f"shell.CurrentDirectory = \"{vbs_quote(str(restart_path.parent))}\"\n"
+            f"exitCode = shell.Run(\"cmd.exe /c set ERPCNC_MANUAL_TASK=1&& \"\"{vbs_quote(str(restart_path))}\"\"\", 0, True)\n"
+            "If exitCode <> 0 Then\n"
+            f"  MsgBox \"START-CNC failed. Check: {vbs_quote(str(log_path))}\", 16, \"START-CNC\"\n"
+            "End If\n",
+            encoding="utf-8",
+        )
+        shortcut_launcher_path.write_text(
+            "Set shell = CreateObject(\"WScript.Shell\")\n"
+            f"exitCode = shell.Run(\"schtasks /Run /TN {self.MANUAL_START_TASK_NAME}\", 0, True)\n"
+            "If exitCode <> 0 Then\n"
+            f"  MsgBox \"Could not start START-CNC task. Reinstall or run as administrator once. Check: {vbs_quote(str(log_path))}\", 16, \"START-CNC\"\n"
+            "End If\n",
+            encoding="utf-8",
+        )
+        if installation_log:
+            installation_log.write(f"Hidden START-CNC task launcher: {task_launcher_path}\n")
+            installation_log.write(f"Hidden START-CNC shortcut launcher: {shortcut_launcher_path}\n")
+        return shortcut_launcher_path
+
+    def _write_eding_handoff_script(self, installation_log=None) -> Path:
+        """Create an elevated helper script that lets Eding GUI own CncServer startup."""
+        script_path = self.install_path / "scripts" / "start_eding_handoff.ps1"
+        log_path = self.install_path / "logs" / "start-cnc.log"
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+
+        script_path.write_text(
+            "$ErrorActionPreference = 'SilentlyContinue'\n"
+            f"$installDir = '{self._ps_quote(str(self.install_path))}'\n"
+            "$configPath = Join-Path $installDir 'config.json'\n"
+            f"$logPath = '{self._ps_quote(str(log_path))}'\n"
+            "function Add-StartLog($message) {\n"
+            "  $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'\n"
+            "  Add-Content -Path $logPath -Value ('[{0}] {1}' -f $stamp, $message)\n"
+            "}\n"
+            "function Get-EdingGuiPath {\n"
+            "  $dllPath = 'C:\\CNC4.03\\cncapi.dll'\n"
+            "  if (Test-Path $configPath) {\n"
+            "    try {\n"
+            "      $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json\n"
+            "      if ($config.dll_path) { $dllPath = [string]$config.dll_path }\n"
+            "    } catch {}\n"
+            "  }\n"
+            "  $cncDir = Split-Path -Parent $dllPath\n"
+            "  $candidates = @(\n"
+            "    (Join-Path $cncDir 'cnc4.03.exe'),\n"
+            "    (Join-Path $cncDir 'cnc.exe')\n"
+            "  )\n"
+            "  foreach ($candidate in $candidates) {\n"
+            "    if (Test-Path $candidate) { return $candidate }\n"
+            "  }\n"
+            "  return $null\n"
+            "}\n"
+            "Add-StartLog 'Starting Eding GUI through elevated START-CNC task...'\n"
+            "$guiPath = Get-EdingGuiPath\n"
+            "if (-not $guiPath) {\n"
+            "  Add-StartLog 'ERROR: Could not find Eding GUI next to cncapi.dll.'\n"
+            "  exit 1\n"
+            "}\n"
+            "$runningGui = Get-Process -Name 'cnc4.03','cnc' -ErrorAction SilentlyContinue\n"
+            "if ($runningGui) {\n"
+            "  Add-StartLog 'Eding GUI is already running.'\n"
+            "  exit 0\n"
+            "}\n"
+            "Add-StartLog 'Stopping adapter-started CNC Server before Eding GUI launch...'\n"
+            "$killOutput = taskkill /F /IM CncServer.exe 2>&1\n"
+            "foreach ($line in $killOutput) { Add-StartLog $line }\n"
+            "Start-Sleep -Seconds 2\n"
+            "try {\n"
+            "  Start-Process -FilePath $guiPath -WorkingDirectory (Split-Path -Parent $guiPath) -ErrorAction Stop\n"
+            "  Add-StartLog ('Eding GUI started: {0}' -f $guiPath)\n"
+            "  exit 0\n"
+            "} catch {\n"
+            "  Add-StartLog ('ERROR: Failed to start Eding GUI: {0}' -f $_.Exception.Message)\n"
+            "  exit 1\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        if installation_log:
+            installation_log.write(f"Eding GUI handoff script: {script_path}\n")
+        return script_path
+
+    def _write_start_cnc_feedback_script(self, installation_log=None) -> Path:
+        """Create a visible operator progress launcher for START-CNC."""
+        script_path = self.install_path / "scripts" / "start_cnc_feedback.ps1"
+        log_path = self.install_path / "logs" / "start-cnc.log"
+        adapter_log_path = self.install_path / "logs" / "adapter.log"
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+
+        script_path.write_text(
+            "$ErrorActionPreference = 'SilentlyContinue'\n"
+            "$Host.UI.RawUI.WindowTitle = 'START-CNC'\n"
+            f"$taskName = '{self.MANUAL_START_TASK_NAME}'\n"
+            f"$guiTaskName = '{self.EDING_HANDOFF_TASK_NAME}'\n"
+            f"$installDir = '{self._ps_quote(str(self.install_path))}'\n"
+            "$configPath = Join-Path $installDir 'config.json'\n"
+            f"$logPath = '{self._ps_quote(str(log_path))}'\n"
+            f"$adapterLogPath = '{self._ps_quote(str(adapter_log_path))}'\n"
+            "$healthUrl = 'http://127.0.0.1:8002/api/health'\n"
+            "$timeoutSeconds = 90\n"
+            "$maxAttempts = 3\n"
+            "$lastStartLogLine = 0\n"
+            "$lastAdapterLogLine = 0\n"
+            "function Show-NewLines($path, [ref]$lastLine, $prefix, $patterns = $null) {\n"
+            "  if (-not (Test-Path $path)) { return }\n"
+            "  $lines = Get-Content -Path $path -ErrorAction SilentlyContinue\n"
+            "  if ($null -eq $lines) { return }\n"
+            "  if ($lines -is [string]) { $lines = @($lines) }\n"
+            "  if ($lines.Count -lt $lastLine.Value) { $lastLine.Value = 0 }\n"
+            "  for ($lineNumber = $lastLine.Value; $lineNumber -lt $lines.Count; $lineNumber++) {\n"
+            "    $line = [string]$lines[$lineNumber]\n"
+            "    if ($patterns) {\n"
+            "      $matched = $false\n"
+            "      foreach ($pattern in $patterns) {\n"
+            "        if ($line -match $pattern) { $matched = $true; break }\n"
+            "      }\n"
+            "      if (-not $matched) { continue }\n"
+            "    }\n"
+            "    Write-Host ('  {0} {1}' -f $prefix, $line)\n"
+            "  }\n"
+            "  $lastLine.Value = $lines.Count\n"
+            "}\n"
+            "function Get-StartCncConfig {\n"
+            "  if (-not (Test-Path $configPath)) { return $null }\n"
+            "  try { return Get-Content -Path $configPath -Raw | ConvertFrom-Json } catch { return $null }\n"
+            "}\n"
+            "function Test-AutoStartEdingGui {\n"
+            "  $config = Get-StartCncConfig\n"
+            "  if ($null -eq $config) { return $false }\n"
+            "  return [bool]$config.auto_start_eding_gui\n"
+            "}\n"
+            "function Get-EdingGuiPath {\n"
+            "  $config = Get-StartCncConfig\n"
+            "  $dllPath = 'C:\\CNC4.03\\cncapi.dll'\n"
+            "  if ($null -ne $config -and $config.dll_path) { $dllPath = [string]$config.dll_path }\n"
+            "  $cncDir = Split-Path -Parent $dllPath\n"
+            "  $candidates = @(\n"
+            "    (Join-Path $cncDir 'cnc4.03.exe'),\n"
+            "    (Join-Path $cncDir 'cnc.exe')\n"
+            "  )\n"
+            "  foreach ($candidate in $candidates) {\n"
+            "    if (Test-Path $candidate) { return $candidate }\n"
+            "  }\n"
+            "  return $null\n"
+            "}\n"
+            "function Start-EdingGuiAfterReady {\n"
+            "  if (-not (Test-AutoStartEdingGui)) { return $true }\n"
+            "  $runningGui = Get-Process -Name 'cnc4.03','cnc' -ErrorAction SilentlyContinue\n"
+            "  if ($runningGui) {\n"
+            "    Write-Host 'Eding GUI is already running.' -ForegroundColor Green\n"
+            "    return $true\n"
+            "  }\n"
+            "  if (-not (Get-EdingGuiPath)) {\n"
+            "    Write-Host 'Could not find Eding GUI next to cncapi.dll.' -ForegroundColor Red\n"
+            "    return $false\n"
+            "  }\n"
+            "  Write-Host 'Starting Eding GUI through elevated START-CNC task...'\n"
+            "  $taskOutput = schtasks /Run /TN $guiTaskName 2>&1\n"
+            "  if ($LASTEXITCODE -ne 0) {\n"
+            "    Write-Host 'Could not start elevated Eding GUI handoff task.' -ForegroundColor Red\n"
+            "    Write-Host $taskOutput\n"
+            "    return $false\n"
+            "  }\n"
+            "  Start-Sleep -Seconds 12\n"
+            "  Show-NewLines $logPath ([ref]$lastStartLogLine) 'START'\n"
+            "  return $true\n"
+            "}\n"
+            "function Wait-AdapterReadyAfterGui {\n"
+            "  if (-not (Test-AutoStartEdingGui)) { return $true }\n"
+            "  Write-Host 'Waiting for adapter to reconnect to Eding GUI server...'\n"
+            "  $start = Get-Date\n"
+            "  $stableReadyChecks = 0\n"
+            "  while (((Get-Date) - $start).TotalSeconds -lt 90) {\n"
+            "    Show-NewLines $logPath ([ref]$lastStartLogLine) 'START'\n"
+            "    Show-NewLines $adapterLogPath ([ref]$lastAdapterLogLine) 'ADAPTER' $adapterPatterns\n"
+            "    try {\n"
+            "      $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 2\n"
+            "      $runningGui = Get-Process -Name 'cnc4.03','cnc' -ErrorAction SilentlyContinue\n"
+            "      if ($health.cnc.connected -eq $true -and $runningGui) {\n"
+            "        $stableReadyChecks++\n"
+            "        if ($stableReadyChecks -ge 3) { return $true }\n"
+            "      } else {\n"
+            "        $stableReadyChecks = 0\n"
+            "      }\n"
+            "    } catch {}\n"
+            "    Start-Sleep -Seconds 2\n"
+            "  }\n"
+            "  return $false\n"
+            "}\n"
+            "$adapterPatterns = @(\n"
+            "  'Starting ERP-CNC Adapter',\n"
+            "  'Starting CNC Server',\n"
+            "  'CNC Server started',\n"
+            "  'Auto-started CncServer',\n"
+            "  'Eding GUI auto-start deferred',\n"
+            "  'Started Eding GUI',\n"
+            "  'Starting Eding GUI through elevated START-CNC task',\n"
+            "  'Stopping adapter-started CNC Server before Eding GUI launch',\n"
+            "  'Attempting CNC connection',\n"
+            "  'CNC connection established',\n"
+            "  'machine is ready',\n"
+            "  'ERROR',\n"
+            "  'WARNING',\n"
+            "  'Last error',\n"
+            "  'failed',\n"
+            "  'timed out'\n"
+            ")\n"
+            "Write-Host ''\n"
+            "Write-Host 'START-CNC is loading...' -ForegroundColor Cyan\n"
+            "Write-Host ''\n"
+            "$spinner = @('|','/','-','\\')\n"
+            "$i = 0\n"
+            "for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {\n"
+            "  Write-Host (\"Starting manual START-CNC task... attempt {0} of {1}\" -f $attempt, $maxAttempts)\n"
+            "  $taskOutput = schtasks /Run /TN $taskName 2>&1\n"
+            "  if ($LASTEXITCODE -ne 0) {\n"
+            "    Write-Host 'START-CNC could not start.' -ForegroundColor Red\n"
+            "    Write-Host $taskOutput\n"
+            "    Write-Host ''\n"
+            "    Write-Host \"Check log: $logPath\"\n"
+            "    Read-Host 'Press Enter to close'\n"
+            "    exit 1\n"
+            "  }\n"
+            "  $start = Get-Date\n"
+            "  while (((Get-Date) - $start).TotalSeconds -lt $timeoutSeconds) {\n"
+            "    Show-NewLines $logPath ([ref]$lastStartLogLine) 'START'\n"
+            "    Show-NewLines $adapterLogPath ([ref]$lastAdapterLogLine) 'ADAPTER' $adapterPatterns\n"
+            "    $elapsed = [int]((Get-Date) - $start).TotalSeconds\n"
+            "    $percent = [Math]::Min(100, [int](($elapsed / $timeoutSeconds) * 100))\n"
+            "    $filled = [Math]::Min(20, [int]($percent / 5))\n"
+            "    $bar = ('#' * $filled).PadRight(20, '.')\n"
+            "    Write-Host -NoNewline (\"`r{0} Starting adapter [{1}] {2}%\" -f $spinner[$i % $spinner.Count], $bar, $percent)\n"
+            "    $i++\n"
+            "    try {\n"
+            "      $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 2\n"
+            "      if ($health.cnc.connected -eq $true) {\n"
+            "        Write-Host ''\n"
+            "        Show-NewLines $logPath ([ref]$lastStartLogLine) 'START'\n"
+            "        Show-NewLines $adapterLogPath ([ref]$lastAdapterLogLine) 'ADAPTER' $adapterPatterns\n"
+            "        if (-not (Start-EdingGuiAfterReady)) {\n"
+            "          Write-Host \"Check config: $configPath\"\n"
+            "          Read-Host 'Press Enter to close'\n"
+            "          exit 1\n"
+            "        }\n"
+            "        if (-not (Wait-AdapterReadyAfterGui)) {\n"
+            "          Write-Host 'Adapter did not reconnect after Eding GUI launch.' -ForegroundColor Red\n"
+            "          Write-Host \"Check log: $adapterLogPath\"\n"
+            "          Read-Host 'Press Enter to close'\n"
+            "          exit 1\n"
+            "        }\n"
+            "        Write-Host 'START-CNC is ready.' -ForegroundColor Green\n"
+            "        Start-Sleep -Seconds 2\n"
+            "        exit 0\n"
+            "      }\n"
+            "    } catch {}\n"
+            "    Start-Sleep -Seconds 2\n"
+            "  }\n"
+            "  Write-Host ''\n"
+            "  Show-NewLines $logPath ([ref]$lastStartLogLine) 'START'\n"
+            "  Show-NewLines $adapterLogPath ([ref]$lastAdapterLogLine) 'ADAPTER' $adapterPatterns\n"
+            "  if ($attempt -lt $maxAttempts) {\n"
+            "    Write-Host 'START-CNC is not ready yet; retrying the full start sequence...' -ForegroundColor Yellow\n"
+            "    Start-Sleep -Seconds 5\n"
+            "  }\n"
+            "}\n"
+            "Write-Host ''\n"
+            "Write-Host 'START-CNC did not become ready after all retry attempts.' -ForegroundColor Red\n"
+            "Write-Host \"Check log: $logPath\"\n"
+            "Read-Host 'Press Enter to close'\n"
+            "exit 1\n",
+            encoding="utf-8",
+        )
+        if installation_log:
+            installation_log.write(f"START-CNC feedback script: {script_path}\n")
+        return script_path
+
+    def _build_manual_start_task_script(self) -> str:
+        launcher_path = self.install_path / "scripts" / "run_start_cnc_hidden.vbs"
+        script = (
+            "$ErrorActionPreference = 'Stop'\n"
+            f"Unregister-ScheduledTask -TaskName '{self.MANUAL_START_TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue\n"
+            f"$launcherPath = '{self._ps_quote(str(launcher_path))}'\n"
+            f"$workDir = '{self._ps_quote(str(launcher_path.parent))}'\n"
+            "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $launcherPath + '\"') -WorkingDirectory $workDir\n"
+            "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
+        )
+        if self.task_username:
+            script += (
+                f"$taskUser = '{self._ps_quote(self.task_username)}'\n"
+                "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+            )
+        else:
+            script += "$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest\n"
+        script += (
+            f"Register-ScheduledTask -TaskName '{self.MANUAL_START_TASK_NAME}' "
+            "-Action $action -Principal $principal -Settings $settings -Force | Out-Null\n"
+        )
+        return script
+
+    def _create_manual_start_task(self, installation_log) -> bool:
+        ps_script = self._build_manual_start_task_script()
+        ps_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ps1", delete=False, encoding="utf-8",
+        )
+        ps_file.write(ps_script)
+        ps_file.close()
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_file.name],
+                capture_output=True,
+                text=True,
+                startupinfo=self._startupinfo(),
+            )
+        finally:
+            os.unlink(ps_file.name)
+
+        installation_log.write("Manual START-CNC task creation:\n")
+        installation_log.write(f"Exit code: {result.returncode}\n")
+        if result.stdout:
+            installation_log.write(f"STDOUT:\n{result.stdout}\n")
+        if result.stderr:
+            installation_log.write(f"STDERR:\n{result.stderr}\n")
+        return result.returncode == 0 and not result.stderr
+
+    def _build_eding_handoff_task_script(self) -> str:
+        script_path = self.install_path / "scripts" / "start_eding_handoff.ps1"
+        script = (
+            "$ErrorActionPreference = 'Stop'\n"
+            f"Unregister-ScheduledTask -TaskName '{self.EDING_HANDOFF_TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue\n"
+            f"$scriptPath = '{self._ps_quote(str(script_path))}'\n"
+            f"$workDir = '{self._ps_quote(str(script_path.parent))}'\n"
+            "$action = New-ScheduledTaskAction -Execute 'powershell.exe' "
+            "-Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"' + $scriptPath + '\"') "
+            "-WorkingDirectory $workDir\n"
+            "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
+        )
+        if self.task_username:
+            script += (
+                f"$taskUser = '{self._ps_quote(self.task_username)}'\n"
+                "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+            )
+        else:
+            script += "$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest\n"
+        script += (
+            f"Register-ScheduledTask -TaskName '{self.EDING_HANDOFF_TASK_NAME}' "
+            "-Action $action -Principal $principal -Settings $settings -Force | Out-Null\n"
+        )
+        return script
+
+    def _create_eding_handoff_task(self, installation_log) -> bool:
+        ps_script = self._build_eding_handoff_task_script()
+        ps_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ps1", delete=False, encoding="utf-8",
+        )
+        ps_file.write(ps_script)
+        ps_file.close()
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_file.name],
+                capture_output=True,
+                text=True,
+                startupinfo=self._startupinfo(),
+            )
+        finally:
+            os.unlink(ps_file.name)
+
+        installation_log.write("Eding GUI handoff task creation:\n")
+        installation_log.write(f"Exit code: {result.returncode}\n")
+        if result.stdout:
+            installation_log.write(f"STDOUT:\n{result.stdout}\n")
+        if result.stderr:
+            installation_log.write(f"STDERR:\n{result.stderr}\n")
+        return result.returncode == 0 and not result.stderr
+
+    def _build_start_shortcut_script(self) -> str:
+        feedback_path = self.install_path / "scripts" / "start_cnc_feedback.ps1"
+        icon_path = self.install_path / "resources" / "logo.ico"
+        return (
+            "$ErrorActionPreference = 'Stop'\n"
+            "$desktopCandidates = @()\n"
+            "if ($env:PUBLIC) { $desktopCandidates += (Join-Path $env:PUBLIC 'Desktop') }\n"
+            "if ($env:USERPROFILE) { $desktopCandidates += (Join-Path $env:USERPROFILE 'Desktop') }\n"
+            "$desktop = $desktopCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1\n"
+            "if (-not $desktop) { throw 'Could not find a desktop folder for shortcut creation.' }\n"
+            "$shortcutPath = Join-Path $desktop 'START-CNC.lnk'\n"
+            "$shell = New-Object -ComObject WScript.Shell\n"
+            "$shortcut = $shell.CreateShortcut($shortcutPath)\n"
+            "$shortcut.TargetPath = 'powershell.exe'\n"
+            f"$shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -File \"{self._ps_quote(str(feedback_path))}\"'\n"
+            f"$shortcut.WorkingDirectory = '{self._ps_quote(str(feedback_path.parent))}'\n"
+            f"$shortcut.IconLocation = '{self._ps_quote(str(icon_path))}'\n"
+            "$shortcut.Description = 'Start CNC adapter runtime'\n"
+            "$shortcut.Save()\n"
+            "Write-Output $shortcutPath\n"
+        )
+
+    def _create_start_shortcut(self, installation_log) -> bool:
+        """Create a desktop START-CNC shortcut to the restart script."""
+        ps_script = self._build_start_shortcut_script()
+        ps_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ps1", delete=False, encoding="utf-8",
+        )
+        ps_file.write(ps_script)
+        ps_file.close()
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_file.name],
+                capture_output=True,
+                text=True,
+                startupinfo=self._startupinfo(),
+            )
+        finally:
+            os.unlink(ps_file.name)
+
+        installation_log.write("Desktop shortcut creation:\n")
+        installation_log.write(f"Exit code: {result.returncode}\n")
+        if result.stdout:
+            installation_log.write(f"STDOUT:\n{result.stdout}\n")
+        if result.stderr:
+            installation_log.write(f"STDERR:\n{result.stderr}\n")
+        return result.returncode == 0
+
 
     def _build_interactive_logon_task_script(self, launcher_path: Path) -> str:
         def ps_quote(value: str) -> str:
             return value.replace("'", "''")
 
+        startup_delay = f"PT{self.DEFAULT_STARTUP_DELAY_SECONDS}S"
+        disable_task = ""
+        if not self.auto_start_adapter_on_logon:
+            disable_task = "Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null\n"
         return (
             "$ErrorActionPreference = 'Stop'\n"
             f"$action = New-ScheduledTaskAction "
@@ -295,6 +746,7 @@ class InstallWorker(QThread):
             f"-Argument '\"{ps_quote(str(launcher_path))}\"' "
             f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
             f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User '{ps_quote(self.task_username)}'\n"
+            f"$trigger.Delay = '{startup_delay}'\n"
             f"$principal = New-ScheduledTaskPrincipal -UserId '{ps_quote(self.task_username)}' "
             f"-LogonType Interactive -RunLevel Highest\n"
             f"$settings = New-ScheduledTaskSettingsSet "
@@ -303,6 +755,7 @@ class InstallWorker(QThread):
             f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
             f"-Action $action -Trigger $trigger -Principal $principal "
             f"-Settings $settings -Force -ErrorAction Stop | Out-Null\n"
+            f"{disable_task}"
         )
 
 
@@ -408,6 +861,8 @@ class InstallWorker(QThread):
                     config_data = {}
             config_data["machine_number"] = self.machine_number
             config_data["task_username"] = self.task_username
+            config_data["auto_start_adapter_on_logon"] = self.auto_start_adapter_on_logon
+            config_data.setdefault("adapter_startup_delay_seconds", self.DEFAULT_STARTUP_DELAY_SECONDS)
             config_path.write_text(
                 json.dumps(config_data, indent=2, ensure_ascii=False),
                 encoding="utf-8",
@@ -420,6 +875,35 @@ class InstallWorker(QThread):
             else:
                 self.log_message.emit("Task account: SYSTEM")
                 installation_log.write("Task account: SYSTEM\n")
+            installation_log.write(
+                f"Adapter startup delay: {config_data['adapter_startup_delay_seconds']}s\n"
+            )
+            installation_log.write(
+                f"Adapter auto-start on logon: {self.auto_start_adapter_on_logon}\n"
+            )
+            installation_log.flush()
+
+            self._write_start_cnc_hidden_launcher(installation_log)
+            self._write_eding_handoff_script(installation_log)
+            self._write_start_cnc_feedback_script(installation_log)
+            if self._create_manual_start_task(installation_log):
+                self.log_message.emit("\u2713 Manual start task created: START-CNC")
+                installation_log.write("\u2713 Manual start task created: START-CNC\n")
+            else:
+                self.log_message.emit("\u26a0 Manual start task creation failed (shortcut may require elevation)")
+                installation_log.write("\u26a0 Manual start task creation failed (shortcut may require elevation)\n")
+            if self._create_eding_handoff_task(installation_log):
+                self.log_message.emit("\u2713 Eding GUI handoff task created")
+                installation_log.write("\u2713 Eding GUI handoff task created\n")
+            else:
+                self.log_message.emit("\u26a0 Eding GUI handoff task creation failed")
+                installation_log.write("\u26a0 Eding GUI handoff task creation failed\n")
+            if self._create_start_shortcut(installation_log):
+                self.log_message.emit("\u2713 Desktop shortcut created: START-CNC")
+                installation_log.write("\u2713 Desktop shortcut created: START-CNC\n")
+            else:
+                self.log_message.emit("\u26a0 Desktop shortcut creation failed (non-critical)")
+                installation_log.write("\u26a0 Desktop shortcut creation failed (non-critical)\n")
             installation_log.flush()
 
             self.progress_value.emit(40)
@@ -478,33 +962,42 @@ class InstallWorker(QThread):
                 return value.replace("'", "''")
 
             launcher_path = self._write_hidden_launcher(exe_path, installation_log)
-            task_start_mode = "boot"
             ps_script = (
                 "$ErrorActionPreference = 'Stop'\n"
                 f"$action = New-ScheduledTaskAction "
                 f"-Execute 'wscript.exe' "
                 f"-Argument '\"{ps_quote(str(launcher_path))}\"' "
                 f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
-                f"$trigger = New-ScheduledTaskTrigger -AtStartup\n"
+                f"$startupDelay = 'PT{int(config_data['adapter_startup_delay_seconds'])}S'\n"
+                f"$autoStartAdapter = ${str(self.auto_start_adapter_on_logon).lower()}\n"
                 f"$settings = New-ScheduledTaskSettingsSet "
                 f"-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
                 f"-RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\n"
             )
             if self.task_username:
+                task_start_mode = "logon"
                 ps_script += (
                     f"$taskUser = '{ps_quote(self.task_username)}'\n"
-                    f"$taskPassword = '{ps_quote(self.task_password)}'\n"
+                    f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser\n"
+                    f"$trigger.Delay = $startupDelay\n"
+                    f"$principal = New-ScheduledTaskPrincipal -UserId $taskUser "
+                    f"-LogonType Interactive -RunLevel Highest\n"
                     f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
-                    f"-Action $action -Trigger $trigger -Settings $settings "
-                    f"-User $taskUser -Password $taskPassword -RunLevel Highest -Force -ErrorAction Stop | Out-Null\n"
+                    f"-Action $action -Trigger $trigger -Principal $principal "
+                    f"-Settings $settings -Force -ErrorAction Stop | Out-Null\n"
+                    f"if (-not $autoStartAdapter) {{ Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null }}\n"
                 )
             else:
+                task_start_mode = "boot"
                 ps_script += (
+                    f"$trigger = New-ScheduledTaskTrigger -AtStartup\n"
+                    f"$trigger.Delay = $startupDelay\n"
                     f"$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' "
                     f"-LogonType ServiceAccount -RunLevel Highest\n"
                     f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
                     f"-Action $action -Trigger $trigger -Principal $principal "
                     f"-Settings $settings -Force -ErrorAction Stop | Out-Null\n"
+                    f"if (-not $autoStartAdapter) {{ Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null }}\n"
                 )
             ps_file = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".ps1", delete=False, encoding="utf-8",
@@ -591,6 +1084,12 @@ class InstallWorker(QThread):
                 if result.returncode == 0:
                     self.log_message.emit("\u2713 Watchdog task created (checks every 2 minutes)")
                     installation_log.write("\u2713 Watchdog task created\n")
+                    if not self.auto_start_adapter_on_logon:
+                        subprocess.run(
+                            ["schtasks", "/Change", "/TN", "ERPCNCAdapterWatchdog", "/Disable"],
+                            capture_output=True, startupinfo=self._startupinfo(),
+                        )
+                        installation_log.write("Watchdog auto-start disabled for manual-start install\n")
                 else:
                     self.log_message.emit("\u26a0 Watchdog task creation failed (non-critical)")
                     installation_log.write(f"\u26a0 Watchdog failed: {result.stderr}\n")
@@ -645,20 +1144,24 @@ class InstallWorker(QThread):
             if task_start_mode == "logon":
                 deferred_start_message = f"when {self.task_username} logs on"
             # Start through the scheduled task so SYSTEM/user account selection is respected.
-            installation_log.write("Starting scheduled task: ERPCNCAdapter\n")
-            try:
-                if self._start_adapter_task(installation_log):
-                    self.log_message.emit("\u2713 Application start requested via scheduled task")
-                    self.log_message.emit("\u2713 Access at: http://localhost:8002")
-                    installation_log.write("\u2713 Scheduled task start requested successfully\n")
-                else:
-                    self.log_message.emit(f"\u26a0 Could not start task now - application will start {deferred_start_message}")
-                    installation_log.write(f"\u26a0 Scheduled task start failed; application will start {deferred_start_message}\n")
-            except Exception as start_err:
-                self.log_message.emit(f"\u26a0 Could not start now: {start_err}")
-                self.log_message.emit(f"\u2713 Application will start {deferred_start_message}")
-                installation_log.write(f"\u26a0 Launch error: {start_err}\n")
-                installation_log.write(f"Application will start {deferred_start_message}\n")
+            if self.auto_start_adapter_on_logon:
+                installation_log.write("Starting scheduled task: ERPCNCAdapter\n")
+                try:
+                    if self._start_adapter_task(installation_log):
+                        self.log_message.emit("\u2713 Application start requested via scheduled task")
+                        self.log_message.emit("\u2713 Access at: http://localhost:8002")
+                        installation_log.write("\u2713 Scheduled task start requested successfully\n")
+                    else:
+                        self.log_message.emit(f"\u26a0 Could not start task now - application will start {deferred_start_message}")
+                        installation_log.write(f"\u26a0 Scheduled task start failed; application will start {deferred_start_message}\n")
+                except Exception as start_err:
+                    self.log_message.emit(f"\u26a0 Could not start now: {start_err}")
+                    self.log_message.emit(f"\u2713 Application will start {deferred_start_message}")
+                    installation_log.write(f"\u26a0 Launch error: {start_err}\n")
+                    installation_log.write(f"Application will start {deferred_start_message}\n")
+            else:
+                self.log_message.emit("\u2713 Auto-start disabled; use restart.bat to start manually")
+                installation_log.write("Auto-start disabled; adapter was not started automatically after install\n")
             installation_log.write("\n" + "=" * 70 + "\n")
             installation_log.write("INSTALLATION COMPLETED SUCCESSFULLY\n")
             installation_log.write(f"Completion time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")

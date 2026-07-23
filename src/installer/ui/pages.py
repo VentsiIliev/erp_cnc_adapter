@@ -111,11 +111,17 @@ class PathPage(QWidget):
 
         self.run_as_user_check = QCheckBox("Run adapter as a Windows account")
         self.run_as_user_check.setObjectName("PageSubtitle")
+        self.run_as_user_check.setChecked(True)
         lay.addWidget(self.run_as_user_check)
 
+        self.auto_start_check = QCheckBox("Start adapter automatically on Windows logon")
+        self.auto_start_check.setObjectName("PageSubtitle")
+        self.auto_start_check.setChecked(True)
+        lay.addWidget(self.auto_start_check)
+
         credential_hint = QLabel(
-            "Use an account that has access to the CNC network share. "
-            "Leave disabled to run as SYSTEM."
+            "Default: use the current Windows account so CNC network shares work. "
+            "Untick auto-start when this machine should be started manually with the restart script."
         )
         credential_hint.setObjectName("DiskLabel")
         credential_hint.setWordWrap(True)
@@ -125,8 +131,7 @@ class PathPage(QWidget):
         self.username_edit.setObjectName("PathInput")
         self.username_edit.setPlaceholderText(r"DOMAIN\username or .\username")
         self.username_edit.setMinimumHeight(38)
-        self.username_edit.setEnabled(False)
-        self.username_edit.hide()
+        self.username_edit.setEnabled(True)
         lay.addWidget(self.username_edit)
 
         self.password_edit = QLineEdit()
@@ -134,8 +139,7 @@ class PathPage(QWidget):
         self.password_edit.setPlaceholderText("Windows password")
         self.password_edit.setEchoMode(QLineEdit.Password)
         self.password_edit.setMinimumHeight(38)
-        self.password_edit.setEnabled(False)
-        self.password_edit.hide()
+        self.password_edit.setEnabled(True)
         lay.addWidget(self.password_edit)
 
         self.run_as_user_check.toggled.connect(self._toggle_credentials)

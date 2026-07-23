@@ -9,6 +9,7 @@ from src.core.task_config import (
     configure_task_launch_account,
     get_task_launch_settings,
     restart_scheduled_adapter_task,
+    set_adapter_autostart_enabled,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,12 @@ class ConfigUpdate(BaseModel):
     port: int | None = Field(None, ge=1, le=65535, description="HTTP port for the adapter; restart required to bind the new port")
     cnc_retry_interval: int | None = Field(None, ge=1, le=300, description="Seconds between connection retries")
     cnc_health_interval: int | None = Field(None, ge=1, le=300, description="Seconds between heartbeat checks")
+    cnc_startup_ready_timeout: int | None = Field(None, ge=5, le=600, description="Seconds to wait for CNC machine readiness after connecting")
+    auto_start_adapter_on_logon: bool | None = Field(None, description="Start the adapter automatically when the configured Windows account logs on")
+    adapter_startup_delay_seconds: int | None = Field(None, ge=0, le=600, description="Delay before scheduled boot/logon adapter startup")
+    auto_start_cnc_server: bool | None = Field(None, description="Start CncServer.exe automatically when the adapter starts")
+    auto_start_eding_gui: bool | None = Field(None, description="Start the Eding CNC GUI after the adapter confirms CNC readiness")
+    show_operator_ready_message: bool | None = Field(None, description="Show a desktop ready message when GUI auto-start is disabled")
     job_monitor_poll_interval: float | None = Field(None, ge=0.1, le=60.0, description="Seconds between job monitor status checks")
 
 
@@ -48,6 +55,12 @@ class ConfigResponse(BaseModel):
     log_level: str
     cnc_retry_interval: int
     cnc_health_interval: int
+    cnc_startup_ready_timeout: int
+    auto_start_adapter_on_logon: bool
+    adapter_startup_delay_seconds: int
+    auto_start_cnc_server: bool
+    auto_start_eding_gui: bool
+    show_operator_ready_message: bool
     job_monitor_poll_interval: float
 
 
@@ -83,6 +96,8 @@ async def get_config(request: Request):
                 "run_as_windows_user": bool(settings.task_username),
                 "task_username": settings.task_username,
                 "task_password_configured": bool(settings.task_username),
+                "auto_start_adapter_on_logon": settings.auto_start_adapter_on_logon,
+                "adapter_startup_delay_seconds": settings.adapter_startup_delay_seconds,
             }
 
         return ConfigResponse(
@@ -100,6 +115,12 @@ async def get_config(request: Request):
             log_level=settings.log_level,
             cnc_retry_interval=settings.cnc_retry_interval,
             cnc_health_interval=settings.cnc_health_interval,
+            cnc_startup_ready_timeout=settings.cnc_startup_ready_timeout,
+            auto_start_adapter_on_logon=bool(launch_settings.get("auto_start_adapter_on_logon", settings.auto_start_adapter_on_logon)),
+            adapter_startup_delay_seconds=int(launch_settings.get("adapter_startup_delay_seconds", settings.adapter_startup_delay_seconds)),
+            auto_start_cnc_server=settings.auto_start_cnc_server,
+            auto_start_eding_gui=settings.auto_start_eding_gui,
+            show_operator_ready_message=settings.show_operator_ready_message,
             job_monitor_poll_interval=settings.job_monitor_poll_interval,
         )
     except Exception as e:
@@ -202,6 +223,57 @@ async def update_config(request: Request, config: ConfigUpdate):
                 services.connection_manager._health_interval = config.cnc_health_interval
                 logger.info("Updated active connection manager health interval")
 
+        # Update CNC startup ready timeout
+        if config.cnc_startup_ready_timeout is not None:
+            old_value = settings.cnc_startup_ready_timeout
+            settings.cnc_startup_ready_timeout = config.cnc_startup_ready_timeout
+            changes.append(f"cnc_startup_ready_timeout: {old_value} -> {config.cnc_startup_ready_timeout}")
+            logger.info("Updated cnc_startup_ready_timeout: %s -> %s", old_value, config.cnc_startup_ready_timeout)
+
+            if hasattr(services, 'connection_manager') and services.connection_manager is not None:
+                services.connection_manager._startup_ready_timeout = config.cnc_startup_ready_timeout
+                logger.info("Updated active connection manager startup ready timeout")
+
+        if config.auto_start_cnc_server is not None:
+            old_value = settings.auto_start_cnc_server
+            settings.auto_start_cnc_server = config.auto_start_cnc_server
+            changes.append(f"auto_start_cnc_server: {old_value} -> {config.auto_start_cnc_server}")
+            logger.info("Updated auto_start_cnc_server: %s -> %s", old_value, config.auto_start_cnc_server)
+
+        if config.auto_start_adapter_on_logon is not None:
+            old_value = settings.auto_start_adapter_on_logon
+            settings.auto_start_adapter_on_logon = config.auto_start_adapter_on_logon
+            if old_value != config.auto_start_adapter_on_logon:
+                set_adapter_autostart_enabled(config.auto_start_adapter_on_logon)
+            changes.append(f"auto_start_adapter_on_logon: {old_value} -> {config.auto_start_adapter_on_logon}")
+            logger.info("Updated auto_start_adapter_on_logon: %s -> %s", old_value, config.auto_start_adapter_on_logon)
+
+        if config.adapter_startup_delay_seconds is not None:
+            old_value = settings.adapter_startup_delay_seconds
+            settings.adapter_startup_delay_seconds = config.adapter_startup_delay_seconds
+            if old_value != config.adapter_startup_delay_seconds:
+                launch_settings = configure_task_launch_account(
+                    task_username=settings.task_username,
+                    task_password="",
+                    auto_start_enabled=settings.auto_start_adapter_on_logon,
+                    startup_delay_seconds=settings.adapter_startup_delay_seconds,
+                )
+                settings.task_username = str(launch_settings["task_username"])
+            changes.append(f"adapter_startup_delay_seconds: {old_value} -> {config.adapter_startup_delay_seconds}")
+            logger.info("Updated adapter_startup_delay_seconds: %s -> %s", old_value, config.adapter_startup_delay_seconds)
+
+        if config.auto_start_eding_gui is not None:
+            old_value = settings.auto_start_eding_gui
+            settings.auto_start_eding_gui = config.auto_start_eding_gui
+            changes.append(f"auto_start_eding_gui: {old_value} -> {config.auto_start_eding_gui}")
+            logger.info("Updated auto_start_eding_gui: %s -> %s", old_value, config.auto_start_eding_gui)
+
+        if config.show_operator_ready_message is not None:
+            old_value = settings.show_operator_ready_message
+            settings.show_operator_ready_message = config.show_operator_ready_message
+            changes.append(f"show_operator_ready_message: {old_value} -> {config.show_operator_ready_message}")
+            logger.info("Updated show_operator_ready_message: %s -> %s", old_value, config.show_operator_ready_message)
+
         # Update job monitor poll interval
         if config.job_monitor_poll_interval is not None:
             old_value = settings.job_monitor_poll_interval
@@ -233,18 +305,14 @@ async def update_config(request: Request, config: ConfigUpdate):
                         "message": "A Windows task username is required when 'Run as Windows user' is enabled.",
                         "changes": [],
                     }
-                if not requested_password:
-                    return {
-                        "success": False,
-                        "message": "A Windows task password is required to create or update scheduled task credentials.",
-                        "changes": [],
-                    }
             else:
                 requested_username = ""
 
             launch_settings = configure_task_launch_account(
                 task_username=requested_username,
                 task_password=requested_password,
+                auto_start_enabled=settings.auto_start_adapter_on_logon,
+                startup_delay_seconds=settings.adapter_startup_delay_seconds,
             )
             old_username = settings.task_username
             settings.task_username = str(launch_settings["task_username"])
@@ -286,6 +354,18 @@ async def update_config(request: Request, config: ConfigUpdate):
             persist_dict["cnc_retry_interval"] = config.cnc_retry_interval
         if config.cnc_health_interval is not None:
             persist_dict["cnc_health_interval"] = config.cnc_health_interval
+        if config.cnc_startup_ready_timeout is not None:
+            persist_dict["cnc_startup_ready_timeout"] = config.cnc_startup_ready_timeout
+        if config.auto_start_cnc_server is not None:
+            persist_dict["auto_start_cnc_server"] = config.auto_start_cnc_server
+        if config.auto_start_adapter_on_logon is not None:
+            persist_dict["auto_start_adapter_on_logon"] = config.auto_start_adapter_on_logon
+        if config.adapter_startup_delay_seconds is not None:
+            persist_dict["adapter_startup_delay_seconds"] = config.adapter_startup_delay_seconds
+        if config.auto_start_eding_gui is not None:
+            persist_dict["auto_start_eding_gui"] = config.auto_start_eding_gui
+        if config.show_operator_ready_message is not None:
+            persist_dict["show_operator_ready_message"] = config.show_operator_ready_message
         if config.job_monitor_poll_interval is not None:
             persist_dict["job_monitor_poll_interval"] = config.job_monitor_poll_interval
 

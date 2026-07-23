@@ -47,6 +47,14 @@ class TestPathPageMachineField:
     def test_machine_edit_max_width(self):
         assert self.page.machine_edit.maximumWidth() == 200
 
+    def test_run_as_windows_account_default_enabled(self):
+        assert self.page.run_as_user_check.isChecked() is True
+        assert self.page.auto_start_check.isChecked() is True
+        assert self.page.username_edit.isEnabled() is True
+        assert self.page.username_edit.isHidden() is False
+        assert self.page.password_edit.isEnabled() is True
+        assert self.page.password_edit.isHidden() is False
+
 
 # ---------------------------------------------------------------------------
 # InstallWorker unit tests (no GUI, no subprocess)
@@ -85,6 +93,11 @@ class TestInstallWorkerInit:
         worker = InstallWorker(r"C:\fake\path", "CNC2", r"DOMAIN\adapter", "secret")
         assert worker.task_username == r"DOMAIN\adapter"
         assert worker.task_password == "secret"
+
+    def test_auto_start_adapter_on_logon_stored(self):
+        from src.installer.worker import InstallWorker
+        worker = InstallWorker(r"C:\fake\path", "CNC2", "", "", False)
+        assert worker.auto_start_adapter_on_logon is False
 
 
 class TestInstallWorkerConfigWrite:
@@ -133,6 +146,21 @@ class TestInstallWorkerConfigWrite:
         result = json.loads(config_path.read_text(encoding="utf-8"))
         assert result["machine_number"] == "CNC1"
         assert result["task_username"] == r"DOMAIN\adapter"
+
+    def test_merges_auto_start_choice_into_config_json(self, tmp_path):
+        """Persists the install-time auto-start choice."""
+        config_path = tmp_path / "config.json"
+        existing = {"machine_number": "CNC1"}
+        config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+        config_data = json.loads(config_path.read_text(encoding="utf-8"))
+        config_data["auto_start_adapter_on_logon"] = False
+        config_path.write_text(
+            json.dumps(config_data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+        result = json.loads(config_path.read_text(encoding="utf-8"))
+        assert result["auto_start_adapter_on_logon"] is False
 
     def test_overwrites_existing_machine_number(self, tmp_path):
         """Replaces old machine_number value."""
@@ -217,6 +245,8 @@ class TestInstallWorkerTaskHandling:
         commands = [call.args[0] for call in mock_run.call_args_list]
         assert ["schtasks", "/End", "/TN", "ERPCNCAdapter"] in commands
         assert ["schtasks", "/End", "/TN", "ERPCNCAdapterWatchdog"] in commands
+        assert ["schtasks", "/End", "/TN", "ERPCNCAdapterManualStart"] in commands
+        assert ["schtasks", "/End", "/TN", "ERPCNCAdapterEdingHandoff"] in commands
         assert ["taskkill", "/F", "/T", "/IM", "erp-cnc-adapter.exe"] in commands
 
     @patch("src.installer.worker.subprocess.run")
@@ -259,6 +289,133 @@ class TestInstallWorkerTaskHandling:
         assert ", 0, False" in text
         assert "erp-cnc-adapter.exe" in text
 
+    def test_start_cnc_hidden_launcher_runs_restart_without_console(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1")
+        launcher = worker._write_start_cnc_hidden_launcher()
+        shortcut_text = launcher.read_text(encoding="utf-8")
+        task_launcher = tmp_path / "scripts" / "run_start_cnc_hidden.vbs"
+        task_text = task_launcher.read_text(encoding="utf-8")
+
+        assert launcher.name == "start_cnc_hidden.vbs"
+        assert task_launcher.exists()
+        assert "WScript.Shell" in shortcut_text
+        assert "schtasks /Run /TN ERPCNCAdapterManualStart" in shortcut_text
+        assert ", 0, True" in shortcut_text
+        assert "MsgBox" in shortcut_text
+        assert "ERPCNC_MANUAL_TASK=1" in task_text
+        assert "cmd.exe /c" in task_text
+        assert "restart.bat" in task_text
+        assert ", 0, True" in task_text
+        assert "start-cnc.log" in task_text
+        assert "MsgBox" in task_text
+
+    def test_start_cnc_feedback_script_shows_progress_and_polls_health(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1")
+        worker._write_eding_handoff_script()
+        script_path = worker._write_start_cnc_feedback_script()
+        text = script_path.read_text(encoding="utf-8")
+
+        assert script_path.name == "start_cnc_feedback.ps1"
+        assert "START-CNC is loading" in text
+        assert "config.json" in text
+        assert "auto_start_eding_gui" in text
+        assert "start-cnc.log" in text
+        assert "adapter.log" in text
+        assert "function Show-NewLines" in text
+        assert "function Start-EdingGuiAfterReady" in text
+        assert "function Wait-AdapterReadyAfterGui" in text
+        assert "Show-NewLines $logPath" in text
+        assert "Show-NewLines $adapterLogPath" in text
+        assert "Starting manual START-CNC task" in text
+        assert "ERPCNCAdapterEdingHandoff" in text
+        assert "$maxAttempts = 3" in text
+        assert "attempt {0} of {1}" in text
+        assert "retrying the full start sequence" in text
+        assert "did not become ready after all retry attempts" in text
+        assert "Eding GUI auto-start deferred" in text
+        assert "Starting Eding GUI through elevated START-CNC task" in text
+        assert "schtasks /Run /TN $guiTaskName" in text
+        assert "cnc4.03.exe" in text
+        assert "Started Eding GUI" in text
+        assert "Waiting for adapter to reconnect to Eding GUI server" in text
+        assert "Adapter did not reconnect after Eding GUI launch" in text
+        assert "Starting CNC Server" in text
+        assert "CNC connection established" in text
+        assert "schtasks /Run /TN $taskName" in text
+        assert "Invoke-RestMethod -Uri $healthUrl" in text
+        assert "$health.cnc.connected -eq $true" in text
+        assert "Start-EdingGuiAfterReady" in text
+        assert "Wait-AdapterReadyAfterGui" in text
+        assert "START-CNC is ready" in text
+        assert "Start-Sleep -Seconds 2" in text
+        assert "Read-Host 'Press Enter to close'" in text
+
+    def test_eding_handoff_script_stops_server_and_starts_gui(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1")
+        script_path = worker._write_eding_handoff_script()
+        text = script_path.read_text(encoding="utf-8")
+
+        assert script_path.name == "start_eding_handoff.ps1"
+        assert "config.json" in text
+        assert "cnc4.03.exe" in text
+        assert "taskkill /F /IM CncServer.exe" in text
+        assert "taskkill /F /T /IM CncServer.exe" not in text
+        assert "Start-Process -FilePath $guiPath" in text
+        assert "Stopping adapter-started CNC Server before Eding GUI launch" in text
+        assert "Eding GUI started" in text
+
+    def test_manual_start_task_runs_hidden_restart_launcher_elevated(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DOMAIN\adapter", "")
+        script = worker._build_manual_start_task_script()
+
+        assert "ERPCNCAdapterManualStart" in script
+        assert "run_start_cnc_hidden.vbs" in script
+        assert "Unregister-ScheduledTask" in script
+        assert "schtasks /Delete" not in script
+        assert "-Execute 'wscript.exe'" in script
+        assert "-LogonType Interactive" in script
+        assert "-RunLevel Highest" in script
+
+    def test_eding_handoff_task_runs_elevated(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DOMAIN\adapter", "")
+        script = worker._build_eding_handoff_task_script()
+
+        assert "ERPCNCAdapterEdingHandoff" in script
+        assert "start_eding_handoff.ps1" in script
+        assert "Unregister-ScheduledTask" in script
+        assert "-Execute 'powershell.exe'" in script
+        assert "-WindowStyle Hidden" in script
+        assert "-LogonType Interactive" in script
+        assert "-RunLevel Highest" in script
+
+    def test_start_shortcut_targets_feedback_script_with_logo_icon(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1")
+        script = worker._build_start_shortcut_script()
+
+        assert "START-CNC.lnk" in script
+        assert "Join-Path $env:PUBLIC 'Desktop'" in script
+        assert "Join-Path $env:USERPROFILE 'Desktop'" in script
+        assert "$shortcut.TargetPath = 'powershell.exe'" in script
+        assert str(tmp_path / "scripts" / "start_cnc_feedback.ps1") in script
+        assert str(tmp_path / "scripts" / "start_cnc_hidden.vbs") not in script
+        assert str(tmp_path / "scripts" / "restart.bat") not in script
+        assert str(tmp_path / "resources" / "logo.ico") in script
+        assert "$shortcut.TargetPath" in script
+        assert "$shortcut.Arguments" in script
+        assert "$shortcut.IconLocation" in script
+
     def test_interactive_logon_task_uses_no_password(self, tmp_path):
         from src.installer.worker import InstallWorker
 
@@ -266,12 +423,37 @@ class TestInstallWorkerTaskHandling:
         script = worker._build_interactive_logon_task_script(tmp_path / "launch_adapter_hidden.vbs")
 
         assert "New-ScheduledTaskTrigger -AtLogOn" in script
+        assert "$trigger.Delay = 'PT90S'" in script
         assert "-Execute 'wscript.exe'" in script
         assert "launch_adapter_hidden.vbs" in script
         assert "-LogonType Interactive" in script
         assert r"DESKTOP-EMJIESP\CNC5" in script
         assert "-Password" not in script
         assert "secret" not in script
+
+    def test_interactive_logon_task_can_be_created_disabled(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DESKTOP-EMJIESP\CNC5", "", False)
+        script = worker._build_interactive_logon_task_script(tmp_path / "launch_adapter_hidden.vbs")
+
+        assert "Disable-ScheduledTask -TaskName 'ERPCNCAdapter'" in script
+
+    def test_installer_sets_startup_delay_in_registered_task(self, tmp_path):
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "src"
+            / "installer"
+            / "worker.py"
+        ).read_text(encoding="utf-8")
+
+        assert "adapter_startup_delay_seconds" in source
+        assert "auto_start_adapter_on_logon" in source
+        assert "$startupDelay = 'PT" in source
+        assert "$trigger.Delay = $startupDelay" in source
+        assert "Disable-ScheduledTask -TaskName 'ERPCNCAdapter'" in source
 
 
     def test_credential_diagnostics_do_not_log_password(self, tmp_path):
@@ -336,7 +518,13 @@ class TestWindowPassesMachineNumber:
         window.path_page.machine_edit.setText("CNC3")
         window._start_install()
 
-        MockWorker.assert_called_once_with(r"C:\test\install", "CNC3", "", "")
+        MockWorker.assert_called_once_with(
+            r"C:\test\install",
+            "CNC3",
+            window.path_page.username_edit.text().strip(),
+            "",
+            True,
+        )
         window.close()
         window.deleteLater()
 
@@ -352,7 +540,13 @@ class TestWindowPassesMachineNumber:
         window.path_page.machine_edit.setText("   ")  # whitespace only
         window._start_install()
 
-        MockWorker.assert_called_once_with(r"C:\test\install", "CNC1", "", "")
+        MockWorker.assert_called_once_with(
+            r"C:\test\install",
+            "CNC1",
+            window.path_page.username_edit.text().strip(),
+            "",
+            True,
+        )
         window.close()
         window.deleteLater()
 
@@ -366,9 +560,10 @@ class TestWindowPassesMachineNumber:
         window = InstallerWindow()
         window.path_page.path_edit.setText(r"C:\test\install")
         window.path_page.machine_edit.setText("  MILL1  ")
+        window.path_page.run_as_user_check.setChecked(False)
         window._start_install()
 
-        MockWorker.assert_called_once_with(r"C:\test\install", "MILL1", "", "")
+        MockWorker.assert_called_once_with(r"C:\test\install", "MILL1", "", "", True)
         window.close()
         window.deleteLater()
 
@@ -388,7 +583,30 @@ class TestWindowPassesMachineNumber:
         window._start_install()
 
         MockWorker.assert_called_once_with(
-            r"C:\test\install", "CNC4", r"DOMAIN\adapter", "secret"
+            r"C:\test\install", "CNC4", r"DOMAIN\adapter", "secret", True
+        )
+        window.close()
+        window.deleteLater()
+
+    @patch("src.installer.ui.window.InstallWorker")
+    def test_auto_start_choice_passed_to_worker(self, MockWorker):
+        from src.installer.ui.window import InstallerWindow
+
+        mock_instance = MagicMock()
+        MockWorker.return_value = mock_instance
+
+        window = InstallerWindow()
+        window.path_page.path_edit.setText(r"C:\test\install")
+        window.path_page.machine_edit.setText("CNC4")
+        window.path_page.auto_start_check.setChecked(False)
+        window._start_install()
+
+        MockWorker.assert_called_once_with(
+            r"C:\test\install",
+            "CNC4",
+            window.path_page.username_edit.text().strip(),
+            "",
+            False,
         )
         window.close()
         window.deleteLater()

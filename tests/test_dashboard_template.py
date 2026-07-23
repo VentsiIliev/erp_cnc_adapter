@@ -52,6 +52,18 @@ def test_config_form_can_edit_adapter_port():
     assert '"adapterPort"' in dashboard
 
 
+def test_config_form_can_toggle_adapter_logon_start():
+    dashboard = _dashboard_html()
+
+    assert 'id="autoStartAdapterOnLogonToggle"' in dashboard
+    assert 'id="currentAutoStartAdapterOnLogon"' in dashboard
+    assert 'id="adapterStartupDelay"' in dashboard
+    assert 'id="currentAdapterStartupDelay"' in dashboard
+    assert "body.auto_start_adapter_on_logon ? \"Enabled\" : \"Disabled\"" in dashboard
+    assert "payload.auto_start_adapter_on_logon = autoStartAdapterOnLogon;" in dashboard
+    assert "payload.adapter_startup_delay_seconds = parseInt(adapterStartupDelay, 10);" in dashboard
+
+
 def test_dashboard_response_disables_cache():
     from src.api.dashboard_page import dashboard_response
 

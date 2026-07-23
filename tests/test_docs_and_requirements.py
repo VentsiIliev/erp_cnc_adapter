@@ -61,6 +61,8 @@ def test_readme_covers_setup_build_and_key_endpoints():
         "port",
         "cnc_retry_interval",
         "cnc_health_interval",
+        "auto_start_adapter_on_logon",
+        "adapter_startup_delay_seconds",
         "job_monitor_poll_interval",
     ]
     for param in expected_params:

@@ -83,6 +83,8 @@ The main settings include:
 - `port`
 - `cnc_retry_interval`
 - `cnc_health_interval`
+- `auto_start_adapter_on_logon`
+- `adapter_startup_delay_seconds`
 - `job_monitor_poll_interval`
 
 ## API Endpoints
@@ -171,9 +173,11 @@ The main settings include:
   - `port`
   - `cnc_retry_interval`
   - `cnc_health_interval`
+  - `auto_start_adapter_on_logon`
+  - `adapter_startup_delay_seconds`
   - `job_monitor_poll_interval`
 
-  Only supplied fields are applied and persisted. Task credential updates require a username and password when `run_as_windows_user` is enabled. Port changes are saved immediately but require an adapter restart before the HTTP listener moves to the new port.
+  Only supplied fields are applied and persisted. Task credential updates require a username when `run_as_windows_user` is enabled; passwordless Windows accounts use an interactive logon task. Set `auto_start_adapter_on_logon` to `false` for manual starts. `adapter_startup_delay_seconds` delays scheduled boot/logon startup so CNC services and the desktop can settle before the adapter starts. Port changes are saved immediately but require an adapter restart before the HTTP listener moves to the new port.
 
 ### Logging and Test Hooks
 

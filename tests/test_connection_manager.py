@@ -98,6 +98,45 @@ class TestConnectionManagerRetry:
 
         await mgr.stop()
 
+    async def test_powerup_state_does_not_block_connection(self, fake_client, settings):
+        """Some GUI-owned Eding sessions report state 0 while the GUI is ready."""
+        fake_client._server_process_alive = True
+        fake_client._connect_rc = 0
+        fake_client._state = 0
+        settings.cnc_retry_interval = 0.1
+        settings.cnc_startup_ready_timeout = 0.2
+        ready_calls = []
+
+        mgr = ConnectionManager(fake_client, settings, on_ready=lambda: ready_calls.append(True))
+        mgr.start()
+
+        await asyncio.sleep(0.5)
+
+        assert mgr.state == "connected"
+        assert mgr.connected is True
+        assert mgr.machine_state == 0
+        assert mgr.last_error is None
+        assert ready_calls == [True]
+
+        await mgr.stop()
+
+    async def test_ready_callback_runs_once_when_machine_ready(self, fake_client, settings):
+        fake_client._server_process_alive = True
+        fake_client._connect_rc = 0
+        fake_client._state = 2
+        ready_calls = []
+
+        mgr = ConnectionManager(fake_client, settings, on_ready=lambda: ready_calls.append(True))
+        mgr.start()
+
+        await asyncio.sleep(0.3)
+
+        assert mgr.connected is True
+        assert mgr.machine_state == 2
+        assert ready_calls == [True]
+
+        await mgr.stop()
+
 
 class TestConnectionManagerHeartbeat:
 
@@ -122,6 +161,31 @@ class TestConnectionManagerHeartbeat:
         await asyncio.sleep(0.5)
 
         assert mgr.state in ("cnc_not_running", "retrying")
+
+        await mgr.stop()
+
+    async def test_heartbeat_checks_process_even_when_dll_reports_connected(self, fake_client, settings):
+        """Closing Eding GUI can kill CncServer while DLL state is still stale."""
+        fake_client._server_process_alive = True
+        fake_client._server_connected = True
+        fake_client._connect_rc = 0
+        settings.cnc_health_interval = 0.1
+
+        mgr = ConnectionManager(fake_client, settings)
+        mgr.start()
+
+        await asyncio.sleep(0.3)
+        assert mgr.connected is True
+
+        fake_client._server_process_alive = False
+        fake_client._server_connected = True
+
+        await asyncio.sleep(0.3)
+
+        assert mgr.state == "cnc_not_running"
+        assert mgr.connected is False
+        assert mgr.last_error in ("CncServer.exe exited", "CncServer.exe not found")
+        assert fake_client.is_connected is False
 
         await mgr.stop()
 

@@ -188,6 +188,7 @@ class InstallerWindow(QWidget):
             self.path_page.machine_edit.text().strip() or "CNC1",
             task_username,
             task_password,
+            self.path_page.auto_start_check.isChecked(),
         )
         self.worker.log_message.connect(self._on_log)
         self.worker.step_changed.connect(self._on_step)

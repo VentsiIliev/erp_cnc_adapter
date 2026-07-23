@@ -130,6 +130,11 @@ class TestBuildScript:
         text = _read_script(self.SCRIPT)
         assert "pytest" in text, "build.bat does not run pytest before building"
 
+    def test_machine_health_dashboard_is_not_copied_to_adapter_dist(self):
+        """The separate plant monitor must not be packaged with adapter installs."""
+        text = _read_script(self.SCRIPT)
+        assert "machine_health_dashboard" not in text
+
 
 # ===========================================================================
 # build_installer.bat
@@ -150,6 +155,11 @@ class TestBuildInstallerScript:
     def test_installer_script_exists(self):
         """The Python installer GUI that build_installer.bat packages."""
         assert (PROJECT_ROOT / "src" / "installer" / "installer.py").exists()
+
+    def test_machine_health_dashboard_is_not_copied_to_installer_payload(self):
+        """The setup EXE payload should contain adapter runtime files only."""
+        text = _read_script(self.SCRIPT)
+        assert "machine_health_dashboard" not in text
 
 
 # ===========================================================================

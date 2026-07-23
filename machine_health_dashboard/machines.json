@@ -1,0 +1,36 @@
+{
+  "poll_interval_seconds": 10,
+  "request_timeout_seconds": 2,
+  "machines": [
+    {
+      "id": "CNC1",
+      "host": "192.168.13.83",
+      "port": 8002
+    },
+    {
+      "id": "CNC3",
+      "host": "192.168.13.88",
+      "port": 8002
+    },
+    {
+      "id": "CNC4",
+      "host": "192.168.13.89",
+      "port": 8002
+    },
+    {
+      "id": "CNC5",
+      "host": "192.168.13.86",
+      "port": 8002
+    },
+    {
+      "id": "CNC6",
+      "host": "192.168.13.87",
+      "port": 8002
+    },
+    {
+      "id": "CNC7",
+      "host": "192.168.13.85",
+      "port": 8002
+    }
+  ]
+}

@@ -79,26 +79,8 @@ async def load_job(
         try:
             current_state = client.get_state()
 
-            # State 0 = Power-up / Initialization (CNC Server not running or just started)
-            if current_state == 0:
-                logger.warning("Load job rejected: Machine in Power-up state (CNC Server not running or starting)")
-                return LoadJobResponse.model_construct(
-                    status=22,  # CNC_RC_ERR_SERVER_NOT_RUNNING
-                    message="CNC Server is not running or not ready. Start CNC Server using /api/cnc/start and wait for it to initialize",
-                    fileName=""
-                )
-
-            # State 1 = Idle (not ready yet)
-            elif current_state == 1:
-                logger.warning("Load job rejected: Machine is Idle (not ready)")
-                return LoadJobResponse.model_construct(
-                    status=10,
-                    message="Machine is Idle and not ready. Wait for machine to reach 'Ready' state or check machine status",
-                    fileName=""
-                )
-
             # State 6 = Running Job
-            elif current_state == 6:
+            if current_state == 6:
                 logger.warning("Load job rejected: CNC state is 6 (Running Job)")
                 return LoadJobResponse.model_construct(
                     status=6,

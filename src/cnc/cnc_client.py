@@ -56,11 +56,9 @@ class CncClient:
         if result == CNC_RC_OK:
             logger.info("CNC connected successfully")
             self._connected = True
-            self._reset_if_powerup()
         elif result in (CNC_RC_ALREADY_RUNS, CNC_RC_ALREADY_CONNECTED):
             logger.info("CNC already running/connected (code %d)", result)
             self._connected = True
-            self._reset_if_powerup()
         elif result == CNC_RC_ERR_SERVER_NOT_RUNNING:
             logger.warning(
                 "CNC server not running (code %d) — "

@@ -903,6 +903,18 @@
                             </label>
                             <div class="helper" id="currentLaunchMode">Current: Loading...</div>
                         </div>
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="autoStartAdapterOnLogonToggle">
+                                Start adapter automatically on Windows logon
+                            </label>
+                            <div class="helper">Current: <span id="currentAutoStartAdapterOnLogon">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="adapterStartupDelay">Adapter Startup Delay</label>
+                            <input type="number" id="adapterStartupDelay" name="adapter_startup_delay_seconds" min="0" max="600" step="1" placeholder="90">
+                            <div class="helper">Current: <span id="currentAdapterStartupDelay">Loading...</span></div>
+                        </div>
                         <div class="field">
                             <label for="taskUsername">Task Username</label>
                             <input type="text" id="taskUsername" name="task_username" placeholder="DOMAIN\username or .\username">
@@ -922,6 +934,32 @@
                             <label for="healthInterval">CNC Health Interval</label>
                             <input type="number" id="healthInterval" name="cnc_health_interval" min="1" max="300" step="1" placeholder="10">
                             <div class="helper">Current: <span id="currentHealthInterval">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="startupReadyTimeout">CNC Ready Timeout</label>
+                            <input type="number" id="startupReadyTimeout" name="cnc_startup_ready_timeout" min="5" max="600" step="1" placeholder="60">
+                            <div class="helper">Current: <span id="currentStartupReadyTimeout">Loading...</span></div>
+                        </div>
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="autoStartCncServerToggle">
+                                Start CncServer automatically with the adapter
+                            </label>
+                            <div class="helper">Current: <span id="currentAutoStartCncServer">Loading...</span></div>
+                        </div>
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="autoStartEdingGuiToggle">
+                                Start Eding CNC GUI after CNC is ready
+                            </label>
+                            <div class="helper">Current: <span id="currentAutoStartEdingGui">Loading...</span></div>
+                        </div>
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="operatorReadyMessageToggle">
+                                Show operator ready message when GUI auto-start is off
+                            </label>
+                            <div class="helper">Current: <span id="currentOperatorReadyMessage">Loading...</span></div>
                         </div>
                         <div class="field">
                             <label for="pollInterval">Job Monitor Poll Interval</label>
@@ -1268,17 +1306,27 @@
                 : "Not required when running as SYSTEM";
             document.getElementById("currentRetryInterval").textContent = body.cnc_retry_interval + "s";
             document.getElementById("currentHealthInterval").textContent = body.cnc_health_interval + "s";
+            document.getElementById("currentStartupReadyTimeout").textContent = body.cnc_startup_ready_timeout + "s";
+            document.getElementById("currentAutoStartAdapterOnLogon").textContent = body.auto_start_adapter_on_logon ? "Enabled" : "Disabled";
+            document.getElementById("currentAdapterStartupDelay").textContent = body.adapter_startup_delay_seconds + "s";
+            document.getElementById("currentAutoStartCncServer").textContent = body.auto_start_cnc_server ? "Enabled" : "Disabled";
+            document.getElementById("currentAutoStartEdingGui").textContent = body.auto_start_eding_gui ? "Enabled" : "Disabled";
+            document.getElementById("currentOperatorReadyMessage").textContent = body.show_operator_ready_message ? "Enabled" : "Disabled";
             document.getElementById("currentPollInterval").textContent = body.job_monitor_poll_interval + "s";
             document.getElementById("currentAdapterPort").textContent = body.port;
             document.getElementById("configHost").textContent = body.host;
             document.getElementById("configPort").textContent = body.port;
             document.getElementById("runAsUserToggle").checked = Boolean(body.run_as_windows_user);
+            document.getElementById("autoStartAdapterOnLogonToggle").checked = Boolean(body.auto_start_adapter_on_logon);
+            document.getElementById("autoStartCncServerToggle").checked = Boolean(body.auto_start_cnc_server);
+            document.getElementById("autoStartEdingGuiToggle").checked = Boolean(body.auto_start_eding_gui);
+            document.getElementById("operatorReadyMessageToggle").checked = Boolean(body.show_operator_ready_message);
             toggleTaskCredentialInputs(Boolean(body.run_as_windows_user));
             resetConfigForm();
         }
 
         function resetConfigForm() {
-            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "retryInterval", "healthInterval", "pollInterval", "adapterPort"].forEach((id) => {
+            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "adapterStartupDelay", "retryInterval", "healthInterval", "startupReadyTimeout", "pollInterval", "adapterPort"].forEach((id) => {
                 document.getElementById(id).value = "";
             });
         }
@@ -1363,10 +1411,16 @@
             const dllPath = document.getElementById("dllPath").value.trim();
             const iniPath = document.getElementById("iniPath").value.trim();
             const runAsWindowsUser = document.getElementById("runAsUserToggle").checked;
+            const autoStartAdapterOnLogon = document.getElementById("autoStartAdapterOnLogonToggle").checked;
+            const adapterStartupDelay = document.getElementById("adapterStartupDelay").value;
             const taskUsername = document.getElementById("taskUsername").value.trim();
             const taskPassword = document.getElementById("taskPassword").value;
             const retry = document.getElementById("retryInterval").value;
             const health = document.getElementById("healthInterval").value;
+            const startupReadyTimeout = document.getElementById("startupReadyTimeout").value;
+            const autoStartCncServer = document.getElementById("autoStartCncServerToggle").checked;
+            const autoStartEdingGui = document.getElementById("autoStartEdingGuiToggle").checked;
+            const operatorReadyMessage = document.getElementById("operatorReadyMessageToggle").checked;
             const poll = document.getElementById("pollInterval").value;
             const adapterPort = document.getElementById("adapterPort").value;
 
@@ -1378,10 +1432,24 @@
             if (state.config && Boolean(state.config.run_as_windows_user) !== runAsWindowsUser) {
                 payload.run_as_windows_user = runAsWindowsUser;
             }
+            if (state.config && Boolean(state.config.auto_start_adapter_on_logon) !== autoStartAdapterOnLogon) {
+                payload.auto_start_adapter_on_logon = autoStartAdapterOnLogon;
+            }
+            if (adapterStartupDelay) payload.adapter_startup_delay_seconds = parseInt(adapterStartupDelay, 10);
             if (runAsWindowsUser && taskUsername) payload.task_username = taskUsername;
             if (runAsWindowsUser && taskPassword) payload.task_password = taskPassword;
             if (retry) payload.cnc_retry_interval = parseInt(retry, 10);
             if (health) payload.cnc_health_interval = parseInt(health, 10);
+            if (startupReadyTimeout) payload.cnc_startup_ready_timeout = parseInt(startupReadyTimeout, 10);
+            if (state.config && Boolean(state.config.auto_start_cnc_server) !== autoStartCncServer) {
+                payload.auto_start_cnc_server = autoStartCncServer;
+            }
+            if (state.config && Boolean(state.config.auto_start_eding_gui) !== autoStartEdingGui) {
+                payload.auto_start_eding_gui = autoStartEdingGui;
+            }
+            if (state.config && Boolean(state.config.show_operator_ready_message) !== operatorReadyMessage) {
+                payload.show_operator_ready_message = operatorReadyMessage;
+            }
             if (poll) payload.job_monitor_poll_interval = parseFloat(poll);
             if (adapterPort) payload.port = parseInt(adapterPort, 10);
             if (options.restartAdapterTask) payload.restart_adapter_task = true;
