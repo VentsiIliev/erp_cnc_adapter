@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from typing import Any
 
 APP_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "machines.json"
+HISTORY_PATH = APP_DIR / "health_history.json"
 DEFAULT_PORT = 8010
 
 
@@ -32,6 +34,115 @@ def machine_base_url(machine: dict[str, Any]) -> str:
     host = str(machine["host"]).strip()
     port = int(machine.get("port", 8002))
     return f"http://{host}:{port}"
+
+
+def now_text() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def load_history(path: Path = HISTORY_PATH) -> dict[str, Any]:
+    if not path.exists():
+        return {"current": {}, "events": []}
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            history = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {"current": {}, "events": []}
+    history.setdefault("current", {})
+    history.setdefault("events", [])
+    return history
+
+
+def save_history(history: dict[str, Any], path: Path = HISTORY_PATH) -> None:
+    path.write_text(json.dumps(history, indent=2), encoding="utf-8")
+
+
+def parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def duration_seconds(started_at: str | None, ended_at: str | None) -> int | None:
+    start = parse_time(started_at)
+    end = parse_time(ended_at)
+    if start is None or end is None:
+        return None
+    return max(0, int((end - start).total_seconds()))
+
+
+def outage_status(machine: dict[str, Any]) -> str:
+    if machine.get("connected"):
+        return "connected"
+    if machine.get("online"):
+        return "degraded"
+    return "offline"
+
+
+def update_outage_history(
+    machines: list[dict[str, Any]],
+    history: dict[str, Any] | None = None,
+    checked_at: str | None = None,
+) -> dict[str, Any]:
+    history = history or {"current": {}, "events": []}
+    current = history.setdefault("current", {})
+    events = history.setdefault("events", [])
+    checked_at = checked_at or now_text()
+    changed = False
+
+    recent_by_machine: dict[str, dict[str, Any]] = {}
+    for event in reversed(events):
+        machine_id = event.get("machine_id")
+        if machine_id and machine_id not in recent_by_machine:
+            recent_by_machine[machine_id] = event
+
+    for machine in machines:
+        machine_id = str(machine["id"])
+        status = outage_status(machine)
+        active = current.get(machine_id)
+
+        if status == "connected":
+            if active:
+                active["ended_at"] = checked_at
+                active["duration_seconds"] = duration_seconds(active.get("started_at"), checked_at)
+                events.append(active)
+                current.pop(machine_id, None)
+                recent_by_machine[machine_id] = active
+                changed = True
+        else:
+            if not active:
+                active = {
+                    "machine_id": machine_id,
+                    "started_at": checked_at,
+                    "start_status": status,
+                    "last_status": status,
+                    "last_error": machine.get("last_error"),
+                }
+                current[machine_id] = active
+                changed = True
+            elif active.get("last_status") != status or active.get("last_error") != machine.get("last_error"):
+                active["last_status"] = status
+                active["last_error"] = machine.get("last_error")
+                changed = True
+
+            machine["current_outage_started_at"] = active.get("started_at")
+            machine["current_outage_duration_seconds"] = duration_seconds(active.get("started_at"), checked_at)
+
+        last_event = recent_by_machine.get(machine_id)
+        machine["outage_count"] = sum(1 for event in events if event.get("machine_id") == machine_id)
+        machine["last_outage_started_at"] = last_event.get("started_at") if last_event else None
+        machine["last_outage_ended_at"] = last_event.get("ended_at") if last_event else None
+        machine["last_outage_duration_seconds"] = last_event.get("duration_seconds") if last_event else None
+
+        if status == "connected":
+            machine["current_outage_started_at"] = None
+            machine["current_outage_duration_seconds"] = None
+
+    history["_changed"] = changed
+    return history
 
 
 def fetch_machine_health(machine: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -53,7 +164,13 @@ def fetch_machine_health(machine: dict[str, Any], timeout: float) -> dict[str, A
         "last_error": None,
         "uptime_seconds": None,
         "response_ms": None,
-        "checked_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "checked_at": now_text(),
+        "current_outage_started_at": None,
+        "current_outage_duration_seconds": None,
+        "last_outage_started_at": None,
+        "last_outage_ended_at": None,
+        "last_outage_duration_seconds": None,
+        "outage_count": 0,
     }
 
     try:
@@ -94,12 +211,17 @@ def collect_health(config: dict[str, Any]) -> dict[str, Any]:
 
     order = {machine.get("id"): index for index, machine in enumerate(machines)}
     results.sort(key=lambda item: order.get(item["id"], 999))
+    checked_at = now_text()
+    history = update_outage_history(results, load_history(), checked_at)
+    if history.pop("_changed", False):
+        save_history(history)
+
     connected = sum(1 for item in results if item["connected"])
     online = sum(1 for item in results if item["online"])
 
     return {
         "poll_interval_seconds": int(config.get("poll_interval_seconds", 10)),
-        "checked_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "checked_at": checked_at,
         "summary": {
             "total": len(results),
             "online": online,
@@ -306,6 +428,16 @@ INDEX_HTML = """<!doctype html>
       return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
     }
 
+    function formatOutage(machine) {
+      if (machine.current_outage_started_at) {
+        return `Since ${machine.current_outage_started_at} (${formatUptime(machine.current_outage_duration_seconds)})`;
+      }
+      if (machine.last_outage_ended_at) {
+        return `${machine.last_outage_started_at} to ${machine.last_outage_ended_at} (${formatUptime(machine.last_outage_duration_seconds)})`;
+      }
+      return "--";
+    }
+
     function classFor(machine) {
       if (machine.connected) return "ready";
       if (machine.online) return "degraded";
@@ -343,6 +475,8 @@ INDEX_HTML = """<!doctype html>
             <div><b>CNC state</b> ${machine.cnc_state || "--"}</div>
             <div><b>Interpreter</b> ${machine.machine_state_text || "--"}</div>
             <div><b>Uptime</b> ${formatUptime(machine.uptime_seconds)}</div>
+            <div><b>Outage</b> ${formatOutage(machine)}</div>
+            <div><b>Outages recorded</b> ${machine.outage_count || 0}</div>
             <div><b>Response</b> ${machine.response_ms == null ? "--" : machine.response_ms + " ms"}</div>
           </div>
           ${machine.last_error ? `<div class="error">${machine.last_error}</div>` : ""}

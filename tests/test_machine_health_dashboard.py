@@ -7,6 +7,7 @@ from machine_health_dashboard.server import (
     fetch_machine_health,
     load_config,
     machine_base_url,
+    update_outage_history,
 )
 
 
@@ -78,10 +79,60 @@ def test_collect_health_summarizes_machine_states():
         },
     ]
 
-    with patch("machine_health_dashboard.server.fetch_machine_health", side_effect=responses):
+    with (
+        patch("machine_health_dashboard.server.fetch_machine_health", side_effect=responses),
+        patch("machine_health_dashboard.server.load_history", return_value={"current": {}, "events": []}),
+        patch("machine_health_dashboard.server.save_history"),
+    ):
         data = collect_health(config)
 
     assert data["summary"]["total"] == 2
     assert data["summary"]["online"] == 1
     assert data["summary"]["connected"] == 1
     assert data["summary"]["offline"] == 1
+
+
+def test_outage_history_records_disconnect_and_recovery_duration():
+    history = {"current": {}, "events": []}
+    machines = [
+        {
+            "id": "CNC1",
+            "online": True,
+            "connected": False,
+            "last_error": "connect timed out",
+        }
+    ]
+
+    history = update_outage_history(machines, history, "2026-07-24 10:00:00")
+
+    assert machines[0]["current_outage_started_at"] == "2026-07-24 10:00:00"
+    assert machines[0]["current_outage_duration_seconds"] == 0
+    assert history["current"]["CNC1"]["start_status"] == "degraded"
+
+    machines = [
+        {
+            "id": "CNC1",
+            "online": True,
+            "connected": True,
+            "last_error": None,
+        }
+    ]
+
+    history = update_outage_history(machines, history, "2026-07-24 10:03:15")
+
+    assert history["current"] == {}
+    assert history["events"] == [
+        {
+            "machine_id": "CNC1",
+            "started_at": "2026-07-24 10:00:00",
+            "start_status": "degraded",
+            "last_status": "degraded",
+            "last_error": "connect timed out",
+            "ended_at": "2026-07-24 10:03:15",
+            "duration_seconds": 195,
+        }
+    ]
+    assert machines[0]["last_outage_started_at"] == "2026-07-24 10:00:00"
+    assert machines[0]["last_outage_ended_at"] == "2026-07-24 10:03:15"
+    assert machines[0]["last_outage_duration_seconds"] == 195
+    assert machines[0]["outage_count"] == 1
