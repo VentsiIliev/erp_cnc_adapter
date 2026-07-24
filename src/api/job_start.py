@@ -22,6 +22,13 @@ async def start_job(
     """Start a CNC job. The persistent monitor will detect state changes automatically."""
     logger.debug("START JOB request")
 
+    # Temporary operator workflow guard: keep the implementation below intact,
+    # but prevent this endpoint from starting jobs until it is re-enabled.
+    return RunJobResponse(
+        status=503,
+        message="Start endpoint temporarily disabled",
+    )
+
     try:
         # Check monitor state first to avoid unnecessary API call
         services = request.app.state.services

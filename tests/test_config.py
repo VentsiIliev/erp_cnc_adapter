@@ -25,6 +25,7 @@ class TestSettings:
         assert s.auto_start_adapter_on_logon is True
         assert s.adapter_startup_delay_seconds == 90
         assert s.job_monitor_poll_interval == 1.0
+        assert s.jog_pad_pause_hold_interval_ms == 500
 
     def test_custom_values(self):
         s = Settings(
@@ -47,6 +48,7 @@ class TestSettings:
             "cnc_retry_interval": 20,
             "cnc_health_interval": 30,
             "job_monitor_poll_interval": 5.0,
+            "jog_pad_pause_hold_interval_ms": 750,
             "port": 8010,
             "task_username": r"DOMAIN\adapter",
             "auto_start_adapter_on_logon": False,
@@ -61,6 +63,7 @@ class TestSettings:
         assert s.cnc_retry_interval == 20
         assert s.cnc_health_interval == 30
         assert s.job_monitor_poll_interval == 5.0
+        assert s.jog_pad_pause_hold_interval_ms == 750
         assert s.port == 8010
         assert s.task_username == r"DOMAIN\adapter"
         assert s.auto_start_adapter_on_logon is False
@@ -88,6 +91,7 @@ class TestConfigAPI:
         assert "cnc_retry_interval" in data
         assert "cnc_health_interval" in data
         assert "job_monitor_poll_interval" in data
+        assert "jog_pad_pause_hold_interval_ms" in data
         assert data["run_as_windows_user"] is True
         assert data["task_username"] == r"DOMAIN\adapter"
         assert data["task_password_configured"] is True
@@ -107,18 +111,20 @@ class TestConfigAPI:
                 "cnc_retry_interval": 15,
                 "cnc_health_interval": 25,
                 "job_monitor_poll_interval": 3.5,
+                "jog_pad_pause_hold_interval_ms": 250,
                 "port": 8010,
             })
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
-        assert len(data["changes"]) == 4
+        assert len(data["changes"]) == 5
 
         # Verify in-memory settings updated
         assert settings.cnc_retry_interval == 15
         assert settings.cnc_health_interval == 25
         assert settings.job_monitor_poll_interval == 3.5
+        assert settings.jog_pad_pause_hold_interval_ms == 250
         assert settings.port == 8010
 
         # Verify persist was called with timing keys
@@ -126,6 +132,7 @@ class TestConfigAPI:
         assert persist_call["cnc_retry_interval"] == 15
         assert persist_call["cnc_health_interval"] == 25
         assert persist_call["job_monitor_poll_interval"] == 3.5
+        assert persist_call["jog_pad_pause_hold_interval_ms"] == 250
         assert persist_call["port"] == 8010
 
     @pytest.mark.asyncio

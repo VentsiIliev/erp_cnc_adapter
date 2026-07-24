@@ -86,6 +86,7 @@ The main settings include:
 - `auto_start_adapter_on_logon`
 - `adapter_startup_delay_seconds`
 - `job_monitor_poll_interval`
+- `jog_pad_pause_hold_interval_ms`
 
 ## API Endpoints
 
@@ -131,6 +132,9 @@ The main settings include:
 - `GET /api/cnc/job/start`  
   Starts or resumes the loaded job. No request parameters.
 
+- `POST /api/cnc/job/pause`  
+  Sends `CncPauseJob()` through the CNC DLL. The jog pad calls this periodically while it is open.
+
 - `GET /api/cnc/job/status`  
   Returns current CNC state, job metadata, progress, timing, and repeat counters. No request parameters.
 
@@ -139,6 +143,9 @@ The main settings include:
 
 - `GET /api/cnc/monitor/status`  
   Returns the live monitor snapshot together with current CNC state and job data. No request parameters.
+
+- `POST /api/jog-pad/open`  
+  Opens the desktop jog pad and passes the configured adapter URL and pause-hold interval.
 
 ### Update Management
 
@@ -176,6 +183,7 @@ The main settings include:
   - `auto_start_adapter_on_logon`
   - `adapter_startup_delay_seconds`
   - `job_monitor_poll_interval`
+  - `jog_pad_pause_hold_interval_ms`
 
   Only supplied fields are applied and persisted. Task credential updates require a username when `run_as_windows_user` is enabled; passwordless Windows accounts use an interactive logon task. Set `auto_start_adapter_on_logon` to `false` for manual starts. `adapter_startup_delay_seconds` delays scheduled boot/logon startup so CNC services and the desktop can settle before the adapter starts. Port changes are saved immediately but require an adapter restart before the HTTP listener moves to the new port.
 

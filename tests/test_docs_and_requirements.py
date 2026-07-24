@@ -64,6 +64,7 @@ def test_readme_covers_setup_build_and_key_endpoints():
         "auto_start_adapter_on_logon",
         "adapter_startup_delay_seconds",
         "job_monitor_poll_interval",
+        "jog_pad_pause_hold_interval_ms",
     ]
     for param in expected_params:
         assert param in text, f"README is missing parameter: {param}"

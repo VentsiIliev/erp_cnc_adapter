@@ -332,3 +332,48 @@ class TestJobLoad:
         assert body["status"] == 0
         assert body["fileName"] == r"\\192.168.2.11\Production\CNC\Mills\000244490010\Setup_1 F6i45 #77.cnc"
         assert ".cnc" in body["fileName"]
+    @patch('src.api.schemas.job.glob.glob')
+    async def test_load_success_opens_jog_pad(self, mock_glob, client, fake_client, test_app):
+        fake_client._load_job_rc = 0
+        mock_glob.return_value = [r"\\192.168.2.11\Production\CNC\Mills\123456789012\Setup_10.nc"]
+
+        resp = await client.get(
+            "/api/cnc/job/load/123456789012/10/1",
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == 0
+        assert "jog pad opened" in body["message"].lower()
+        test_app.state.services.jog_pad_launcher.assert_called_once_with("http://127.0.0.1:9999", 500)
+
+    @patch('src.api.schemas.job.glob.glob')
+    async def test_load_failure_does_not_open_jog_pad(self, mock_glob, client, fake_client, test_app):
+        fake_client._load_job_rc = 22
+        mock_glob.return_value = [r"\\192.168.2.11\Production\CNC\Mills\123456789012\Setup_10.nc"]
+
+        resp = await client.get(
+            "/api/cnc/job/load/123456789012/10/1",
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == 22
+        test_app.state.services.jog_pad_launcher.assert_not_called()
+    @patch('src.api.schemas.job.glob.glob')
+    async def test_load_success_reports_jog_pad_launch_failure(self, mock_glob, client, fake_client, test_app):
+        from types import SimpleNamespace
+
+        fake_client._load_job_rc = 0
+        test_app.state.services.jog_pad_launcher.return_value = SimpleNamespace(status=1, message="no desktop")
+        mock_glob.return_value = [r"\\192.168.2.11\Production\CNC\Mills\123456789012\Setup_10.nc"]
+
+        resp = await client.get(
+            "/api/cnc/job/load/123456789012/10/1",
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == 0
+        assert "jog pad launch failed" in body["message"].lower()
+        assert "no desktop" in body["message"]

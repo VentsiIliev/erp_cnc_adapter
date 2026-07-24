@@ -21,13 +21,6 @@
       "last_status": "offline",
       "last_error": "<urlopen error timed out>"
     },
-    "CNC5": {
-      "machine_id": "CNC5",
-      "started_at": "2026-07-24 07:56:35",
-      "start_status": "offline",
-      "last_status": "offline",
-      "last_error": "<urlopen error timed out>"
-    },
     "CNC6": {
       "machine_id": "CNC6",
       "started_at": "2026-07-24 07:56:35",
@@ -41,7 +34,42 @@
       "start_status": "offline",
       "last_status": "offline",
       "last_error": "<urlopen error timed out>"
+    },
+    "CNC5": {
+      "machine_id": "CNC5",
+      "started_at": "2026-07-24 12:45:16",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "HTTP Error 503: Service Unavailable"
     }
   },
-  "events": []
+  "events": [
+    {
+      "machine_id": "CNC5",
+      "started_at": "2026-07-24 07:56:35",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "<urlopen error timed out>",
+      "ended_at": "2026-07-24 07:43:22",
+      "duration_seconds": 0
+    },
+    {
+      "machine_id": "CNC5",
+      "started_at": "2026-07-24 12:43:47",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "HTTP Error 503: Service Unavailable",
+      "ended_at": "2026-07-24 12:43:59",
+      "duration_seconds": 12
+    },
+    {
+      "machine_id": "CNC5",
+      "started_at": "2026-07-24 12:44:12",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "timed out",
+      "ended_at": "2026-07-24 12:44:24",
+      "duration_seconds": 12
+    }
+  ]
 }

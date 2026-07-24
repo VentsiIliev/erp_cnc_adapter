@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from src.api import api_router
 from src.cnc.connection_manager import ConnectionManager
 from src.core.config import Settings
+from src.api.jog_pad_launcher import JogPadLaunchResponse
 
 
 # ---------------------------------------------------------------------------
@@ -29,10 +30,26 @@ class FakeCncClient:
         self._job_status = _default_job_status()
         self._load_job_rc = 0
         self._run_job_rc = 0
+        self._pause_job_rc = 0
+        self.pause_job_calls = 0
         self._connect_rc = 0
         self._server_connected = True
         self._server_process_alive = True
+        self._all_axes_homed = True
+        self._motion_enabled = True
+        self._home_all_axes_rc = 0
+        self.home_all_axes_calls = 0
         self.loaded_jobs = []
+        self.jog_commands = []
+        self.stop_jog_commands = []
+        self.move_commands = []
+        self.zero_commands = []
+        self.set_work_coordinate_commands = []
+        self._start_jog_rc = 0
+        self._stop_jog_rc = 0
+        self._move_to_rc = 0
+        self._zero_work_axis_rc = 0
+        self._set_work_coordinate_rc = 0
 
     @property
     def is_connected(self) -> bool:
@@ -58,6 +75,22 @@ class FakeCncClient:
     def get_job_status(self) -> dict:
         return dict(self._job_status)
 
+    def get_positions(self) -> dict:
+        return {
+            "work": {"x": 1.25, "y": 2.5, "z": -3.75, "a": 0.0, "b": 0.0, "c": 0.0},
+            "machine": {"x": 10.0, "y": 20.0, "z": -30.0, "a": 0.0, "b": 0.0, "c": 0.0},
+        }
+
+    def get_all_axes_homed(self) -> bool:
+        return self._all_axes_homed
+
+    def is_motion_enabled(self) -> bool:
+        return self._motion_enabled
+
+    def home_all_axes_g28(self) -> int:
+        self.home_all_axes_calls += 1
+        return self._home_all_axes_rc
+
     def load_job(self, file_name: str) -> int:
         self.loaded_jobs.append(file_name)
         self._job_status["jobName"] = file_name
@@ -71,6 +104,47 @@ class FakeCncClient:
 
     def run_job(self) -> int:
         return self._run_job_rc
+
+    def pause_job(self) -> int:
+        self.pause_job_calls += 1
+        return self._pause_job_rc
+
+    def start_jog(
+        self,
+        axis: str,
+        direction: int,
+        step: float,
+        velocity_factor: float,
+        continuous: bool,
+    ) -> int:
+        self.jog_commands.append({
+            "axis": axis,
+            "direction": direction,
+            "step": step,
+            "velocity_factor": velocity_factor,
+            "continuous": continuous,
+        })
+        return self._start_jog_rc
+
+    def stop_jog(self, axis: str | None = None) -> int:
+        self.stop_jog_commands.append(axis)
+        return self._stop_jog_rc
+
+    def move_to(self, axis: str, position: float, velocity_factor: float) -> int:
+        self.move_commands.append({
+            "axis": axis,
+            "position": position,
+            "velocity_factor": velocity_factor,
+        })
+        return self._move_to_rc
+
+    def zero_work_axis(self, axis: str) -> int:
+        self.zero_commands.append(axis)
+        return self._zero_work_axis_rc
+
+    def set_work_coordinate(self, axis: str, value: float) -> int:
+        self.set_work_coordinate_commands.append({"axis": axis, "value": value})
+        return self._set_work_coordinate_rc
 
 
 def _default_job_status() -> dict:
@@ -131,6 +205,7 @@ def settings():
         log_level="WARNING",
         cnc_retry_interval=1,
         cnc_health_interval=1,
+        jog_pad_pause_hold_interval_ms=500,
         base_dir=r"\\192.168.2.11\Production\CNC\Mills",
     )
 
@@ -160,6 +235,7 @@ def _build_test_app(fake_client: FakeCncClient, manager: ConnectionManager, sett
 
     # Add last_loaded_job storage
     services.last_loaded_job = None
+    services.jog_pad_launcher = MagicMock(return_value=JogPadLaunchResponse(status=0, message="Jog pad launch requested", pid=1234))
 
     app.state.services = services
     return app

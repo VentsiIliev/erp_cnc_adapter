@@ -26,6 +26,7 @@ a = Analysis(
         (os.path.join(PROJECT_ROOT, 'src', 'update_worker.py'), 'src'),
         (os.path.join(PROJECT_ROOT, 'src', 'web', 'templates'), os.path.join('src', 'web', 'templates')),
         (os.path.join(PROJECT_ROOT, 'src', 'web', 'static'), os.path.join('src', 'web', 'static')),
+        (os.path.join(PROJECT_ROOT, 'resources'), 'resources'),
     ],
     hiddenimports=[
         # FastAPI / Uvicorn internals that PyInstaller may miss
@@ -51,10 +52,13 @@ a = Analysis(
         'src.api',
         'src.api.cnc_start',
         'src.api.cnc_stop',
+        'src.api.cnc_motion',
         'src.api.health',
         'src.api.job_load',
         'src.api.job_start',
         'src.api.job_status',
+        'src.api.job_unload',
+        'src.api.jog_pad_launcher',
         'src.api.update',
         'src.api.update_page',
         'src.api.schemas',
@@ -65,6 +69,12 @@ a = Analysis(
         'src.cnc.cnc_client_protocol',
         'src.cnc.connection_manager',
         'src.cnc.mock_cnc_client',
+        'src.jog_pad',
+        'src.jog_pad.jog_pad',
+        'PyQt5',
+        'PyQt5.QtCore',
+        'PyQt5.QtGui',
+        'PyQt5.QtWidgets',
         'version',
         # multipart form support
         'multipart',
@@ -103,3 +113,4 @@ exe = EXE(
     entitlements_file=None,
     icon=ICON,
 )
+

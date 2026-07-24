@@ -159,3 +159,64 @@ class LoadJobResponse(BaseModel):
 class RunJobResponse(BaseModel):
     status: int
     message: str
+
+class JogCommandRequest(BaseModel):
+    axis: str = Field(..., pattern=r"^[XYZABCxyzabc]$")
+    direction: int = Field(..., ge=-1, le=1)
+    step: float = Field(default=1.0, gt=0)
+    velocity_factor: float = Field(default=0.25, ge=0.01, le=1.0)
+    continuous: bool = False
+
+
+class MoveCommandRequest(BaseModel):
+    axis: str = Field(..., pattern=r"^[XYZABCxyzabc]$")
+    position: float
+    velocity_factor: float = Field(default=0.25, ge=0.01, le=1.0)
+
+
+class ZeroAxisRequest(BaseModel):
+    axis: str = Field(..., pattern=r"^[XYZABCxyzabc]$")
+
+
+class SetWorkCoordinateRequest(BaseModel):
+    axis: str = Field(..., pattern=r"^[XYZABCxyzabc]$")
+    value: float
+
+
+class AxisPosition(BaseModel):
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+    a: float = 0.0
+    b: float = 0.0
+    c: float = 0.0
+
+
+class CncPositionResponse(BaseModel):
+    status: int
+    message: str
+    work: AxisPosition = Field(default_factory=AxisPosition)
+    machine: AxisPosition = Field(default_factory=AxisPosition)
+
+
+class CncHomedResponse(BaseModel):
+    status: int
+    message: str
+    all_axes_homed: bool = Field(alias="allAxesHomed")
+
+    model_config = {"populate_by_name": True}
+
+
+class CncMotionResponse(BaseModel):
+    status: int
+    message: str
+    command: str
+    dry_run: bool = Field(alias="dryRun")
+    axis: str | None = None
+    direction: int | None = None
+    step: float | None = None
+    position: float | None = None
+    velocity_factor: float | None = Field(default=None, alias="velocityFactor")
+    continuous: bool | None = None
+
+    model_config = {"populate_by_name": True}

@@ -73,3 +73,24 @@ def test_dashboard_response_disables_cache():
     assert response.headers["pragma"] == "no-cache"
     assert response.headers["expires"] == "0"
     assert 'const INITIAL_VIEW = "testing"' in response.body.decode("utf-8")
+
+def test_dashboard_has_top_jog_pad_launcher_button():
+    dashboard = _dashboard_html()
+
+    assert 'id="openJogPadBtn"' in dashboard
+    assert 'Open Jog Pad' in dashboard
+    assert 'src="/favicon.ico"' in dashboard
+    assert 'async function openJogPad()' in dashboard
+    assert 'fetchJson("/api/jog-pad/open", { method: "POST" })' in dashboard
+    assert 'document.getElementById("openJogPadBtn").addEventListener("click", openJogPad)' in dashboard
+
+
+def test_config_form_can_edit_jog_pad_pause_hold_interval():
+    dashboard = _dashboard_html()
+
+    assert 'label for="jogPadPauseHoldInterval"' in dashboard
+    assert 'id="jogPadPauseHoldInterval"' in dashboard
+    assert 'id="currentJogPadPauseHoldInterval"' in dashboard
+    assert 'const jogPadPauseHoldInterval = document.getElementById("jogPadPauseHoldInterval").value;' in dashboard
+    assert 'payload.jog_pad_pause_hold_interval_ms = parseInt(jogPadPauseHoldInterval, 10);' in dashboard
+    assert '"jogPadPauseHoldInterval"' in dashboard

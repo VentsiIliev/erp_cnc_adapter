@@ -41,7 +41,7 @@ class CNCErrorTranslator:
         25: ("BUFFER_FULL", "Command buffer full", "Too many pending commands - wait for current commands to finish"),
 
         # Special codes (undocumented but observed in practice)
-        -1: ("BUSY_OR_ERROR", "Operation rejected - machine busy or error", "Cannot load job while machine is running or busy. Wait for current job to finish, then try again. If machine is idle, check for errors or restart CNC Server"),
+        -1: ("BUSY_OR_ERROR", "Operation rejected - machine busy, in error, or drives not enabled", "For jog, enable the drives/motion and clear safety or E-stop conditions. If a job is running, wait for it to finish or pause/stop it first. If machine is idle, check for errors or restart CNC Server"),
         -2: ("CONNECTION_FAILED", "Failed to establish connection", "Cannot connect to CNC Server - verify server is running"),
         -17: ("SERVER_NOT_READY", "CNC Server not running or not ready", "CncServer.exe is not running or not fully started. Start CNC Server using /api/cnc/start and wait for it to initialize"),
     }

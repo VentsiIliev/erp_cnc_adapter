@@ -1,0 +1,214 @@
+import logging
+
+from fastapi import APIRouter, Depends
+
+from src.cnc.cnc_client_protocol import CncClientProtocol
+from src.cnc.error_translator import format_error
+from src.core.app_state import get_cnc_client
+
+from .schemas.job import CncHomedResponse, CncMotionResponse, CncPositionResponse, JogCommandRequest, MoveCommandRequest, SetWorkCoordinateRequest, ZeroAxisRequest
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+def _axis(value: str) -> str:
+    return value.upper()
+
+
+def _message(result: int, operation: str, success_message: str) -> str:
+    if result == 0:
+        return success_message
+    return format_error(result, operation)
+
+
+@router.get("/api/cnc/position", response_model=CncPositionResponse)
+async def get_position(
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Return current CNC work and machine coordinates."""
+    positions = client.get_positions()
+    return CncPositionResponse(
+        status=0,
+        message="CNC position read successfully",
+        work=positions.get("work", {}),
+        machine=positions.get("machine", {}),
+    )
+
+
+
+
+@router.get("/api/cnc/homed", response_model=CncHomedResponse)
+async def get_homed_status(
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Return whether all CNC axes are homed."""
+    all_axes_homed = client.get_all_axes_homed()
+    return CncHomedResponse(
+        status=0,
+        message="All axes are homed" if all_axes_homed else "Not all axes are homed",
+        all_axes_homed=all_axes_homed,
+    )
+
+
+
+@router.post("/api/cnc/home", response_model=CncMotionResponse)
+async def home_all_axes(
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Run the all-axis home MDI command."""
+    logger.info("CNC all-axis home requested: G28 X0 Y0 Z0")
+    result = client.home_all_axes_g28()
+    return CncMotionResponse(
+        status=result,
+        message=_message(result, "Home all axes", "CNC DLL accepted home command: G28 X0 Y0 Z0 returned 0"),
+        command="home",
+        dry_run=False,
+    )
+
+
+@router.post("/api/cnc/job/pause", response_model=CncMotionResponse)
+async def pause_job(
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Pause the currently running CNC job via the DLL."""
+    logger.info("CNC job pause requested")
+    result = client.pause_job()
+    return CncMotionResponse(
+        status=result,
+        message=_message(result, "Pause job", "CNC DLL accepted pause command: CncPauseJob returned 0"),
+        command="pause_job",
+        dry_run=False,
+    )
+
+@router.post("/api/cnc/jog", response_model=CncMotionResponse)
+async def jog_axis(
+    payload: JogCommandRequest,
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Send a single-axis jog command to CNC."""
+    axis = _axis(payload.axis)
+    logger.info(
+        "CNC jog requested: axis=%s direction=%s step=%s velocity_factor=%s continuous=%s",
+        axis,
+        payload.direction,
+        payload.step,
+        payload.velocity_factor,
+        payload.continuous,
+    )
+    try:
+        if not client.is_motion_enabled():
+            result = 10
+            return CncMotionResponse(
+                status=result,
+                message="Jog failed: drives/motion are not enabled. Enable the drives in Eding CNC, clear safety or E-stop conditions, then try again.",
+                command="jog",
+                dry_run=False,
+                axis=axis,
+                direction=payload.direction,
+                step=payload.step,
+                velocity_factor=payload.velocity_factor,
+                continuous=payload.continuous,
+            )
+    except Exception as exc:
+        logger.debug("Could not read CNC motion-enabled status before jog: %s", exc)
+
+    result = client.start_jog(
+        axis=axis,
+        direction=payload.direction,
+        step=payload.step,
+        velocity_factor=payload.velocity_factor,
+        continuous=payload.continuous,
+    )
+    return CncMotionResponse(
+        status=result,
+        message=_message(result, "Jog", "CNC DLL accepted jog command: CncStartJog2 returned 0"),
+        command="jog",
+        dry_run=False,
+        axis=axis,
+        direction=payload.direction,
+        step=payload.step,
+        velocity_factor=payload.velocity_factor,
+        continuous=payload.continuous,
+    )
+
+
+@router.post("/api/cnc/jog/stop", response_model=CncMotionResponse)
+async def stop_jog(
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Stop any active CNC jog."""
+    logger.info("CNC jog stop requested")
+    result = client.stop_jog()
+    return CncMotionResponse(
+        status=result,
+        message=_message(result, "Stop jog", "CNC DLL accepted jog stop command: CncStopJog returned 0"),
+        command="jog_stop",
+        dry_run=False,
+    )
+
+
+@router.post("/api/cnc/move", response_model=CncMotionResponse)
+async def move_axis(
+    payload: MoveCommandRequest,
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Move one axis to an absolute machine position."""
+    axis = _axis(payload.axis)
+    logger.info(
+        "CNC move requested: axis=%s position=%s velocity_factor=%s",
+        axis,
+        payload.position,
+        payload.velocity_factor,
+    )
+    result = client.move_to(
+        axis=axis,
+        position=payload.position,
+        velocity_factor=payload.velocity_factor,
+    )
+    return CncMotionResponse(
+        status=result,
+        message=_message(result, "Move", "CNC DLL accepted move command: CncMoveTo returned 0"),
+        command="move",
+        dry_run=False,
+        axis=axis,
+        position=payload.position,
+        velocity_factor=payload.velocity_factor,
+    )
+
+@router.post("/api/cnc/zero", response_model=CncMotionResponse)
+async def zero_axis(
+    payload: ZeroAxisRequest,
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Set the current position as work zero for one axis."""
+    axis = _axis(payload.axis)
+    logger.info("CNC work zero requested: axis=%s", axis)
+    result = client.zero_work_axis(axis=axis)
+    return CncMotionResponse(
+        status=result,
+        message=_message(result, "Zero work axis", "CNC DLL zeroed work axis: G10 L20 and CncStoreIniFile returned 0"),
+        command="zero",
+        dry_run=False,
+        axis=axis,
+    )
+
+@router.post("/api/cnc/work-coordinate", response_model=CncMotionResponse)
+async def set_work_coordinate(
+    payload: SetWorkCoordinateRequest,
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Set the displayed work coordinate value for one axis using G92."""
+    axis = _axis(payload.axis)
+    logger.info("CNC G92 work coordinate requested: axis=%s value=%s", axis, payload.value)
+    result = client.set_work_coordinate(axis=axis, value=payload.value)
+    return CncMotionResponse(
+        status=result,
+        message=_message(result, "Set work coordinate", "CNC DLL set work coordinate: G92 and CncStoreIniFile returned 0"),
+        command="set_work_coordinate",
+        dry_run=False,
+        axis=axis,
+        position=payload.value,
+    )
+

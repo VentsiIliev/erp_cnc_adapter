@@ -136,3 +136,13 @@ class TestExceptionHandler:
             body = resp.json()
             assert body["status"] == 1
             assert "test boom" in body["message"]
+
+def test_main_checks_jog_pad_before_adapter_imports():
+    text = Path(__file__).resolve().parent.parent.joinpath("main.py").read_text(encoding="utf-8")
+    top_level = text.split("def _run_adapter", 1)[0]
+
+    assert "import uvicorn" not in top_level
+    assert "from src.app import create_app" not in top_level
+    assert "app = create_app" not in top_level
+    assert 'if "--jog-pad" in sys.argv:' in text
+

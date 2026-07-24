@@ -135,6 +135,11 @@ class TestBuildScript:
         text = _read_script(self.SCRIPT)
         assert "machine_health_dashboard" not in text
 
+    def test_jog_pad_is_not_built_as_separate_exe(self):
+        """The adapter EXE exposes --jog-pad instead of shipping a second EXE."""
+        text = _read_script(self.SCRIPT)
+        assert "erp-cnc-jog-pad" not in text
+
 
 # ===========================================================================
 # build_installer.bat
@@ -179,3 +184,9 @@ class TestRunTestsScript:
     def test_references_pytest(self):
         text = _read_script(self.SCRIPT)
         assert "pytest" in text
+
+def test_pyinstaller_spec_bundles_resources_directory():
+    spec = Path(__file__).resolve().parent.parent.joinpath("util_scripts", "erp-cnc-adapter.spec").read_text(encoding="utf-8")
+
+    assert "(os.path.join(PROJECT_ROOT, 'resources'), 'resources')" in spec
+

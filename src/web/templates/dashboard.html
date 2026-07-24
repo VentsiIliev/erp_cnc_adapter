@@ -280,6 +280,18 @@
             color: var(--danger);
         }
 
+        .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .btn-icon img {
+            width: 18px;
+            height: 18px;
+            display: block;
+        }
+
         .btn:hover,
         .form-actions button:hover,
         .update-actions button:hover,
@@ -732,6 +744,7 @@
                                 <tr><td>Last error</td><td id="healthError">None</td></tr>
                             </table>
                             <div class="hero-actions" style="margin-top: 16px;">
+                                <button type="button" class="btn btn-primary btn-icon" id="openJogPadBtn"><img src="/favicon.ico" alt="">Open Jog Pad</button>
                                 <button type="button" class="btn btn-primary" id="startCncBtn">Start CNC</button>
                                 <button type="button" class="btn btn-danger" id="stopCncBtn">Stop CNC</button>
                             </div>
@@ -965,6 +978,11 @@
                             <label for="pollInterval">Job Monitor Poll Interval</label>
                             <input type="number" id="pollInterval" name="job_monitor_poll_interval" min="0.1" max="60" step="0.1" placeholder="1.0">
                             <div class="helper">Current: <span id="currentPollInterval">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="jogPadPauseHoldInterval">Jog Pad Pause Hold Interval</label>
+                            <input type="number" id="jogPadPauseHoldInterval" name="jog_pad_pause_hold_interval_ms" min="0" max="10000" step="100" placeholder="500">
+                            <div class="helper">Current: <span id="currentJogPadPauseHoldInterval">Loading...</span> (0 disables)</div>
                         </div>
                         <div class="field">
                             <label for="adapterPort">Adapter Port</label>
@@ -1313,6 +1331,7 @@
             document.getElementById("currentAutoStartEdingGui").textContent = body.auto_start_eding_gui ? "Enabled" : "Disabled";
             document.getElementById("currentOperatorReadyMessage").textContent = body.show_operator_ready_message ? "Enabled" : "Disabled";
             document.getElementById("currentPollInterval").textContent = body.job_monitor_poll_interval + "s";
+            document.getElementById("currentJogPadPauseHoldInterval").textContent = body.jog_pad_pause_hold_interval_ms + "ms";
             document.getElementById("currentAdapterPort").textContent = body.port;
             document.getElementById("configHost").textContent = body.host;
             document.getElementById("configPort").textContent = body.port;
@@ -1326,7 +1345,7 @@
         }
 
         function resetConfigForm() {
-            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "adapterStartupDelay", "retryInterval", "healthInterval", "startupReadyTimeout", "pollInterval", "adapterPort"].forEach((id) => {
+            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "adapterStartupDelay", "retryInterval", "healthInterval", "startupReadyTimeout", "pollInterval", "jogPadPauseHoldInterval", "adapterPort"].forEach((id) => {
                 document.getElementById(id).value = "";
             });
         }
@@ -1368,6 +1387,23 @@
                 document.getElementById("connectionHeadline").textContent = "Dashboard refresh failed";
                 document.getElementById("connectionSubline").textContent = error.message;
                 addEvent("monitor", "Dashboard refresh failed: " + error.message, "error");
+            }
+        }
+
+        async function openJogPad() {
+            const button = document.getElementById("openJogPadBtn");
+            button.disabled = true;
+            const originalText = button.textContent;
+            button.lastChild.textContent = "Opening...";
+            try {
+                const { body } = await fetchJson("/api/jog-pad/open", { method: "POST" });
+                if (body.status !== 0) throw new Error(body.message || "Jog pad launch failed.");
+                addEvent("monitor", "Jog pad launch requested.", "success");
+            } catch (error) {
+                addEvent("monitor", "Jog pad launch failed: " + error.message, "error");
+            } finally {
+                button.disabled = false;
+                button.lastChild.textContent = originalText;
             }
         }
 
@@ -1422,6 +1458,7 @@
             const autoStartEdingGui = document.getElementById("autoStartEdingGuiToggle").checked;
             const operatorReadyMessage = document.getElementById("operatorReadyMessageToggle").checked;
             const poll = document.getElementById("pollInterval").value;
+            const jogPadPauseHoldInterval = document.getElementById("jogPadPauseHoldInterval").value;
             const adapterPort = document.getElementById("adapterPort").value;
 
             if (machineNumber) payload.machine_number = machineNumber;
@@ -1451,6 +1488,7 @@
                 payload.show_operator_ready_message = operatorReadyMessage;
             }
             if (poll) payload.job_monitor_poll_interval = parseFloat(poll);
+            if (jogPadPauseHoldInterval !== "") payload.jog_pad_pause_hold_interval_ms = parseInt(jogPadPauseHoldInterval, 10);
             if (adapterPort) payload.port = parseInt(adapterPort, 10);
             if (options.restartAdapterTask) payload.restart_adapter_task = true;
 
@@ -1577,6 +1615,7 @@
             document.querySelectorAll("#nav button").forEach((button) => {
                 button.addEventListener("click", () => setActiveView(button.dataset.view));
             });
+            document.getElementById("openJogPadBtn").addEventListener("click", openJogPad);
             document.getElementById("startCncBtn").addEventListener("click", startCnc);
             document.getElementById("stopCncBtn").addEventListener("click", stopCnc);
             document.getElementById("configForm").addEventListener("submit", submitConfig);

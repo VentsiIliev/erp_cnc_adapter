@@ -10,6 +10,7 @@ from src.core.config import Settings
 from .schemas.job import LoadJobRequest, LoadJobResponse
 from src.cnc.cnc_client_protocol import CncClientProtocol
 from src.cnc.error_translator import translate_error, format_error
+from src.api.jog_pad_launcher import _adapter_base_url, launch_jog_pad
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,18 @@ async def load_job(
                 except Exception as qty_exc:
                     logger.warning("Exception setting job quantity: %s", qty_exc)
                     message += f" (quantity set error: {qty_exc})"
+
+            jog_pad_launcher = getattr(request.app.state.services, "jog_pad_launcher", launch_jog_pad)
+            jog_pad_response = jog_pad_launcher(
+                _adapter_base_url(request),
+                settings.jog_pad_pause_hold_interval_ms,
+            )
+            if jog_pad_response.status == 0:
+                logger.info("Jog pad opened after successful job load")
+                message += ". Jog pad opened for operator positioning"
+            else:
+                logger.warning("Job loaded, but jog pad did not open: %s", jog_pad_response.message)
+                message += f". Jog pad launch failed: {jog_pad_response.message}"
 
             # Render the job so the CNC computes toolpath, progress, and time estimates
             try:

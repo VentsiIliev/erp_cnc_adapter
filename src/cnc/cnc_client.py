@@ -2,9 +2,9 @@ import ctypes
 import logging
 import struct
 import sys
-from ctypes import POINTER, WinDLL, c_char_p, c_int, c_uint, c_wchar_p
+from ctypes import POINTER, WinDLL, c_char_p, c_double, c_int, c_uint, c_void_p, c_wchar_p
 
-from cncapi.python.cncstructs import CNC_JOB_STATUS
+from cncapi.python.cncstructs import CNC_CART_BOOL, CNC_CART_DOUBLE, CNC_CONTROLLER_STATUS, CNC_JOB_STATUS, CNC_RUNNING_STATUS
 from src.core.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -191,6 +191,36 @@ class CncClient:
             # "stockZAtWorkOffset": s.stockZAtworkOffset,
         }
 
+    def get_positions(self) -> dict:
+        """Return current work and machine coordinates from the CNC DLL."""
+        work = self._dll.CncGetWorkPosition()
+        machine = self._dll.CncGetMachinePosition()
+        return {
+            "work": self._cart_to_dict(work),
+            "machine": self._cart_to_dict(machine),
+        }
+
+    def get_all_axes_homed(self) -> bool:
+        """Return True when the CNC reports all axes are homed."""
+        return self._dll.CncGetAllAxesHomed() == 1
+
+    def is_motion_enabled(self) -> bool:
+        """Return True when the controller reports motion/drives enabled."""
+        status = self._dll.CncGetControllerStatus().contents
+        return int(status.motionEnabled) == 1
+
+    def home_all_axes_g28(self) -> int:
+        """Run the configured all-axis home MDI command."""
+        command = "G28 X0 Y0 Z0"
+        result = self._dll.CncRunSingleLine(command.encode("ascii"))
+        logger.info("CncRunSingleLine(%r) returned %d", command, result)
+        if result != CNC_RC_OK:
+            return result
+
+        result = self._dll.CncWaitSingleLine(None, None)
+        logger.info("CncWaitSingleLine() returned %d", result)
+        return result
+
     def load_job(self, file_name: str) -> int:
         """Load a job into the CNC interpreter.
 
@@ -288,7 +318,153 @@ class CncClient:
         logger.info("CncRunOrResumeJob() returned %d", result)
         return result
 
+    def pause_job(self) -> int:
+        """Smooth-stop the current job using the CNC DLL pause function."""
+        result = self._dll.CncPauseJob()
+        logger.info("CncPauseJob() returned %d", result)
+        return result
+
+    def start_jog(
+        self,
+        axis: str,
+        direction: int,
+        step: float,
+        velocity_factor: float,
+        continuous: bool,
+    ) -> int:
+        """Start a continuous or fixed-step jog for one axis."""
+        axis_index = self._axis_index(axis)
+        signed_step = float(step) * (1 if direction >= 0 else -1)
+        result = self._dll.CncStartJog2(
+            c_int(axis_index),
+            c_double(signed_step),
+            c_double(float(velocity_factor)),
+            c_int(1 if continuous else 0),
+        )
+        logger.info(
+            "CncStartJog2(axis=%s/%d, step=%s, velocity_factor=%s, continuous=%s) returned %d",
+            axis.upper(),
+            axis_index,
+            signed_step,
+            velocity_factor,
+            continuous,
+            result,
+        )
+        return result
+
+    def stop_jog(self, axis: str | None = None) -> int:
+        """Stop jogging for one axis, or all cartesian axes when axis is omitted."""
+        if axis:
+            axis_index = self._axis_index(axis)
+            result = self._dll.CncStopJog(c_int(axis_index))
+            logger.info("CncStopJog(axis=%s/%d) returned %d", axis.upper(), axis_index, result)
+            return result
+
+        result = CNC_RC_OK
+        for axis_name in "XYZABC":
+            axis_index = self._axis_index(axis_name)
+            axis_result = self._dll.CncStopJog(c_int(axis_index))
+            logger.info("CncStopJog(axis=%s/%d) returned %d", axis_name, axis_index, axis_result)
+            if axis_result != CNC_RC_OK and result == CNC_RC_OK:
+                result = axis_result
+        return result
+
+    def move_to(self, axis: str, position: float, velocity_factor: float) -> int:
+        """Move one axis to an absolute machine position."""
+        axis_name = axis.lower()
+        self._axis_index(axis_name)
+
+        pos = CNC_CART_DOUBLE()
+        move = CNC_CART_BOOL()
+        setattr(pos, axis_name, float(position))
+        setattr(move, axis_name, 1)
+
+        result = self._dll.CncMoveTo(pos, move, c_double(float(velocity_factor)))
+        logger.info(
+            "CncMoveTo(axis=%s, position=%s, velocity_factor=%s) returned %d",
+            axis.upper(),
+            position,
+            velocity_factor,
+            result,
+        )
+        return result
+
+    def zero_work_axis(self, axis: str) -> int:
+        """Set the current position as work zero for one axis without using the GUI."""
+        axis_name = axis.upper()
+        self._axis_index(axis_name)
+        coordinate_system = self._active_coordinate_system_number()
+        command = f"G10 L20 P{coordinate_system} {axis_name}0"
+
+        result = self._dll.CncRunSingleLine(command.encode("ascii"))
+        logger.info("CncRunSingleLine(%r) returned %d", command, result)
+        if result != CNC_RC_OK:
+            return result
+
+        result = self._dll.CncWaitSingleLine(None, None)
+        logger.info("CncWaitSingleLine() returned %d", result)
+        if result != CNC_RC_OK:
+            return result
+
+        result = self._dll.CncStoreIniFile(c_int(1))
+        logger.info("CncStoreIniFile(saveFixtures=1) returned %d", result)
+        return result
+
+    def set_work_coordinate(self, axis: str, value: float) -> int:
+        """Set the displayed work coordinate for one axis using G92."""
+        axis_name = axis.upper()
+        self._axis_index(axis_name)
+        command = f"G92 {axis_name}{float(value):g}"
+
+        result = self._dll.CncRunSingleLine(command.encode("ascii"))
+        logger.info("CncRunSingleLine(%r) returned %d", command, result)
+        if result != CNC_RC_OK:
+            return result
+
+        result = self._dll.CncWaitSingleLine(None, None)
+        logger.info("CncWaitSingleLine() returned %d", result)
+        if result != CNC_RC_OK:
+            return result
+
+        result = self._dll.CncStoreIniFile(c_int(1))
+        logger.info("CncStoreIniFile(saveFixtures=1) returned %d", result)
+        return result
+
     # -- private helpers -----------------------------------------------------
+
+    @staticmethod
+    def _cart_to_dict(position: CNC_CART_DOUBLE) -> dict[str, float]:
+        return {
+            "x": float(position.x),
+            "y": float(position.y),
+            "z": float(position.z),
+            "a": float(position.a),
+            "b": float(position.b),
+            "c": float(position.c),
+        }
+
+    def _active_coordinate_system_number(self) -> int:
+        """Return G10 P number for the active G54-G59.3 coordinate system."""
+        try:
+            status = self._dll.CncGetRunningStatus().contents
+            current_g5x = int(status.activeOffsetAndPlane.currentG5X)
+        except Exception as exc:
+            logger.warning("Could not read active G5X coordinate system, using G54/P1: %s", exc)
+            return 1
+
+        if 0 <= current_g5x <= 8:
+            return current_g5x + 1
+
+        logger.warning("Unexpected active G5X index %s, using G54/P1", current_g5x)
+        return 1
+
+    @staticmethod
+    def _axis_index(axis: str) -> int:
+        axis_map = {"X": 0, "Y": 1, "Z": 2, "A": 3, "B": 4, "C": 5}
+        axis_name = axis.upper()
+        if axis_name not in axis_map:
+            raise ValueError(f"Unsupported CNC axis: {axis}")
+        return axis_map[axis_name]
 
     def _reset_if_powerup(self) -> None:
         """If CNC is stuck in Power-up state after (re)connect, reset to Ready."""
@@ -334,12 +510,24 @@ class CncClient:
             ("CncGetState", None, c_int),
             ("CncIsServerConnected", None, c_int),
             ("CncGetJobStatus", None, POINTER(CNC_JOB_STATUS)),
+            ("CncGetWorkPosition", None, CNC_CART_DOUBLE),
+            ("CncGetMachinePosition", None, CNC_CART_DOUBLE),
+            ("CncGetAllAxesHomed", None, c_int),
+            ("CncGetRunningStatus", None, POINTER(CNC_RUNNING_STATUS)),
+            ("CncGetControllerStatus", None, POINTER(CNC_CONTROLLER_STATUS)),
+            ("CncRunSingleLine", [c_char_p], c_int),
+            ("CncWaitSingleLine", [c_void_p, c_void_p], c_int),
+            ("CncStoreIniFile", [c_int], c_int),
             ("CncSendToGUI", [c_int, c_int, c_int], c_int),
             ("CncSendUserMessage", [c_char_p, c_char_p, c_int, c_int, c_int, c_char_p], None),
             ("CncRunOrResumeJob", None, c_int),
+            ("CncPauseJob", None, c_int),
             ("CncReset", None, c_int),
             ("CncSetExtraJobOptions", [c_char_p, c_int, c_uint], c_int),
             ("CncStartRenderGraph", [c_int, c_int], c_int),
+            ("CncStartJog2", [c_int, c_double, c_double, c_int], c_int),
+            ("CncStopJog", [c_int], c_int),
+            ("CncMoveTo", [CNC_CART_DOUBLE, CNC_CART_BOOL, c_double], c_int),
         ]:
             try:
                 func = getattr(self._dll, name)

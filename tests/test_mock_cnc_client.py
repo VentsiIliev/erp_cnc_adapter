@@ -55,3 +55,9 @@ class TestMockCncClient:
         assert client.is_server_connected() is False
         client.connect()
         assert client.is_server_connected() is True
+
+    def test_motion_methods_return_0(self):
+        client = MockCncClient()
+        assert client.start_jog("X", 1, 1.0, 0.25, True) == 0
+        assert client.stop_jog() == 0
+        assert client.move_to("Z", -1.25, 0.5) == 0
