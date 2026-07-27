@@ -169,3 +169,14 @@ def test_is_motion_enabled_reads_controller_status():
 
     controller_status.motionEnabled = 0
     assert client.is_motion_enabled() is False
+
+
+def test_reset_calls_cnc_reset():
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._dll = MagicMock()
+    client._dll.CncReset.return_value = 0
+
+    assert client.reset() == 0
+    client._dll.CncReset.assert_called_once_with()

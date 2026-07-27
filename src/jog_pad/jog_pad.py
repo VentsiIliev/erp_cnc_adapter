@@ -16,6 +16,7 @@ The button blue is controlled by the single ACCENT_BLUE constant.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import queue
@@ -27,8 +28,9 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from PyQt5.QtCore import QObject, QPointF, QRectF, QThread, Qt, pyqtSignal
+from PyQt5.QtCore import QObject, QPointF, QRectF, QThread, QTimer, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -52,8 +54,12 @@ from PyQt5.QtWidgets import (
 # SINGLE SOURCE OF TRUTH FOR THE BLUE BUTTON COLOR
 # =============================================================================
 
-ACCENT_BLUE = "#7A4FBF"
+ACCENT_BLUE = "#224896"
 FALLBACK_ADAPTER_PORT = 8002
+POSITION_READ_TIMEOUT_SECONDS = 5.0
+POSITION_POLL_INTERVAL_MS = 1000
+POSITION_ERROR_DISPLAY_THRESHOLD = 3
+JOG_PAD_IPC_PREFIX = "erp_cnc_adapter_jog_pad"
 
 
 def resolve_resource_path(file_name: str) -> Optional[str]:
@@ -78,9 +84,24 @@ def resolve_icon_path() -> Optional[str]:
     return resolve_resource_path("logo.ico")
 
 
+def resolve_jogpad_icon_path(file_name: str) -> Optional[str]:
+    """Locate an original jog pad bitmap under resources/jogpad."""
+    return resolve_resource_path(f"jogpad/{file_name}")
+
+
 def resolve_home_icon_path() -> Optional[str]:
-    """Locate resources/home.bmp for dev and installed runs."""
-    return resolve_resource_path("home.bmp")
+    """Locate the original home bitmap for dev and installed runs."""
+    return resolve_jogpad_icon_path("home_x.bmp")
+
+
+def resolve_reset_icon_path() -> Optional[str]:
+    """Locate resources/reset.bmp for dev and installed runs."""
+    return resolve_resource_path("reset.bmp")
+
+
+def jog_pad_ipc_server_name(adapter_url: str) -> str:
+    digest = hashlib.sha1(adapter_url.encode("utf-8")).hexdigest()[:12]
+    return f"{JOG_PAD_IPC_PREFIX}_{digest}"
 
 
 def resolve_adapter_url(adapter_url: Optional[str] = None) -> str:
@@ -135,6 +156,21 @@ class JogPadTheme:
 
 THEME = JogPadTheme()
 
+JOG_DIRECTION_ICONS = {
+    "up": "jog_up.bmp",
+    "down": "jog_down.bmp",
+    "left": "jog_left.bmp",
+    "right": "jog_right.bmp",
+}
+
+STEP_MODE_ICONS = {
+    "cont": "jog_cont.bmp",
+    ".001": "jog_0_001.bmp",
+    "0.01": "jog_0_01.bmp",
+    "0.1": "jog_0_1.bmp",
+    "1": "jog_1.bmp",
+}
+
 
 class AdapterJogClient:
     """Small stdlib HTTP client for the adapter jog endpoints."""
@@ -159,16 +195,19 @@ class AdapterJogClient:
         return self._post_json("/api/cnc/jog/stop", None)
 
     def get_positions(self) -> dict:
-        return self._get_json("/api/cnc/position")
+        return self._get_json("/api/cnc/position", timeout_seconds=max(self.timeout_seconds, POSITION_READ_TIMEOUT_SECONDS))
 
     def get_homed_status(self) -> dict:
-        return self._get_json("/api/cnc/homed")
+        return self._get_json("/api/cnc/homed", timeout_seconds=max(self.timeout_seconds, POSITION_READ_TIMEOUT_SECONDS))
 
     def home_all_axes(self) -> dict:
         return self._post_json("/api/cnc/home", None)
 
     def pause_job(self) -> dict:
-        return self._post_json("/api/cnc/job/pause", None)
+        return self._post_json("/api/cnc/job/pause", None, timeout_seconds=max(self.timeout_seconds, 25.0))
+
+    def reset(self) -> dict:
+        return self._post_json("/api/cnc/reset", None)
 
     def move_relative(self, axis: str, signed_distance: float, speed_percent: float) -> dict:
         direction = 1 if signed_distance >= 0 else -1
@@ -189,15 +228,16 @@ class AdapterJogClient:
     def set_work_coordinate(self, axis: str, value: float) -> dict:
         return self._post_json("/api/cnc/work-coordinate", {"axis": axis, "value": float(value)})
 
-    def _get_json(self, path: str) -> dict:
+    def _get_json(self, path: str, timeout_seconds: Optional[float] = None) -> dict:
         request = urllib.request.Request(f"{self.base_url}{path}", method="GET")
-        with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+        timeout = self.timeout_seconds if timeout_seconds is None else timeout_seconds
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             response_body = response.read().decode("utf-8")
             if not response_body:
                 return {"status": response.status, "message": "No response body"}
             return json.loads(response_body)
 
-    def _post_json(self, path: str, payload: Optional[dict]) -> dict:
+    def _post_json(self, path: str, payload: Optional[dict], timeout_seconds: Optional[float] = None) -> dict:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
             f"{self.base_url}{path}",
@@ -205,7 +245,8 @@ class AdapterJogClient:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+        timeout = self.timeout_seconds if timeout_seconds is None else timeout_seconds
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             response_body = response.read().decode("utf-8")
             if not response_body:
                 return {"status": response.status, "message": "No response body"}
@@ -255,11 +296,13 @@ class BackgroundCommandSender(QObject):
             else:
                 status = response.get("status", "?")
                 message = response.get("message", "")
-                print(f"Adapter jog request sent: {label}: status={status}, message={message}")
                 if status == 0:
+                    print(f"Adapter jog request succeeded: {label}: status={status}, message={message}")
                     self.command_succeeded.emit(label, message)
                 else:
-                    self.command_failed.emit(label, message or f"Adapter returned status {status}")
+                    failure_message = message or f"Adapter returned status {status}"
+                    print(f"Adapter jog request failed: {label}: status={status}, message={failure_message}")
+                    self.command_failed.emit(label, failure_message)
 
 class CoordinatePoller(QThread):
     positions_received = pyqtSignal(dict)
@@ -281,10 +324,11 @@ class CoordinatePoller(QThread):
                 self.homed_status_received.emit(self.client.get_homed_status())
             except Exception as exc:
                 self.error_received.emit(str(exc))
-            self.msleep(500)
+            self.msleep(POSITION_POLL_INTERVAL_MS)
 
 
 class PauseHoldThread(QThread):
+    status_received = pyqtSignal(str)
     error_received = pyqtSignal(str)
 
     def __init__(self, client: AdapterJogClient, interval_ms: int, parent: Optional[QWidget] = None) -> None:
@@ -297,11 +341,21 @@ class PauseHoldThread(QThread):
         self._running = False
 
     def run(self) -> None:
+        last_message = None
         while self._running:
             try:
-                self.client.pause_job()
+                response = self.client.pause_job()
             except Exception as exc:
                 self.error_received.emit(str(exc))
+            else:
+                status = response.get("status", 0)
+                message = response.get("message", "")
+                if status == 0:
+                    if message.startswith("Pause hold active") and message != last_message:
+                        self.status_received.emit(message)
+                        last_message = message
+                else:
+                    self.error_received.emit(message or f"Pause hold returned status {status}")
             self.msleep(self.interval_ms)
 
 
@@ -314,11 +368,14 @@ class ArrowJogButton(QPushButton):
         label: str,
         theme: JogPadTheme = THEME,
         parent: Optional[QWidget] = None,
+        icon_name: Optional[str] = None,
     ) -> None:
         super().__init__(parent)
         self.direction = direction
         self.axis_label = label
         self.theme = theme
+        icon_path = resolve_jogpad_icon_path(icon_name or JOG_DIRECTION_ICONS.get(direction, ""))
+        self._pixmap = QPixmap(icon_path) if icon_path else QPixmap()
 
         self.setFixedSize(72, 68)
         self.setCursor(Qt.PointingHandCursor)
@@ -353,6 +410,10 @@ class ArrowJogButton(QPushButton):
         painter.setPen(Qt.NoPen)
         painter.setBrush(fill)
         painter.drawRoundedRect(inner, 4.0, 4.0)
+
+        if not self._pixmap.isNull():
+            painter.drawPixmap(inner.toRect(), self._pixmap)
+            return
 
         self._draw_arrow(painter, inner)
         self._draw_label(painter, inner)
@@ -424,6 +485,8 @@ class StepModeButton(QPushButton):
         super().__init__(parent)
         self.mode_text = text
         self.theme = theme
+        icon_path = resolve_jogpad_icon_path(STEP_MODE_ICONS.get(text, ""))
+        self._pixmap = QPixmap(icon_path) if icon_path else QPixmap()
 
         self.setCheckable(True)
         self.setFixedSize(72, 68)
@@ -454,6 +517,10 @@ class StepModeButton(QPushButton):
         painter.setPen(Qt.NoPen)
         painter.setBrush(fill)
         painter.drawRoundedRect(inner, 4.0, 4.0)
+
+        if not self._pixmap.isNull():
+            painter.drawPixmap(inner.toRect(), self._pixmap)
+            return
 
         painter.setBrush(QColor("white"))
         self._draw_triangle(painter, QPointF(inner.center().x(), inner.top() + 5), "up")
@@ -502,6 +569,8 @@ class CustomStepButton(QPushButton):
     ) -> None:
         super().__init__(parent)
         self.theme = theme
+        icon_path = resolve_jogpad_icon_path("jog_user.bmp")
+        self._pixmap = QPixmap(icon_path) if icon_path else QPixmap()
         self.setFixedSize(72, 38)
         self.setCursor(Qt.PointingHandCursor)
         self.setFocusPolicy(Qt.NoFocus)
@@ -522,6 +591,10 @@ class CustomStepButton(QPushButton):
         painter.setPen(Qt.NoPen)
         painter.setBrush(fill)
         painter.drawRoundedRect(inner, 3.0, 3.0)
+
+        if not self._pixmap.isNull():
+            painter.drawPixmap(inner.toRect(), self._pixmap)
+            return
 
         painter.setPen(QPen(QColor("white"), 2.5))
         y = inner.center().y()
@@ -544,6 +617,8 @@ class ZeroAxisButton(QPushButton):
         super().__init__(parent)
         self.axis = axis
         self.theme = theme
+        icon_path = resolve_jogpad_icon_path(f"home_{axis.lower()}.bmp")
+        self._pixmap = QPixmap(icon_path) if icon_path else QPixmap()
         self.setFixedSize(58, 58)
         self.setFocusPolicy(Qt.NoFocus)
         self.setCursor(Qt.PointingHandCursor)
@@ -559,11 +634,15 @@ class ZeroAxisButton(QPushButton):
         painter.setBrush(QColor(self.theme.outer_button_background))
         painter.drawRoundedRect(outer, 3.0, 3.0)
 
-        inner = QRectF(9.0, 8.0, 40.0, 40.0)
+        inner = QRectF(5.0, 5.0, 48.0, 48.0)
         fill = self.theme.accent_pressed if self.isDown() else self.theme.accent
         painter.setPen(Qt.NoPen)
         painter.setBrush(fill)
         painter.drawRoundedRect(inner, 4.0, 4.0)
+
+        if not self._pixmap.isNull():
+            painter.drawPixmap(inner.toRect(), self._pixmap)
+            return
 
         center = inner.center()
         painter.setPen(QPen(QColor("white"), 2.0))
@@ -672,6 +751,53 @@ class HomeStatusButton(QPushButton):
         painter.drawText(inner, Qt.AlignCenter, "HOME")
 
 
+class BitmapCommandButton(QPushButton):
+    """Generic command button that paints a provided bitmap resource."""
+
+    def __init__(
+        self,
+        tooltip: str,
+        icon_path: Optional[str],
+        fallback_text: str,
+        theme: JogPadTheme = THEME,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.theme = theme
+        self.fallback_text = fallback_text
+        self._pixmap = QPixmap(icon_path) if icon_path else QPixmap()
+        self.setFixedSize(72, 68)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(tooltip)
+        self.setStyleSheet("QPushButton { border: none; background: transparent; }")
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        outer = QRectF(1.0, 1.0, self.width() - 2.0, self.height() - 2.0)
+        painter.setPen(QPen(QColor(self.theme.outer_button_border), 1.0))
+        painter.setBrush(QColor(self.theme.outer_button_background))
+        painter.drawRoundedRect(outer, 4.0, 4.0)
+
+        inner = QRectF(12.0, 10.0, 48.0, 48.0)
+        fill = self.theme.accent_pressed if self.isDown() else self.theme.accent
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(fill)
+        painter.drawRoundedRect(inner, 4.0, 4.0)
+
+        if not self._pixmap.isNull():
+            painter.drawPixmap(inner.toRect(), self._pixmap)
+            return
+
+        painter.setPen(QColor("white"))
+        font = QFont("Segoe UI", 8)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(inner, Qt.AlignCenter, self.fallback_text)
+
+
 class CloseButton(QPushButton):
     """Large close button matching the visual language of the jog buttons."""
 
@@ -682,6 +808,8 @@ class CloseButton(QPushButton):
     ) -> None:
         super().__init__(parent)
         self.theme = theme
+        icon_path = resolve_jogpad_icon_path("exit.bmp")
+        self._pixmap = QPixmap(icon_path) if icon_path else QPixmap()
         self.setFixedSize(72, 68)
         self.setCursor(Qt.PointingHandCursor)
         self.setFocusPolicy(Qt.NoFocus)
@@ -702,6 +830,10 @@ class CloseButton(QPushButton):
         painter.setPen(Qt.NoPen)
         painter.setBrush(fill)
         painter.drawRoundedRect(inner, 4.0, 4.0)
+
+        if not self._pixmap.isNull():
+            painter.drawPixmap(inner.toRect(), self._pixmap)
+            return
 
         painter.setPen(QPen(QColor("white"), 6.0, Qt.SolidLine, Qt.RoundCap))
         margin = 14.0
@@ -736,7 +868,7 @@ class JogPad(QWidget):
         theme: JogPadTheme = THEME,
         parent: Optional[QWidget] = None,
         adapter_url: Optional[str] = None,
-        pause_hold_interval_ms: int = 500,
+        pause_hold_interval_ms: int = 0,
     ) -> None:
 
         super().__init__(parent)
@@ -747,18 +879,15 @@ class JogPad(QWidget):
         self.command_sender.command_failed.connect(self.on_command_failed)
         self.coordinate_labels: dict[str, QLabel] = {}
         self.coordinate_readouts: dict[str, CoordinateReadout] = {}
+        self._position_error_count = 0
         self.coordinate_mode = "work"
         self.coordinate_mode_buttons: dict[str, QPushButton] = {}
         self.latest_positions: dict = {}
-        self.position_poller = CoordinatePoller(self.adapter_client, self)
-        self.position_poller.positions_received.connect(self.on_positions_received)
-        self.position_poller.homed_status_received.connect(self.on_homed_status_received)
-        self.position_poller.error_received.connect(self.on_position_error)
-        self.position_poller.start()
-        self.pause_hold_thread = PauseHoldThread(self.adapter_client, pause_hold_interval_ms, self)
-        self.pause_hold_thread.error_received.connect(self.on_pause_hold_error)
-        if pause_hold_interval_ms > 0:
-            self.pause_hold_thread.start()
+        self.position_poller = self._create_position_poller()
+        self.pause_hold_interval_ms = max(0, int(pause_hold_interval_ms))
+        self._pause_hold_active = False
+        self.pause_hold_thread = self._create_pause_hold_thread()
+        self._background_threads_started = False
         self.selected_step: Optional[float] = self.CONTINUOUS
         self._active_axis: Optional[str] = None
 
@@ -767,6 +896,44 @@ class JogPad(QWidget):
         self._build_ui()
         self._connect_actions()
         self._apply_style()
+
+    def _create_position_poller(self) -> CoordinatePoller:
+        poller = CoordinatePoller(self.adapter_client, self)
+        poller.positions_received.connect(self.on_positions_received)
+        poller.homed_status_received.connect(self.on_homed_status_received)
+        poller.error_received.connect(self.on_position_error)
+        return poller
+
+    def _create_pause_hold_thread(self) -> PauseHoldThread:
+        thread = PauseHoldThread(self.adapter_client, self.pause_hold_interval_ms, self)
+        thread.status_received.connect(self.on_pause_hold_status)
+        thread.error_received.connect(self.on_pause_hold_error)
+        return thread
+
+    def start_background_threads(self) -> None:
+        window = self.window()
+        if window is not None and not window.isVisible():
+            return
+        if not self.position_poller.isRunning():
+            self.position_poller = self._create_position_poller()
+            self.position_poller.start()
+        if self.pause_hold_interval_ms > 0 and not self.pause_hold_thread.isRunning():
+            self.pause_hold_thread = self._create_pause_hold_thread()
+            self.pause_hold_thread.start()
+        self._background_threads_started = True
+
+    def stop_background_threads(self) -> None:
+        if self.pause_hold_thread.isRunning():
+            self.pause_hold_thread.stop()
+            self.pause_hold_thread.wait(1000)
+        if self.position_poller.isRunning():
+            self.position_poller.stop()
+            self.position_poller.wait(1000)
+        self._background_threads_started = False
+        self._pause_hold_active = False
+
+    def stop_pause_hold_thread(self) -> None:
+        self.stop_background_threads()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -892,8 +1059,8 @@ class JogPad(QWidget):
         layout.setContentsMargins(0, 6, 0, 0)
         layout.setSpacing(88)
 
-        self.z_positive_button = ArrowJogButton("up", "Z+", self.theme)
-        self.z_negative_button = ArrowJogButton("down", "Z-", self.theme)
+        self.z_positive_button = ArrowJogButton("up", "Z+", self.theme, icon_name="jog_up3.bmp")
+        self.z_negative_button = ArrowJogButton("down", "Z-", self.theme, icon_name="jog_down3.bmp")
 
         layout.addWidget(self.z_positive_button)
         layout.addWidget(self.z_negative_button)
@@ -912,6 +1079,7 @@ class JogPad(QWidget):
         self.step_01_button = StepModeButton("0.1", self.theme)
         self.step_1_button = StepModeButton("1", self.theme)
         self.home_button = HomeStatusButton(self.theme)
+        self.reset_button = BitmapCommandButton("Reset CNC errors", resolve_reset_icon_path(), "RESET", self.theme)
 
         mode_buttons = (
             self.continuous_button,
@@ -932,6 +1100,7 @@ class JogPad(QWidget):
         row.addWidget(self.step_01_button)
         row.addWidget(self.step_1_button)
         row.addWidget(self.home_button)
+        row.addWidget(self.reset_button)
 
         custom_column = QVBoxLayout()
         custom_column.setSpacing(4)
@@ -985,11 +1154,15 @@ class JogPad(QWidget):
 
         self.speed_slider.valueChanged.connect(self.on_speed_slider_changed)
         self.home_button.clicked.connect(self.action_home_all_axes)
+        self.reset_button.clicked.connect(self.action_reset)
         self.close_button.clicked.connect(self.on_close_pressed)
 
     def _apply_style(self) -> None:
         accent = self.theme.accent_blue
         accent_pressed = self.theme.accent_pressed.name()
+        accent_soft = self.theme.accent.lighter(165).name()
+        accent_border_dark = self.theme.accent.darker(135).name()
+        accent_border_light = self.theme.accent.lighter(140).name()
         background = self.theme.window_background
 
         self.setStyleSheet(
@@ -1029,15 +1202,17 @@ class JogPad(QWidget):
             }}
 
             QPushButton#coordinateModeTab:checked {{
-                background: white;
+                background: {accent};
+                border-color: {accent_border_dark};
+                color: white;
             }}
 
             QFrame#coordinateReadout {{
                 background: {accent};
-                border-top: 2px solid #101010;
-                border-left: 2px solid #101010;
-                border-right: 2px solid #8FA6D2;
-                border-bottom: 2px solid #8FA6D2;
+                border-top: 2px solid {accent_border_dark};
+                border-left: 2px solid {accent_border_dark};
+                border-right: 2px solid {accent_border_light};
+                border-bottom: 2px solid {accent_border_light};
             }}
 
             QLabel#coordinateAxis {{
@@ -1061,8 +1236,8 @@ class JogPad(QWidget):
 
             QSlider::groove:horizontal {{
                 height: 4px;
-                background: {self.theme.slider_groove};
-                border: 1px solid #C3C3C3;
+                background: {accent_soft};
+                border: 1px solid {accent_border_light};
             }}
 
             QSlider::sub-page:horizontal {{
@@ -1074,7 +1249,7 @@ class JogPad(QWidget):
                 width: 14px;
                 margin: -8px 0;
                 background: {accent};
-                border: none;
+                border: 1px solid {accent_border_dark};
             }}
 
             QSlider::handle:horizontal:pressed {{
@@ -1131,7 +1306,8 @@ class JogPad(QWidget):
         self._jog_released("Z")
 
     def on_close_pressed(self) -> None:
-        self.window().close()
+        self.stop_background_threads()
+        self.window().hide()
 
     def show_work_coordinate_dialog(self, axis: str) -> None:
         if self.coordinate_mode != "work":
@@ -1189,18 +1365,28 @@ class JogPad(QWidget):
         return f"{float(value):.3f}"
 
     def on_positions_received(self, payload: dict) -> None:
+        self._position_error_count = 0
         self.latest_positions = payload
         self._update_coordinate_labels()
 
     def on_position_error(self, message: str) -> None:
-        for axis in ("x", "y", "z"):
-            self.coordinate_labels[axis].setText("---.---")
+        self._position_error_count += 1
+        if self._position_error_count < POSITION_ERROR_DISPLAY_THRESHOLD:
+            print(f"Position read failed transiently: {message}")
+            return
         self.set_status(f"Position read failed: {message}", error=True)
 
     def on_command_succeeded(self, label: str, message: str) -> None:
         self.set_status(f"{label}: {message or 'OK'}", error=False)
 
     def on_command_failed(self, label: str, message: str) -> None:
+        if label.startswith("start ") and len(label) >= 7:
+            failed_axis = label[6].upper()
+            if self._active_axis == failed_axis:
+                self._active_axis = None
+            if self._pause_hold_active and self._looks_like_paused_state_error(message):
+                self.set_status(f"{label}: blocked by pause hold. Press Proceed to release the hold.", error=True)
+                return
         self.set_status(f"{label}: {message}", error=True)
 
     def set_status(self, message: str, error: bool = False) -> None:
@@ -1208,9 +1394,29 @@ class JogPad(QWidget):
         color = "#B00020" if error else "#146C2E"
         self.status_label.setStyleSheet(f"color: {color};")
 
+    def on_pause_hold_status(self, message: str) -> None:
+        self._pause_hold_active = True
+        self.set_status(message, error=False)
+
     def on_pause_hold_error(self, message: str) -> None:
         print(f"Adapter pause hold failed: {message}")
         self.set_status(f"Pause hold failed: {message}", error=True)
+
+    @staticmethod
+    def _looks_like_paused_state_error(message: str) -> bool:
+        lowered = message.lower()
+        return any(
+            token in lowered
+            for token in (
+                "invalid state",
+                "busy",
+                "already running",
+                "machine is not in the correct state",
+                "drives not enabled",
+                "motion are not enabled",
+                "e-stop",
+            )
+        )
 
     def on_homed_status_received(self, payload: dict) -> None:
         self.home_button.set_homed(bool(payload.get("allAxesHomed")))
@@ -1347,6 +1553,13 @@ class JogPad(QWidget):
             self.adapter_client.home_all_axes,
         )
 
+    def action_reset(self) -> None:
+        """Recover CNC from error states."""
+        self.command_sender.submit(
+            "reset",
+            self.adapter_client.reset,
+        )
+
     def action_speed_changed(self, speed_percent: float) -> None:
         """Called whenever the speed slider changes."""
         print(f"SPEED changed: {speed_percent:.0f}%")
@@ -1360,7 +1573,7 @@ class JogPad(QWidget):
 
 
 class JogPadWindow(QMainWindow):
-    def __init__(self, adapter_url: Optional[str] = None, pause_hold_interval_ms: int = 500) -> None:
+    def __init__(self, adapter_url: Optional[str] = None, pause_hold_interval_ms: int = 0) -> None:
         super().__init__()
         self.setWindowTitle("Jog Pad")
         self.setWindowFlags(Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowStaysOnTopHint)
@@ -1371,12 +1584,17 @@ class JogPadWindow(QMainWindow):
         self.setMinimumSize(1060, 470)
         self.jog_pad = JogPad(adapter_url=adapter_url, pause_hold_interval_ms=pause_hold_interval_ms)
         self.setCentralWidget(self.jog_pad)
+        self._background_start_scheduled = False
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().showEvent(event)
+        if self._background_start_scheduled:
+            return
+        self._background_start_scheduled = True
+        QTimer.singleShot(100, self.jog_pad.start_background_threads)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        self.jog_pad.pause_hold_thread.stop()
-        self.jog_pad.pause_hold_thread.wait(1000)
-        self.jog_pad.position_poller.stop()
-        self.jog_pad.position_poller.wait(1000)
+        self.jog_pad.stop_background_threads()
         self.jog_pad.command_sender.close()
         super().closeEvent(event)
 
@@ -1391,23 +1609,65 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--pause-hold-interval-ms",
         type=int,
-        default=500,
+        default=0,
         help="Milliseconds between pause requests while the jog pad is open. Use 0 to disable.",
     )
     return parser.parse_args(argv)
 
 
+def _signal_existing_jog_pad(server_name: str) -> bool:
+    socket = QLocalSocket()
+    socket.connectToServer(server_name)
+    if not socket.waitForConnected(100):
+        return False
+    socket.write(b"show")
+    socket.flush()
+    socket.waitForBytesWritten(100)
+    socket.disconnectFromServer()
+    return True
+
+
+def _install_jog_pad_ipc_server(server_name: str, window: JogPadWindow) -> Optional[QLocalServer]:
+    server = QLocalServer(window)
+
+    def on_new_connection() -> None:
+        while server.hasPendingConnections():
+            socket = server.nextPendingConnection()
+            socket.readyRead.connect(lambda sock=socket: sock.readAll())
+            window.show()
+            window.setWindowState(window.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
+            window.raise_()
+            window.activateWindow()
+            window.jog_pad.start_background_threads()
+
+    server.newConnection.connect(on_new_connection)
+    if server.listen(server_name):
+        return server
+
+    QLocalServer.removeServer(server_name)
+    if server.listen(server_name):
+        return server
+    return None
+
+
 def main() -> int:
     args = _parse_args(sys.argv[1:])
+    adapter_url = resolve_adapter_url(args.adapter_url)
 
     app = QApplication(sys.argv)
     app.setApplicationName("Jog Pad")
+    app.setQuitOnLastWindowClosed(False)
     icon_path = resolve_icon_path()
     if icon_path:
         app.setWindowIcon(QIcon(icon_path))
     app.setStyle("Fusion")
 
-    window = JogPadWindow(adapter_url=args.adapter_url, pause_hold_interval_ms=args.pause_hold_interval_ms)
+    server_name = jog_pad_ipc_server_name(adapter_url)
+    if _signal_existing_jog_pad(server_name):
+        return 0
+
+    window = JogPadWindow(adapter_url=adapter_url, pause_hold_interval_ms=args.pause_hold_interval_ms)
+    window._jog_pad_ipc_server = _install_jog_pad_ipc_server(server_name, window)
     window.show()
     window.setWindowState(window.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
     window.raise_()

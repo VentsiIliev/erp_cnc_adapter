@@ -16,14 +16,85 @@ async def test_position_endpoint_returns_work_and_machine_coordinates(client):
 
 
 
+
 @pytest.mark.asyncio
-async def test_pause_job_endpoint_calls_cnc_client(client, fake_client):
+async def test_reset_endpoint_calls_cnc_client(client, fake_client):
+    response = await client.post("/api/cnc/reset")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == 0
+    assert body["message"] == "CNC DLL accepted reset command: CncReset returned 0"
+    assert body["command"] == "reset"
+    assert body["dryRun"] is False
+    assert fake_client.reset_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_reset_endpoint_returns_cnc_error(client, fake_client):
+    fake_client._reset_rc = 14
+
+    response = await client.post("/api/cnc/reset")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == 14
+    assert "Execution error" in body["message"]
+
+
+@pytest.mark.asyncio
+async def test_pause_job_endpoint_returns_immediately_when_no_job_running(client, fake_client):
+    fake_client._state = 2
+
     response = await client.post("/api/cnc/job/pause")
 
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == 0
-    assert body["message"] == "CNC DLL accepted pause command: CncPauseJob returned 0"
+    assert "Pause hold idle" in body["message"]
+    assert fake_client.pause_job_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_pause_job_endpoint_does_not_pause_single_line_homing(client, fake_client):
+    fake_client._state = 7
+
+    response = await client.post("/api/cnc/job/pause")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == 0
+    assert "Pause hold idle" in body["message"]
+    assert "state 7" in body["message"]
+    assert fake_client.pause_job_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_pause_job_endpoint_returns_immediately_when_already_paused(client, fake_client):
+    fake_client._state = 12
+
+    response = await client.post("/api/cnc/job/pause")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == 0
+    assert "already paused" in body["message"]
+    assert fake_client.pause_job_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_pause_job_endpoint_calls_cnc_client(client, fake_client):
+    fake_client._state = 6
+
+    response = await client.post("/api/cnc/job/pause")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == 0
+    assert body["message"] == (
+        "Pause hold active: running job was paused by the jog pad hold. "
+        "Press Proceed to release the jog pad hold before continuing."
+    )
     assert body["command"] == "pause_job"
     assert body["dryRun"] is False
     assert fake_client.pause_job_calls == 1
@@ -31,6 +102,7 @@ async def test_pause_job_endpoint_calls_cnc_client(client, fake_client):
 
 @pytest.mark.asyncio
 async def test_pause_job_endpoint_returns_cnc_error(client, fake_client):
+    fake_client._state = 6
     fake_client._pause_job_rc = 10
 
     response = await client.post("/api/cnc/job/pause")
@@ -80,7 +152,7 @@ async def test_jog_endpoint_calls_cnc_client(client, fake_client):
 
 
 @pytest.mark.asyncio
-async def test_jog_endpoint_reports_drives_not_enabled_before_jog(client, fake_client):
+async def test_jog_endpoint_does_not_block_on_motion_enabled_false(client, fake_client):
     fake_client._motion_enabled = False
 
     response = await client.post(
@@ -90,9 +162,16 @@ async def test_jog_endpoint_reports_drives_not_enabled_before_jog(client, fake_c
 
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == 10
-    assert "drives/motion are not enabled" in body["message"]
-    assert fake_client.jog_commands == []
+    assert body["status"] == 0
+    assert fake_client.jog_commands == [
+        {
+            "axis": "X",
+            "direction": 1,
+            "step": 1.0,
+            "velocity_factor": 0.1,
+            "continuous": False,
+        }
+    ]
 
 @pytest.mark.asyncio
 async def test_jog_endpoint_returns_cnc_error(client, fake_client):

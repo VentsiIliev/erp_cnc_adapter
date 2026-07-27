@@ -324,6 +324,12 @@ class CncClient:
         logger.info("CncPauseJob() returned %d", result)
         return result
 
+    def reset(self) -> int:
+        """Recover the CNC from error states using the DLL reset function."""
+        result = self._dll.CncReset()
+        logger.info("CncReset() returned %d", result)
+        return result
+
     def start_jog(
         self,
         axis: str,

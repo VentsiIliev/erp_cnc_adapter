@@ -36,6 +36,8 @@ class CncClientProtocol(Protocol):
 
     def pause_job(self) -> int: ...
 
+    def reset(self) -> int: ...
+
     def start_jog(
         self,
         axis: str,

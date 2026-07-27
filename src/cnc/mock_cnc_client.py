@@ -83,6 +83,10 @@ class MockCncClient:
         logger.info("[MOCK] pause_job()")
         return 0
 
+    def reset(self) -> int:
+        logger.info("[MOCK] reset()")
+        return 0
+
 
     def start_jog(
         self,

@@ -29,7 +29,7 @@ def _adapter_base_url(request: Request) -> str:
     return f"http://127.0.0.1:{port}"
 
 
-def _jog_pad_command(adapter_url: str, pause_hold_interval_ms: int = 500) -> list[str]:
+def _jog_pad_command(adapter_url: str, pause_hold_interval_ms: int = 0) -> list[str]:
     pause_args = ["--pause-hold-interval-ms", str(max(0, int(pause_hold_interval_ms)))]
     if getattr(sys, "frozen", False):
         return [str(Path(sys.executable).resolve()), "--jog-pad", "--adapter-url", adapter_url, *pause_args]
@@ -45,7 +45,7 @@ def _creation_flags() -> int:
     return getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
 
-def launch_jog_pad(adapter_url: str, pause_hold_interval_ms: int = 500) -> JogPadLaunchResponse:
+def launch_jog_pad(adapter_url: str, pause_hold_interval_ms: int = 0) -> JogPadLaunchResponse:
     command = _jog_pad_command(adapter_url, pause_hold_interval_ms)
 
     try:
@@ -77,6 +77,6 @@ async def open_jog_pad(request: Request) -> JogPadLaunchResponse:
     adapter_url = _adapter_base_url(request)
     services = getattr(request.app.state, "services", None)
     settings = getattr(services, "settings", None)
-    pause_hold_interval_ms = int(getattr(settings, "jog_pad_pause_hold_interval_ms", 500))
+    pause_hold_interval_ms = int(getattr(settings, "jog_pad_pause_hold_interval_ms", 0))
     launcher = getattr(services, "jog_pad_launcher", launch_jog_pad)
     return launcher(adapter_url, pause_hold_interval_ms)

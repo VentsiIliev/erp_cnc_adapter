@@ -30,7 +30,7 @@ async def test_open_jog_pad_launches_source_script_in_dev(client, monkeypatch, t
     assert body["pid"] == 4321
     assert body["command"][0] == sys.executable
     assert body["command"][1].endswith(str(Path("src") / "jog_pad" / "jog_pad.py"))
-    assert body["command"][-4:] == ["--adapter-url", "http://127.0.0.1:9999", "--pause-hold-interval-ms", "500"]
+    assert body["command"][-4:] == ["--adapter-url", "http://127.0.0.1:9999", "--pause-hold-interval-ms", "0"]
     assert launched["kwargs"]["close_fds"] is True
 
 

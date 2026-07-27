@@ -345,7 +345,7 @@ class TestJobLoad:
         body = resp.json()
         assert body["status"] == 0
         assert "jog pad opened" in body["message"].lower()
-        test_app.state.services.jog_pad_launcher.assert_called_once_with("http://127.0.0.1:9999", 500)
+        test_app.state.services.jog_pad_launcher.assert_called_once_with("http://127.0.0.1:9999", 0)
 
     @patch('src.api.schemas.job.glob.glob')
     async def test_load_failure_does_not_open_jog_pad(self, mock_glob, client, fake_client, test_app):

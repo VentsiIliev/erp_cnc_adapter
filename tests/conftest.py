@@ -32,6 +32,8 @@ class FakeCncClient:
         self._run_job_rc = 0
         self._pause_job_rc = 0
         self.pause_job_calls = 0
+        self._reset_rc = 0
+        self.reset_calls = 0
         self._connect_rc = 0
         self._server_connected = True
         self._server_process_alive = True
@@ -108,6 +110,10 @@ class FakeCncClient:
     def pause_job(self) -> int:
         self.pause_job_calls += 1
         return self._pause_job_rc
+
+    def reset(self) -> int:
+        self.reset_calls += 1
+        return self._reset_rc
 
     def start_jog(
         self,
@@ -205,7 +211,7 @@ def settings():
         log_level="WARNING",
         cnc_retry_interval=1,
         cnc_health_interval=1,
-        jog_pad_pause_hold_interval_ms=500,
+        jog_pad_pause_hold_interval_ms=0,
         base_dir=r"\\192.168.2.11\Production\CNC\Mills",
     )
 

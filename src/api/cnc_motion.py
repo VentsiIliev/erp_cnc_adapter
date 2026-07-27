@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+PAUSE_HOLD_JOB_RUNNING_STATES = {6}
+PAUSED_STATES = {11, 12, 13, 14, 15}
+
 
 def _axis(value: str) -> str:
     return value.upper()
@@ -68,16 +71,59 @@ async def home_all_axes(
     )
 
 
+@router.post("/api/cnc/reset", response_model=CncMotionResponse)
+async def reset_cnc(
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Recover CNC from error states via the DLL reset function."""
+    logger.info("CNC reset requested")
+    result = client.reset()
+    return CncMotionResponse(
+        status=result,
+        message=_message(result, "Reset", "CNC DLL accepted reset command: CncReset returned 0"),
+        command="reset",
+        dry_run=False,
+    )
+
+
 @router.post("/api/cnc/job/pause", response_model=CncMotionResponse)
 async def pause_job(
     client: CncClientProtocol = Depends(get_cnc_client),
 ):
-    """Pause the currently running CNC job via the DLL."""
+    """Keep the CNC job paused without blocking when no job is running."""
     logger.info("CNC job pause requested")
+    try:
+        state = client.get_state()
+    except Exception as exc:
+        logger.debug("Could not read CNC state before pause: %s", exc)
+        state = None
+
+    if state in PAUSED_STATES:
+        return CncMotionResponse(
+            status=0,
+            message=f"Pause hold active: CNC is already paused (state {state})",
+            command="pause_job",
+            dry_run=False,
+        )
+
+    if state not in PAUSE_HOLD_JOB_RUNNING_STATES:
+        return CncMotionResponse(
+            status=0,
+            message=f"Pause hold idle: no running job is active (state {state})",
+            command="pause_job",
+            dry_run=False,
+        )
+
     result = client.pause_job()
+    message = (
+        "Pause hold active: running job was paused by the jog pad hold. "
+        "Press Proceed to release the jog pad hold before continuing."
+        if result == 0
+        else format_error(result, "Pause job")
+    )
     return CncMotionResponse(
         status=result,
-        message=_message(result, "Pause job", "CNC DLL accepted pause command: CncPauseJob returned 0"),
+        message=message,
         command="pause_job",
         dry_run=False,
     )
@@ -98,19 +144,9 @@ async def jog_axis(
         payload.continuous,
     )
     try:
-        if not client.is_motion_enabled():
-            result = 10
-            return CncMotionResponse(
-                status=result,
-                message="Jog failed: drives/motion are not enabled. Enable the drives in Eding CNC, clear safety or E-stop conditions, then try again.",
-                command="jog",
-                dry_run=False,
-                axis=axis,
-                direction=payload.direction,
-                step=payload.step,
-                velocity_factor=payload.velocity_factor,
-                continuous=payload.continuous,
-            )
+        motion_enabled = client.is_motion_enabled()
+        if not motion_enabled:
+            logger.info("CNC motionEnabled is false before jog; continuing because CncStartJog2 is authoritative")
     except Exception as exc:
         logger.debug("Could not read CNC motion-enabled status before jog: %s", exc)
 

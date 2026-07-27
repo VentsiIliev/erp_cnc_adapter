@@ -25,7 +25,7 @@ class TestSettings:
         assert s.auto_start_adapter_on_logon is True
         assert s.adapter_startup_delay_seconds == 90
         assert s.job_monitor_poll_interval == 1.0
-        assert s.jog_pad_pause_hold_interval_ms == 500
+        assert s.jog_pad_pause_hold_interval_ms == 0
 
     def test_custom_values(self):
         s = Settings(
