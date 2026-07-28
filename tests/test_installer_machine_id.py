@@ -335,6 +335,48 @@ class TestInstallWorkerTaskHandling:
         assert "start-cnc.log" in task_text
         assert "MsgBox" in task_text
 
+    def test_combined_operator_setup_script_contains_all_operator_steps(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DOMAIN\adapter", "")
+        script = worker._build_operator_setup_script()
+
+        assert "ERP_STEP|Manual START-CNC task" in script
+        assert "ERP_STEP|Eding GUI handoff task" in script
+        assert "ERP_STEP|START-CNC desktop shortcut" in script
+        assert "ERPCNCAdapterManualStart" in script
+        assert "ERPCNCAdapterEdingHandoff" in script
+        assert "START-CNC.lnk" in script
+
+    @patch("src.installer.worker.subprocess.run")
+    def test_combined_operator_setup_uses_one_powershell_process(self, mock_run, tmp_path):
+        from src.installer.worker import InstallWorker
+        import io
+
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=(
+                "ERP_STEP|Manual START-CNC task|0|100|\n"
+                "ERP_STEP|Eding GUI handoff task|0|200|\n"
+                "ERP_STEP|START-CNC desktop shortcut|0|50|\n"
+            ),
+            stderr="",
+        )
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DOMAIN\adapter", "")
+        log = io.StringIO()
+
+        result = worker._create_operator_tasks_and_shortcut(log)
+
+        assert mock_run.call_count == 1
+        command = mock_run.call_args.args[0]
+        assert command[:4] == ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass"]
+        assert result == {
+            "Manual START-CNC task": True,
+            "Eding GUI handoff task": True,
+            "START-CNC desktop shortcut": True,
+        }
+        assert "Operator task/shortcut combined setup" in log.getvalue()
+
     def test_start_cnc_feedback_script_shows_progress_and_polls_health(self, tmp_path):
         from src.installer.worker import InstallWorker
 

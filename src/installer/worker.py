@@ -52,6 +52,37 @@ class InstallWorker(QThread):
     def _ps_quote(value: str) -> str:
         return value.replace("'", "''")
 
+    @staticmethod
+    def _log_timed(installation_log, label: str, started_at: float) -> None:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        installation_log.write(f"{label} completed in {elapsed_ms:.1f}ms\n")
+        installation_log.flush()
+
+    def _run_powershell_script(self, ps_script: str) -> subprocess.CompletedProcess:
+        ps_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ps1", delete=False, encoding="utf-8",
+        )
+        ps_file.write(ps_script)
+        ps_file.close()
+        try:
+            return subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_file.name],
+                capture_output=True,
+                text=True,
+                startupinfo=self._startupinfo(),
+            )
+        finally:
+            os.unlink(ps_file.name)
+
+    @staticmethod
+    def _combined_step_body(ps_script: str) -> str:
+        lines = [
+            line for line in ps_script.splitlines()
+            if not line.strip().startswith("$ErrorActionPreference")
+        ]
+        body = "\n".join(lines)
+        return "$ErrorActionPreference = 'Stop'\n" + body + "\n$ErrorActionPreference = 'Continue'\n"
+
     PYTHON_VERSION = "3.12.8"
     PYTHON_URL = (
         "https://www.python.org/ftp/python/{v}/python-{v}-amd64.exe"
@@ -770,6 +801,71 @@ class InstallWorker(QThread):
         return result.returncode == 0
 
 
+    def _build_operator_setup_script(self) -> str:
+        def step(name: str, script: str) -> str:
+            safe_name = self._ps_quote(name)
+            body = self._combined_step_body(script)
+            return (
+                f"$stepWatch = [Diagnostics.Stopwatch]::StartNew()\n"
+                f"try {{\n"
+                f"{body}"
+                f"  $stepWatch.Stop()\n"
+                f"  Write-Output (\"ERP_STEP|{safe_name}|0|{{0}}|\" -f $stepWatch.ElapsedMilliseconds)\n"
+                f"}} catch {{\n"
+                f"  $stepWatch.Stop()\n"
+                f"  $msg = $_.Exception.Message -replace '[\\r\\n]+', ' ' -replace '\\|', '/'\n"
+                f"  Write-Output (\"ERP_STEP|{safe_name}|1|{{0}}|{{1}}\" -f $stepWatch.ElapsedMilliseconds, $msg)\n"
+                f"}}\n"
+            )
+
+        return (
+            "$ErrorActionPreference = 'Continue'\n"
+            + step("Manual START-CNC task", self._build_manual_start_task_script())
+            + step("Eding GUI handoff task", self._build_eding_handoff_task_script())
+            + step("START-CNC desktop shortcut", self._build_start_shortcut_script())
+        )
+
+    @staticmethod
+    def _parse_operator_setup_result(result: subprocess.CompletedProcess) -> dict[str, dict[str, str]]:
+        steps = {}
+        for line in (result.stdout or "").splitlines():
+            if not line.startswith("ERP_STEP|"):
+                continue
+            parts = line.split("|", 4)
+            if len(parts) != 5:
+                continue
+            _, name, status, elapsed_ms, message = parts
+            steps[name] = {
+                "ok": status == "0",
+                "elapsed_ms": elapsed_ms,
+                "message": message,
+            }
+        return steps
+
+    def _create_operator_tasks_and_shortcut(self, installation_log) -> dict[str, bool] | None:
+        result = self._run_powershell_script(self._build_operator_setup_script())
+        installation_log.write("Operator task/shortcut combined setup:\n")
+        installation_log.write(f"Exit code: {result.returncode}\n")
+        if result.stdout:
+            installation_log.write(f"STDOUT:\n{result.stdout}\n")
+        if result.stderr:
+            installation_log.write(f"STDERR:\n{result.stderr}\n")
+
+        steps = self._parse_operator_setup_result(result)
+        if not steps:
+            installation_log.write("No combined setup step markers found; falling back to individual setup.\n")
+            installation_log.flush()
+            return None
+
+        names = ("Manual START-CNC task", "Eding GUI handoff task", "START-CNC desktop shortcut")
+        for name in names:
+            step = steps.get(name, {"ok": False, "elapsed_ms": "?", "message": "missing step marker"})
+            status = "OK" if step["ok"] else "FAILED"
+            detail = f": {step['message']}" if step["message"] else ""
+            installation_log.write(f"{name}: {status} in {step['elapsed_ms']}ms{detail}\n")
+        installation_log.flush()
+        return {name: bool(steps.get(name, {}).get("ok")) for name in names}
+
     def _build_interactive_logon_task_script(self, launcher_path: Path) -> str:
         def ps_quote(value: str) -> str:
             return value.replace("'", "''")
@@ -922,22 +1018,38 @@ class InstallWorker(QThread):
             )
             installation_log.flush()
 
+            setup_start = time.perf_counter()
+            self.log_message.emit("Preparing START-CNC launch scripts...")
             self._write_start_cnc_hidden_launcher(installation_log)
             self._write_eding_handoff_script(installation_log)
             self._write_start_cnc_feedback_script(installation_log)
-            if self._create_manual_start_task(installation_log):
+            self._log_timed(installation_log, "START-CNC script generation", setup_start)
+
+            self.log_message.emit("Creating START-CNC tasks and shortcut...")
+            setup_start = time.perf_counter()
+            operator_setup = self._create_operator_tasks_and_shortcut(installation_log)
+            if operator_setup is None:
+                self.log_message.emit("Combined task setup did not report results; using fallback setup...")
+                operator_setup = {
+                    "Manual START-CNC task": self._create_manual_start_task(installation_log),
+                    "Eding GUI handoff task": self._create_eding_handoff_task(installation_log),
+                    "START-CNC desktop shortcut": self._create_start_shortcut(installation_log),
+                }
+            self._log_timed(installation_log, "START-CNC task/shortcut setup", setup_start)
+
+            if operator_setup.get("Manual START-CNC task"):
                 self.log_message.emit("\u2713 Manual start task created: START-CNC")
                 installation_log.write("\u2713 Manual start task created: START-CNC\n")
             else:
                 self.log_message.emit("\u26a0 Manual start task creation failed (shortcut may require elevation)")
                 installation_log.write("\u26a0 Manual start task creation failed (shortcut may require elevation)\n")
-            if self._create_eding_handoff_task(installation_log):
+            if operator_setup.get("Eding GUI handoff task"):
                 self.log_message.emit("\u2713 Eding GUI handoff task created")
                 installation_log.write("\u2713 Eding GUI handoff task created\n")
             else:
                 self.log_message.emit("\u26a0 Eding GUI handoff task creation failed")
                 installation_log.write("\u26a0 Eding GUI handoff task creation failed\n")
-            if self._create_start_shortcut(installation_log):
+            if operator_setup.get("START-CNC desktop shortcut"):
                 self.log_message.emit("\u2713 Desktop shortcut created: START-CNC")
                 installation_log.write("\u2713 Desktop shortcut created: START-CNC\n")
             else:
@@ -1135,9 +1247,6 @@ class InstallWorker(QThread):
                     self._write_task_credential_diagnostics(installation_log)
             installation_log.flush()
             self.progress_value.emit(55)
-
-            import time
-            time.sleep(1)
 
             # 3 — Firewall .....................................................
             self.step_changed.emit("Configuring firewall...")
