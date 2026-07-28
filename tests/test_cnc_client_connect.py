@@ -130,20 +130,106 @@ def test_get_all_axes_homed_reads_cnc_dll_status():
     client._dll.CncGetAllAxesHomed.return_value = 0
     assert client.get_all_axes_homed() is False
 
-def test_home_all_axes_g28_runs_mdi_command_and_waits():
+
+def test_home_all_axes_gui_sequence_sends_gui_home_action():
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._dll = MagicMock()
+    client._dll.CncSendToGUI.return_value = 0
+    client._wait_for_cnc_messages = MagicMock(return_value=False)
+
+    assert client.home_all_axes_gui_sequence() == 0
+
+    action, p1, p2 = client._dll.CncSendToGUI.call_args.args
+    assert action.value == 37
+    assert p1.value == 0
+    assert p2.value == 0
+    client._dll.CncRunSingleLine.assert_not_called()
+
+def test_home_all_axes_sequence_runs_home_all_macro():
     from src.cnc.cnc_client import CncClient
 
     client = CncClient.__new__(CncClient)
     client._dll = MagicMock()
     client._dll.CncRunSingleLine.return_value = 0
     client._dll.CncWaitSingleLine.return_value = 0
+    client._wait_for_cnc_messages = MagicMock(return_value=False)
 
-    assert client.home_all_axes_g28() == 0
+    assert client.home_all_axes_sequence() == 0
 
-    client._dll.CncRunSingleLine.assert_called_once_with(b"G28 X0 Y0 Z0")
+    client._dll.CncRunSingleLine.assert_called_once_with(b"gosub home_all")
     client._dll.CncWaitSingleLine.assert_called_once_with(None, None)
+    client._dll.CncSendToGUI.assert_not_called()
 
 
+def test_home_all_axes_sequence_returns_gosub_rejection_without_fallback():
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._dll = MagicMock()
+    client._dll.CncRunSingleLine.return_value = -1
+
+    assert client.home_all_axes_sequence() == -1
+
+    client._dll.CncRunSingleLine.assert_called_once_with(b"gosub home_all")
+    client._dll.CncWaitSingleLine.assert_not_called()
+    client._dll.CncSendToGUI.assert_not_called()
+
+
+def test_home_all_axes_sequence_waits_for_delayed_fifo_messages():
+    import ctypes
+    from cncapi.python.cncstructs import CNC_LOG_MESSAGE
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._last_cnc_message = None
+    client._captured_cnc_messages = []
+    client._dll = MagicMock()
+    client._dll.CncRunSingleLine.return_value = 0
+    client._dll.CncWaitSingleLine.return_value = 0
+
+    messages = [None, b"HOME X", b"HOME Y", b"HOME Z", b"Home completed!"]
+
+    def fake_fifo_get(message_ref):
+        next_message = messages.pop(0) if messages else None
+        if next_message is None:
+            return 1
+        message = ctypes.cast(message_ref, ctypes.POINTER(CNC_LOG_MESSAGE)).contents
+        message.text = next_message
+        return 0
+
+    client._dll.CncLogFifoGet.side_effect = fake_fifo_get
+
+    assert client.home_all_axes_sequence() == 0
+    assert client.get_last_cnc_message() == "HOME X | HOME Y | HOME Z | Home completed!"
+
+
+
+def test_wait_for_cnc_messages_collects_messages_until_fifo_is_quiet():
+    import ctypes
+    from cncapi.python.cncstructs import CNC_LOG_MESSAGE
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._last_cnc_message = None
+    client._captured_cnc_messages = []
+    client._dll = MagicMock()
+
+    reads = iter([b"HOME X", None, b"HOME Y", None, b"HOME Z", None, b"Home completed!", None, None])
+
+    def fake_fifo_get(message_ref):
+        next_message = next(reads, None)
+        if next_message is None:
+            return 1
+        message = ctypes.cast(message_ref, ctypes.POINTER(CNC_LOG_MESSAGE)).contents
+        message.text = next_message
+        return 0
+
+    client._dll.CncLogFifoGet.side_effect = fake_fifo_get
+
+    assert client._wait_for_cnc_messages("test", timeout_seconds=0.5, quiet_seconds=0.05) is True
+    assert client.get_last_cnc_message() == "HOME X | HOME Y | HOME Z | Home completed!"
 
 def test_pause_job_calls_cnc_pause_job():
     from src.cnc.cnc_client import CncClient

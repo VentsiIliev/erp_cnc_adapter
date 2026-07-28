@@ -2,9 +2,10 @@ import ctypes
 import logging
 import struct
 import sys
-from ctypes import POINTER, WinDLL, c_char_p, c_double, c_int, c_uint, c_void_p, c_wchar_p
+import time
+from ctypes import POINTER, WinDLL, byref, c_char_p, c_double, c_int, c_uint, c_void_p, c_wchar_p
 
-from cncapi.python.cncstructs import CNC_CART_BOOL, CNC_CART_DOUBLE, CNC_CONTROLLER_STATUS, CNC_JOB_STATUS, CNC_RUNNING_STATUS
+from cncapi.python.cncstructs import CNC_CART_BOOL, CNC_CART_DOUBLE, CNC_CONTROLLER_STATUS, CNC_JOB_STATUS, CNC_LOG_MESSAGE, CNC_MOTION_STATUS, CNC_RUNNING_STATUS
 from src.core.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ class CncClient:
         self._settings = settings
         self._connected = False
         self._load_job_func = None
+        self._last_cnc_message = None
         self._dll = self._load_dll()
         self._configure_prototypes()
 
@@ -61,7 +63,7 @@ class CncClient:
             self._connected = True
         elif result == CNC_RC_ERR_SERVER_NOT_RUNNING:
             logger.warning(
-                "CNC server not running (code %d) — "
+                "CNC server not running (code %d) - "
                 "is the CNC software started?",
                 result,
             )
@@ -209,17 +211,156 @@ class CncClient:
         status = self._dll.CncGetControllerStatus().contents
         return int(status.motionEnabled) == 1
 
-    def home_all_axes_g28(self) -> int:
-        """Run the configured all-axis home MDI command."""
-        command = "G28 X0 Y0 Z0"
+    def get_last_cnc_message(self) -> str | None:
+        """Return the last operator-facing CNC message captured from the DLL FIFO."""
+        return getattr(self, "_last_cnc_message", None)
+
+    def clear_cnc_messages(self) -> None:
+        """Discard stale CNC FIFO messages before showing operator commands."""
+        self._clear_cnc_messages()
+
+    def home_all_axes_gui_sequence(self) -> int:
+        """Request the Eding CNC GUI home sequence action."""
+        CNC_UIOACTION_HOMESEQ = 37
+        self._clear_cnc_messages()
+        self._log_home_preflight()
+        result = self._dll.CncSendToGUI(
+            c_int(CNC_UIOACTION_HOMESEQ),
+            c_int(0),
+            c_int(0),
+        )
+        logger.info("CncSendToGUI(CNC_UIOACTION_HOMESEQ, 0, 0) returned %d", result)
+        self._wait_for_cnc_messages("after GUI home sequence command")
+        return result
+    def home_all_axes_sequence(self) -> int:
+        """Run the configured Eding CNC home_all macro without fallback."""
+        command = "gosub home_all"
+        self._clear_cnc_messages()
+        self._log_home_preflight()
         result = self._dll.CncRunSingleLine(command.encode("ascii"))
         logger.info("CncRunSingleLine(%r) returned %d", command, result)
         if result != CNC_RC_OK:
+            self._log_cnc_messages(f"after rejected home command {command!r}")
             return result
 
         result = self._dll.CncWaitSingleLine(None, None)
-        logger.info("CncWaitSingleLine() returned %d", result)
+        logger.info("CncWaitSingleLine() for %r returned %d", command, result)
+        self._wait_for_cnc_messages(f"after completed home command {command!r}")
         return result
+
+    def _log_home_preflight(self) -> None:
+        """Log CNC readiness details before attempting a home MDI command."""
+        try:
+            state = int(self._dll.CncGetState())
+            state_text_raw = self._dll.CncGetStateText(c_int(state))
+            if isinstance(state_text_raw, bytes):
+                state_text = state_text_raw.decode("ascii", errors="replace")
+            else:
+                state_text = str(state_text_raw)
+            logger.info("Home preflight: state=%s stateText=%s", state, state_text)
+        except Exception as exc:
+            logger.info("Home preflight: could not read CNC state: %s", exc)
+
+        try:
+            controller = self._dll.CncGetControllerStatus().contents
+            logger.info(
+                "Home preflight: motionEnabled=%s controllerErrorWord=%s",
+                int(controller.motionEnabled),
+                int(controller.errorWord),
+            )
+        except Exception as exc:
+            logger.info("Home preflight: could not read controller status: %s", exc)
+
+        try:
+            motion = self._dll.CncGetMotionStatus().contents
+            logger.info(
+                "Home preflight: safeMode=%s safetyInputValue=%s feedHoldActive=%s",
+                int(motion.safeMode),
+                int(motion.safetyInputValue),
+                int(motion.feedHoldActive),
+            )
+        except Exception as exc:
+            logger.info("Home preflight: could not read motion status: %s", exc)
+
+        try:
+            start_allowed = c_int()
+            rc = self._dll.CncCheckStartConditionOK(c_int(1), c_int(1), byref(start_allowed))
+            logger.info(
+                "Home preflight: CncCheckStartConditionOK(generateMessage=1, ignoreHoming=1) rc=%s startAllowed=%s",
+                rc,
+                start_allowed.value,
+            )
+        except Exception as exc:
+            logger.info("Home preflight: could not check start condition: %s", exc)
+
+
+    def _clear_cnc_messages(self) -> None:
+        """Discard stale CNC FIFO messages before issuing a command we may report on."""
+        self._last_cnc_message = None
+        self._captured_cnc_messages = []
+        try:
+            for _ in range(20):
+                message = CNC_LOG_MESSAGE()
+                rc = self._dll.CncLogFifoGet(byref(message))
+                if rc != CNC_RC_OK:
+                    break
+        except Exception as exc:
+            logger.debug("Could not clear CNC log FIFO: %s", exc)
+
+    def _wait_for_cnc_messages(
+        self,
+        context: str,
+        timeout_seconds: float = 1.5,
+        quiet_seconds: float = 0.25,
+    ) -> bool:
+        """Wait until CNC FIFO text stops arriving briefly after a command."""
+        deadline = time.monotonic() + timeout_seconds
+        quiet_deadline = None
+        captured_any = False
+        while True:
+            if self._log_cnc_messages(context):
+                captured_any = True
+                quiet_deadline = time.monotonic() + quiet_seconds
+
+            now = time.monotonic()
+            if captured_any and quiet_deadline is not None and now >= quiet_deadline:
+                return True
+            if now >= deadline:
+                return captured_any
+            time.sleep(0.05)
+
+    def _log_cnc_messages(self, context: str) -> bool:
+        """Drain a few CNC server log FIFO messages for diagnostics."""
+        captured = False
+        try:
+            for _ in range(10):
+                message = CNC_LOG_MESSAGE()
+                rc = self._dll.CncLogFifoGet(byref(message))
+                if rc != CNC_RC_OK:
+                    break
+                text = bytes(message.text).split(b"\0", 1)[0].decode("ascii", errors="replace").strip()
+                if text:
+                    captured_messages = getattr(self, "_captured_cnc_messages", [])
+                    if not captured_messages or captured_messages[-1] != text:
+                        captured_messages.append(text)
+                    self._captured_cnc_messages = captured_messages
+                    self._last_cnc_message = " | ".join(captured_messages)
+                    captured = True
+                function_name = bytes(message.functionName).split(b"\0", 1)[0].decode("ascii", errors="replace")
+                source_info = bytes(message.sourceInfo).split(b"\0", 1)[0].decode("ascii", errors="replace")
+                logger.info(
+                    "CNC log FIFO %s: code=%s errorClass=%s subCode=%s text=%r function=%r source=%r",
+                    context,
+                    int(message.code),
+                    int(message.errorClass),
+                    int(message.subCode),
+                    text,
+                    function_name,
+                    source_info,
+                )
+        except Exception as exc:
+            logger.info("CNC log FIFO %s: could not read messages: %s", context, exc)
+        return captured
 
     def load_job(self, file_name: str) -> int:
         """Load a job into the CNC interpreter.
@@ -295,7 +436,7 @@ class CncClient:
         """Start rendering the loaded job so the CNC computes toolpath data.
 
         Rendering populates totalJobLength, jobProgress, time estimates,
-        and other fields in CNC_JOB_STATUS. Runs asynchronously — poll
+        and other fields in CNC_JOB_STATUS. Runs asynchronously - poll
         jobIsRendered in job status to know when it completes.
 
         Returns:
@@ -326,8 +467,10 @@ class CncClient:
 
     def reset(self) -> int:
         """Recover the CNC from error states using the DLL reset function."""
+        self._clear_cnc_messages()
         result = self._dll.CncReset()
         logger.info("CncReset() returned %d", result)
+        self._log_cnc_messages("after reset command")
         return result
 
     def start_jog(
@@ -341,6 +484,7 @@ class CncClient:
         """Start a continuous or fixed-step jog for one axis."""
         axis_index = self._axis_index(axis)
         signed_step = float(step) * (1 if direction >= 0 else -1)
+        self._clear_cnc_messages()
         result = self._dll.CncStartJog2(
             c_int(axis_index),
             c_double(signed_step),
@@ -356,14 +500,17 @@ class CncClient:
             continuous,
             result,
         )
+        self._log_cnc_messages(f"after jog command {axis.upper()}{direction:+d}")
         return result
 
     def stop_jog(self, axis: str | None = None) -> int:
         """Stop jogging for one axis, or all cartesian axes when axis is omitted."""
+        self._clear_cnc_messages()
         if axis:
             axis_index = self._axis_index(axis)
             result = self._dll.CncStopJog(c_int(axis_index))
             logger.info("CncStopJog(axis=%s/%d) returned %d", axis.upper(), axis_index, result)
+            self._log_cnc_messages(f"after stop jog command {axis.upper()}")
             return result
 
         result = CNC_RC_OK
@@ -373,6 +520,7 @@ class CncClient:
             logger.info("CncStopJog(axis=%s/%d) returned %d", axis_name, axis_index, axis_result)
             if axis_result != CNC_RC_OK and result == CNC_RC_OK:
                 result = axis_result
+        self._log_cnc_messages("after stop jog command all axes")
         return result
 
     def move_to(self, axis: str, position: float, velocity_factor: float) -> int:
@@ -385,6 +533,7 @@ class CncClient:
         setattr(pos, axis_name, float(position))
         setattr(move, axis_name, 1)
 
+        self._clear_cnc_messages()
         result = self._dll.CncMoveTo(pos, move, c_double(float(velocity_factor)))
         logger.info(
             "CncMoveTo(axis=%s, position=%s, velocity_factor=%s) returned %d",
@@ -393,6 +542,7 @@ class CncClient:
             velocity_factor,
             result,
         )
+        self._log_cnc_messages(f"after move command {axis.upper()}")
         return result
 
     def zero_work_axis(self, axis: str) -> int:
@@ -402,18 +552,22 @@ class CncClient:
         coordinate_system = self._active_coordinate_system_number()
         command = f"G10 L20 P{coordinate_system} {axis_name}0"
 
+        self._clear_cnc_messages()
         result = self._dll.CncRunSingleLine(command.encode("ascii"))
         logger.info("CncRunSingleLine(%r) returned %d", command, result)
         if result != CNC_RC_OK:
+            self._log_cnc_messages(f"after rejected zero command {axis_name}")
             return result
 
         result = self._dll.CncWaitSingleLine(None, None)
         logger.info("CncWaitSingleLine() returned %d", result)
         if result != CNC_RC_OK:
+            self._log_cnc_messages(f"after failed zero wait {axis_name}")
             return result
 
         result = self._dll.CncStoreIniFile(c_int(1))
         logger.info("CncStoreIniFile(saveFixtures=1) returned %d", result)
+        self._log_cnc_messages(f"after zero command {axis_name}")
         return result
 
     def set_work_coordinate(self, axis: str, value: float) -> int:
@@ -422,18 +576,22 @@ class CncClient:
         self._axis_index(axis_name)
         command = f"G92 {axis_name}{float(value):g}"
 
+        self._clear_cnc_messages()
         result = self._dll.CncRunSingleLine(command.encode("ascii"))
         logger.info("CncRunSingleLine(%r) returned %d", command, result)
         if result != CNC_RC_OK:
+            self._log_cnc_messages(f"after rejected set work coordinate command {axis_name}")
             return result
 
         result = self._dll.CncWaitSingleLine(None, None)
         logger.info("CncWaitSingleLine() returned %d", result)
         if result != CNC_RC_OK:
+            self._log_cnc_messages(f"after failed set work coordinate wait {axis_name}")
             return result
 
         result = self._dll.CncStoreIniFile(c_int(1))
         logger.info("CncStoreIniFile(saveFixtures=1) returned %d", result)
+        self._log_cnc_messages(f"after set work coordinate command {axis_name}")
         return result
 
     # -- private helpers -----------------------------------------------------
@@ -498,7 +656,7 @@ class CncClient:
                     f"Python is {python_bits}-bit and the CNC DLL is incompatible."
                 )
                 logger.critical(
-                    "DLL architecture mismatch — Python is %d-bit but DLL is 32-bit. "
+                    "DLL architecture mismatch - Python is %d-bit but DLL is 32-bit. "
                     "Install 32-bit Python to fix this.",
                     python_bits,
                 )
@@ -514,12 +672,14 @@ class CncClient:
             ("CncConnectServer", [c_char_p], c_int),
             ("CncDisConnectServer", None, c_int),
             ("CncGetState", None, c_int),
+            ("CncGetStateText", [c_int], c_char_p),
             ("CncIsServerConnected", None, c_int),
             ("CncGetJobStatus", None, POINTER(CNC_JOB_STATUS)),
             ("CncGetWorkPosition", None, CNC_CART_DOUBLE),
             ("CncGetMachinePosition", None, CNC_CART_DOUBLE),
             ("CncGetAllAxesHomed", None, c_int),
             ("CncGetRunningStatus", None, POINTER(CNC_RUNNING_STATUS)),
+            ("CncGetMotionStatus", None, POINTER(CNC_MOTION_STATUS)),
             ("CncGetControllerStatus", None, POINTER(CNC_CONTROLLER_STATUS)),
             ("CncRunSingleLine", [c_char_p], c_int),
             ("CncWaitSingleLine", [c_void_p, c_void_p], c_int),
@@ -530,6 +690,8 @@ class CncClient:
             ("CncPauseJob", None, c_int),
             ("CncReset", None, c_int),
             ("CncSetExtraJobOptions", [c_char_p, c_int, c_uint], c_int),
+            ("CncCheckStartConditionOK", [c_int, c_int, POINTER(c_int)], c_int),
+            ("CncLogFifoGet", [POINTER(CNC_LOG_MESSAGE)], c_int),
             ("CncStartRenderGraph", [c_int, c_int], c_int),
             ("CncStartJog2", [c_int, c_double, c_double, c_int], c_int),
             ("CncStopJog", [c_int], c_int),

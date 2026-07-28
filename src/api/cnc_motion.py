@@ -20,11 +20,35 @@ def _axis(value: str) -> str:
     return value.upper()
 
 
-def _message(result: int, operation: str, success_message: str) -> str:
+def _message(
+    result: int,
+    operation: str,
+    success_message: str,
+    client: CncClientProtocol | None = None,
+) -> str:
+    if client is not None:
+        cnc_message = client.get_last_cnc_message()
+        if cnc_message:
+            return cnc_message
     if result == 0:
         return success_message
     return format_error(result, operation)
 
+
+
+@router.post("/api/cnc/messages/clear", response_model=CncMotionResponse)
+async def clear_cnc_messages(
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Clear stale operator-facing CNC FIFO messages."""
+    logger.info("CNC message FIFO clear requested")
+    client.clear_cnc_messages()
+    return CncMotionResponse(
+        status=0,
+        message="CNC message FIFO cleared",
+        command="clear_messages",
+        dry_run=False,
+    )
 
 @router.get("/api/cnc/position", response_model=CncPositionResponse)
 async def get_position(
@@ -60,12 +84,12 @@ async def get_homed_status(
 async def home_all_axes(
     client: CncClientProtocol = Depends(get_cnc_client),
 ):
-    """Run the all-axis home MDI command."""
-    logger.info("CNC all-axis home requested: G28 X0 Y0 Z0")
-    result = client.home_all_axes_g28()
+    """Run the configured Eding CNC home_all macro."""
+    logger.info("CNC all-axis home requested via macro: gosub home_all")
+    result = client.home_all_axes_sequence()
     return CncMotionResponse(
         status=result,
-        message=_message(result, "Home all axes", "CNC DLL accepted home command: G28 X0 Y0 Z0 returned 0"),
+        message=_message(result, "Home all axes", "CNC home_all macro completed: gosub home_all returned 0", client),
         command="home",
         dry_run=False,
     )
@@ -80,7 +104,7 @@ async def reset_cnc(
     result = client.reset()
     return CncMotionResponse(
         status=result,
-        message=_message(result, "Reset", "CNC DLL accepted reset command: CncReset returned 0"),
+        message=_message(result, "Reset", "CNC DLL accepted reset command: CncReset returned 0", client),
         command="reset",
         dry_run=False,
     )
@@ -159,7 +183,7 @@ async def jog_axis(
     )
     return CncMotionResponse(
         status=result,
-        message=_message(result, "Jog", "CNC DLL accepted jog command: CncStartJog2 returned 0"),
+        message=_message(result, "Jog", "CNC DLL accepted jog command: CncStartJog2 returned 0", client),
         command="jog",
         dry_run=False,
         axis=axis,
@@ -179,7 +203,7 @@ async def stop_jog(
     result = client.stop_jog()
     return CncMotionResponse(
         status=result,
-        message=_message(result, "Stop jog", "CNC DLL accepted jog stop command: CncStopJog returned 0"),
+        message=_message(result, "Stop jog", "CNC DLL accepted jog stop command: CncStopJog returned 0", client),
         command="jog_stop",
         dry_run=False,
     )
@@ -205,7 +229,7 @@ async def move_axis(
     )
     return CncMotionResponse(
         status=result,
-        message=_message(result, "Move", "CNC DLL accepted move command: CncMoveTo returned 0"),
+        message=_message(result, "Move", "CNC DLL accepted move command: CncMoveTo returned 0", client),
         command="move",
         dry_run=False,
         axis=axis,
@@ -224,7 +248,7 @@ async def zero_axis(
     result = client.zero_work_axis(axis=axis)
     return CncMotionResponse(
         status=result,
-        message=_message(result, "Zero work axis", "CNC DLL zeroed work axis: G10 L20 and CncStoreIniFile returned 0"),
+        message=_message(result, "Zero work axis", "CNC DLL zeroed work axis: G10 L20 and CncStoreIniFile returned 0", client),
         command="zero",
         dry_run=False,
         axis=axis,
@@ -241,10 +265,9 @@ async def set_work_coordinate(
     result = client.set_work_coordinate(axis=axis, value=payload.value)
     return CncMotionResponse(
         status=result,
-        message=_message(result, "Set work coordinate", "CNC DLL set work coordinate: G92 and CncStoreIniFile returned 0"),
+        message=_message(result, "Set work coordinate", "CNC DLL set work coordinate: G92 and CncStoreIniFile returned 0", client),
         command="set_work_coordinate",
         dry_run=False,
         axis=axis,
         position=payload.value,
     )
-

@@ -8,7 +8,8 @@ class MockCncClient:
 
     def __init__(self) -> None:
         self._connected = False
-        logger.warning("Using MockCncClient — no real CNC hardware")
+        self._last_cnc_message = None
+        logger.warning("Using MockCncClient - no real CNC hardware")
 
     @property
     def is_connected(self) -> bool:
@@ -22,6 +23,7 @@ class MockCncClient:
     def disconnect(self) -> None:
         logger.info("[MOCK] disconnect()")
         self._connected = False
+        self._last_cnc_message = None
 
     def is_server_connected(self) -> bool:
         return self._connected
@@ -59,8 +61,14 @@ class MockCncClient:
     def is_motion_enabled(self) -> bool:
         return True
 
-    def home_all_axes_g28(self) -> int:
-        logger.info("[MOCK] home_all_axes_g28()")
+    def get_last_cnc_message(self) -> str | None:
+        return self._last_cnc_message
+
+    def clear_cnc_messages(self) -> None:
+        self._last_cnc_message = None
+
+    def home_all_axes_sequence(self) -> int:
+        logger.info("[MOCK] home_all_axes_sequence() via gosub home_all")
         return 0
 
     def load_job(self, file_name: str) -> int:

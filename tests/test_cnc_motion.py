@@ -324,13 +324,13 @@ async def test_homed_endpoint_returns_not_all_axes_homed(client, fake_client):
     }
 
 @pytest.mark.asyncio
-async def test_home_endpoint_calls_g28_home(client, fake_client):
+async def test_home_endpoint_calls_home_all_macro(client, fake_client):
     response = await client.post("/api/cnc/home")
 
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == 0
-    assert body["message"] == "CNC DLL accepted home command: G28 X0 Y0 Z0 returned 0"
+    assert body["message"] == "CNC home_all macro completed: gosub home_all returned 0"
     assert body["command"] == "home"
     assert body["dryRun"] is False
     assert fake_client.home_all_axes_calls == 1
@@ -347,3 +347,56 @@ async def test_home_endpoint_returns_cnc_error(client, fake_client):
     assert body["status"] == 14
     assert "Execution error" in body["message"]
 
+@pytest.mark.asyncio
+async def test_home_endpoint_prefers_eding_cnc_message(client, fake_client):
+    fake_client._home_all_axes_rc = -1
+    fake_client._last_cnc_message = "No Job loaded"
+
+    response = await client.post("/api/cnc/home")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == -1
+    assert body["message"] == "No Job loaded"
+
+@pytest.mark.asyncio
+async def test_home_endpoint_prefers_eding_cnc_message_on_success(client, fake_client):
+    fake_client._home_all_axes_rc = 0
+    fake_client._last_cnc_message = "Home complete"
+
+    response = await client.post("/api/cnc/home")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == 0
+    assert body["message"] == "Home complete"
+
+@pytest.mark.asyncio
+async def test_jog_endpoint_prefers_eding_cnc_message(client, fake_client):
+    fake_client._start_jog_rc = 10
+    fake_client._last_cnc_message = "drives not enabled"
+
+    response = await client.post(
+        "/api/cnc/jog",
+        json={"axis": "X", "direction": 1, "step": 1.0, "velocity_factor": 0.1, "continuous": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == 10
+    assert body["message"] == "drives not enabled"
+
+@pytest.mark.asyncio
+async def test_clear_cnc_messages_endpoint_calls_cnc_client(client, fake_client):
+    fake_client._last_cnc_message = "old message"
+
+    response = await client.post("/api/cnc/messages/clear")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == 0
+    assert body["message"] == "CNC message FIFO cleared"
+    assert body["command"] == "clear_messages"
+    assert body["dryRun"] is False
+    assert fake_client.clear_cnc_messages_calls == 1
+    assert fake_client._last_cnc_message is None

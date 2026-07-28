@@ -41,6 +41,7 @@ class FakeCncClient:
         self._motion_enabled = True
         self._home_all_axes_rc = 0
         self.home_all_axes_calls = 0
+        self.home_all_axes_gui_calls = 0
         self.loaded_jobs = []
         self.jog_commands = []
         self.stop_jog_commands = []
@@ -52,6 +53,8 @@ class FakeCncClient:
         self._move_to_rc = 0
         self._zero_work_axis_rc = 0
         self._set_work_coordinate_rc = 0
+        self._last_cnc_message = None
+        self.clear_cnc_messages_calls = 0
 
     @property
     def is_connected(self) -> bool:
@@ -89,7 +92,18 @@ class FakeCncClient:
     def is_motion_enabled(self) -> bool:
         return self._motion_enabled
 
-    def home_all_axes_g28(self) -> int:
+    def get_last_cnc_message(self) -> str | None:
+        return self._last_cnc_message
+
+    def clear_cnc_messages(self) -> None:
+        self.clear_cnc_messages_calls += 1
+        self._last_cnc_message = None
+    def home_all_axes_gui_sequence(self) -> int:
+        self.home_all_axes_gui_calls += 1
+        return self._home_all_axes_rc
+
+
+    def home_all_axes_sequence(self) -> int:
         self.home_all_axes_calls += 1
         return self._home_all_axes_rc
 
