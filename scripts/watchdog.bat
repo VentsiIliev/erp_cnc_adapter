@@ -7,13 +7,13 @@ REM Skips restart if an update is in progress (lock file exists).
 REM Find the adapter installation directory (look for erp-cnc-adapter.exe)
 set "INSTALL_DIR=%~dp0.."
 
-REM Check for update lock file — if present, an update is in progress, do nothing
+REM Check for update lock file - if present, an update is in progress, do nothing
 if exist "%INSTALL_DIR%\.update-lock" (
     exit /b 0
 )
 
 tasklist /FI "IMAGENAME eq erp-cnc-adapter.exe" 2>nul | find /I "erp-cnc-adapter.exe" >nul 2>&1
 if %errorlevel% neq 0 (
-    REM Process is not running — restart via scheduled task
+    REM Process is not running - restart via scheduled task
     schtasks /Run /TN ERPCNCAdapter >nul 2>&1
 )

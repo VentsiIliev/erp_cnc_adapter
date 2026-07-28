@@ -13,20 +13,20 @@ def test_restart_script_resets_adapter_gui_and_cnc_server_before_starting():
     text = _restart_script_text()
     elevated_section = text[text.index('echo [%date% %time%] Restarting ERP-CNC Adapter'):]
 
-    adapter_stop = elevated_section.index("taskkill /F /T /IM erp-cnc-adapter.exe")
-    gui_stop = elevated_section.index("taskkill /F /T /IM cnc4.03.exe")
-    server_stop = elevated_section.index("taskkill /F /T /IM CncServer.exe")
+    stop_processes = elevated_section.index("Stop-Process -Force")
     adapter_start = elevated_section.index("schtasks /Run /TN ERPCNCAdapter")
 
-    assert adapter_stop < gui_stop < server_stop < adapter_start
-    assert "taskkill /F /T /IM cnc.exe" in text
+    assert stop_processes < adapter_start
+    for process_name in ("erp-cnc-adapter", "cnc4.03", "cnc", "CncServer"):
+        assert process_name in elevated_section
+    assert "taskkill" not in elevated_section.lower()
 
 
 def test_restart_script_delegates_non_task_launch_to_elevated_manual_task():
     text = _restart_script_text()
 
     handoff = text.index('if not "%ERPCNC_MANUAL_TASK%"=="1"')
-    adapter_stop = text.index("taskkill /F /T /IM erp-cnc-adapter.exe")
+    adapter_stop = text.index("Stop-Process -Force")
 
     assert handoff < adapter_stop
     assert "schtasks /Run /TN ERPCNCAdapterManualStart" in text
@@ -37,7 +37,8 @@ def test_restart_script_falls_back_to_direct_adapter_launch():
     text = _restart_script_text()
 
     assert "setlocal EnableDelayedExpansion" in text
-    assert "if errorlevel 1" in text
+    assert 'set "TASK_EXIT=!errorlevel!"' in text
+    assert 'if not "!TASK_EXIT!"=="0"' in text
     assert 'set "ADAPTER_EXE=!INSTALL_DIR!\\erp-cnc-adapter.exe"' in text
     assert 'set "HIDDEN_LAUNCHER=!INSTALL_DIR!\\scripts\\launch_adapter_hidden.vbs"' in text
     assert 'wscript.exe //B //Nologo "!HIDDEN_LAUNCHER!"' in text

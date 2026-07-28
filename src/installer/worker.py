@@ -21,7 +21,7 @@ class InstallWorker(QThread):
     step_changed = pyqtSignal(str)
     progress_value = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)  # success, message
-    DEFAULT_STARTUP_DELAY_SECONDS = 90
+    DEFAULT_STARTUP_DELAY_SECONDS = 15
     MANUAL_START_TASK_NAME = "ERPCNCAdapterManualStart"
     EDING_HANDOFF_TASK_NAME = "ERPCNCAdapterEdingHandoff"
 
@@ -252,7 +252,46 @@ class InstallWorker(QThread):
                     installation_log.write(f"STDERR: {result.stderr}\n")
         time.sleep(2)
 
+    def _build_passwordless_watchdog_task_script(self, watchdog_path: Path) -> str:
+        watchdog_path = Path(watchdog_path)
+        return (
+            "$ErrorActionPreference = 'Stop'\n"
+            "Unregister-ScheduledTask -TaskName 'ERPCNCAdapterWatchdog' -Confirm:$false -ErrorAction SilentlyContinue\n"
+            f"$watchdogPath = '{self._ps_quote(str(watchdog_path))}'\n"
+            f"$workDir = '{self._ps_quote(str(watchdog_path.parent))}'\n"
+            f"$taskUser = '{self._ps_quote(self.task_username)}'\n"
+            "$action = New-ScheduledTaskAction -Execute $watchdogPath -WorkingDirectory $workDir\n"
+            "$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) "
+            "-RepetitionInterval (New-TimeSpan -Minutes 2) -RepetitionDuration (New-TimeSpan -Days 3650)\n"
+            "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+            "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
+            "Register-ScheduledTask -TaskName 'ERPCNCAdapterWatchdog' "
+            "-Action $action -Trigger $trigger -Principal $principal -Settings $settings "
+            "-Force -ErrorAction Stop | Out-Null\n"
+        )
+
+    def _create_passwordless_watchdog_task(self, watchdog_path: Path) -> subprocess.CompletedProcess:
+        ps_script = self._build_passwordless_watchdog_task_script(watchdog_path)
+        ps_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ps1", delete=False, encoding="utf-8",
+        )
+        ps_file.write(ps_script)
+        ps_file.close()
+        try:
+            return subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_file.name],
+                capture_output=True,
+                text=True,
+                startupinfo=self._startupinfo(),
+            )
+        finally:
+            os.unlink(ps_file.name)
+
     def _create_watchdog_task(self, watchdog_path: Path, installation_log) -> subprocess.CompletedProcess:
+        if self.task_username and not self.task_password:
+            installation_log.write(f"Watchdog Run As: {self.task_username} (interactive, no stored password)\n")
+            return self._create_passwordless_watchdog_task(watchdog_path)
+
         command = [
             "schtasks", "/Create",
             "/TN", "ERPCNCAdapterWatchdog",

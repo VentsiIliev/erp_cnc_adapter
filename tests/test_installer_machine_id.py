@@ -276,6 +276,30 @@ class TestInstallWorkerTaskHandling:
         assert command[command.index("/RU") + 1] == r"DOMAIN\adapter"
         assert command[command.index("/RP") + 1] == "secret"
 
+    @patch("src.installer.worker.subprocess.run")
+    def test_watchdog_uses_interactive_task_for_passwordless_user(self, mock_run, tmp_path):
+        from src.installer.worker import InstallWorker
+        import io
+
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DOMAIN\adapter", "")
+        log = io.StringIO()
+        worker._create_watchdog_task(tmp_path / "watchdog.bat", log)
+
+        command = mock_run.call_args.args[0]
+        assert command[:4] == ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass"]
+        assert "/RP" not in command
+        assert "interactive, no stored password" in log.getvalue()
+
+        script = worker._build_passwordless_watchdog_task_script(tmp_path / "watchdog.bat")
+        assert "ERPCNCAdapterWatchdog" in script
+        assert "New-ScheduledTaskAction -Execute $watchdogPath" in script
+        assert "New-ScheduledTaskTrigger -Once" in script
+        assert "-RepetitionInterval (New-TimeSpan -Minutes 2)" in script
+        assert "-LogonType Interactive" in script
+        assert r"DOMAIN\adapter" in script
+        assert "-Password" not in script
+
     def test_hidden_launcher_runs_adapter_without_console(self, tmp_path):
         from src.installer.worker import InstallWorker
 
@@ -423,7 +447,7 @@ class TestInstallWorkerTaskHandling:
         script = worker._build_interactive_logon_task_script(tmp_path / "launch_adapter_hidden.vbs")
 
         assert "New-ScheduledTaskTrigger -AtLogOn" in script
-        assert "$trigger.Delay = 'PT90S'" in script
+        assert "$trigger.Delay = 'PT15S'" in script
         assert "-Execute 'wscript.exe'" in script
         assert "launch_adapter_hidden.vbs" in script
         assert "-LogonType Interactive" in script

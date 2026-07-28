@@ -6,6 +6,7 @@ import signal
 import socket
 import sys
 import threading
+import time
 
 from fastapi import Request
 
@@ -16,6 +17,7 @@ from src.core.cnc_runtime import (
     start_eding_gui_if_needed,
 )
 from src.core.cnc_server_process import start_cnc_server_if_needed
+from src.core.task_config import request_adapter_recovery_restart
 from src.cnc.cnc_client import CncClient
 from src.cnc.cnc_client_protocol import CncClientProtocol
 from src.cnc.connection_manager import ConnectionManager
@@ -79,17 +81,39 @@ class AppState:
     """Application-wide service container stored on ``app.state.services``."""
 
     def __init__(self, settings: Settings) -> None:
+        init_start = time.perf_counter()
+        logger.info(
+            "Startup timing: AppState init begin pid=%s runtime_root=%s",
+            os.getpid(),
+            _runtime_root(),
+        )
+
+        pid_start = time.perf_counter()
         _kill_stale_adapter()
         _write_pid_file()
+        logger.info("Startup timing: PID file handling completed in %.1fms", (time.perf_counter() - pid_start) * 1000)
 
         self.settings = settings
         self._defer_gui_to_manual_launcher = _consume_manual_start_defer_gui_flag()
+        logger.info(
+            "Startup configuration: dev_mode=%s auto_start_cnc_server=%s auto_start_eding_gui=%s "
+            "port=%s dll_path=%s ini_path=%s task_username=%s defer_gui=%s",
+            settings.dev_mode,
+            settings.auto_start_cnc_server,
+            settings.auto_start_eding_gui,
+            settings.port,
+            settings.dll_path,
+            settings.ini_path,
+            settings.task_username or "<system/default>",
+            self._defer_gui_to_manual_launcher,
+        )
         if self._defer_gui_to_manual_launcher:
             logger.info("Manual START-CNC requested: deferring Eding GUI until adapter is CNC-ready")
 
+        cnc_client_start = time.perf_counter()
         logger.info("Initializing CNC client...")
         if settings.dev_mode:
-            logger.warning("DEV_MODE enabled — using mock CNC client")
+            logger.warning("DEV_MODE enabled - using mock CNC client")
             self.cnc_client: CncClientProtocol = MockCncClient()
         else:
             try:
@@ -97,39 +121,68 @@ class AppState:
             except Exception as exc:
                 logger.error("CNC client initialization failed, starting in degraded mode: %s", exc)
                 self.cnc_client = UnavailableCncClient(str(exc))
+        logger.info(
+            "Startup timing: CNC client object ready in %.1fms type=%s",
+            (time.perf_counter() - cnc_client_start) * 1000,
+            type(self.cnc_client).__name__,
+        )
+
+        connection_manager_start = time.perf_counter()
         self.connection_manager = ConnectionManager(
             self.cnc_client,
             settings,
             on_ready=self._on_cnc_ready,
+            on_cnc_server_missing=self._restart_adapter_after_cnc_server_loss,
+        )
+        logger.info(
+            "Startup timing: ConnectionManager created in %.1fms",
+            (time.perf_counter() - connection_manager_start) * 1000,
         )
 
-        # Initialize job monitor (runs continuously to detect job starts/finishes)
+        job_monitor_start = time.perf_counter()
         self.job_monitor = JobMonitor(
             self.cnc_client,
             poll_interval=settings.job_monitor_poll_interval,
-            report_url=settings.job_done_report_url
+            report_url=settings.job_done_report_url,
         )
         logger.info("CNC client initialized (connection managed by ConnectionManager)")
         logger.info("Job monitor initialized (will start with application)")
+        logger.info("Startup timing: JobMonitor created in %.1fms", (time.perf_counter() - job_monitor_start) * 1000)
+        logger.info("Startup timing: AppState init completed in %.1fms", (time.perf_counter() - init_start) * 1000)
 
         # Safety net: disconnect even on unhandled crashes
         atexit.register(self.cnc_client.disconnect)
 
     def _auto_start_cnc_server(self) -> None:
         """Launch CncServer.exe on startup if it exists and isn't already running."""
+        auto_start_begin = time.perf_counter()
         if self.settings.dev_mode or not self.settings.auto_start_cnc_server:
+            logger.info(
+                "Auto-start CncServer skipped: dev_mode=%s auto_start_cnc_server=%s",
+                self.settings.dev_mode,
+                self.settings.auto_start_cnc_server,
+            )
             return
         if self.settings.auto_start_eding_gui and not self._defer_gui_to_manual_launcher:
             logger.info("Skipping direct CncServer auto-start because Eding GUI auto-start is enabled")
             return
 
         cnc_server_exe = cnc_server_path_from_dll(self.settings.dll_path)
+        logger.info("Auto-start CncServer check: dll_path=%s cnc_server_exe=%s", self.settings.dll_path, cnc_server_exe)
 
         if not os.path.isfile(cnc_server_exe):
             logger.warning("Auto-start: CncServer.exe not found at %s", cnc_server_exe)
+            logger.info("Startup timing: CncServer auto-start skipped after %.1fms", (time.perf_counter() - auto_start_begin) * 1000)
             return
 
         result = start_cnc_server_if_needed(str(cnc_server_exe))
+        logger.info(
+            "Startup timing: start_cnc_server_if_needed returned in %.1fms status=%s pid=%s message=%s",
+            (time.perf_counter() - auto_start_begin) * 1000,
+            result.status,
+            result.pid,
+            result.message,
+        )
         if result.started:
             logger.info("Auto-started CncServer.exe from %s", cnc_server_exe)
         elif result.already_running:
@@ -137,14 +190,51 @@ class AppState:
         else:
             logger.error("Auto-start CncServer.exe failed: %s", result.message)
 
+    def _restart_adapter_after_cnc_server_loss(self) -> None:
+        """Restart the adapter so CNC DLL state is recreated after CncServer exits."""
+        if self.settings.dev_mode:
+            logger.info("DEV_MODE: restarting only CncServer.exe after CNC server loss")
+            self._auto_start_cnc_server()
+            return
+
+        logger.warning(
+            "CncServer.exe disappeared after adapter startup; restarting adapter to refresh CNC DLL state"
+        )
+        try:
+            recovery_start = time.perf_counter()
+            request_adapter_recovery_restart()
+            logger.warning(
+                "Recovery timing: restart script request returned in %.1fms",
+                (time.perf_counter() - recovery_start) * 1000,
+            )
+        except Exception:
+            logger.exception("Could not request adapter recovery restart; falling back to CncServer restart")
+            self._auto_start_cnc_server()
+            return
+
+        logger.warning("Adapter recovery restart requested after CNC server loss; exiting current process")
+        os._exit(1)
+
     def _auto_start_eding_gui(self) -> bool:
         """Launch Eding GUI first when it should own the interactive CNC session."""
+        gui_start = time.perf_counter()
         if self.settings.dev_mode or not self.settings.auto_start_eding_gui:
+            logger.info(
+                "Auto-start Eding GUI skipped: dev_mode=%s auto_start_eding_gui=%s",
+                self.settings.dev_mode,
+                self.settings.auto_start_eding_gui,
+            )
             return False
         if self._defer_gui_to_manual_launcher:
             logger.info("Eding GUI auto-start deferred to START-CNC feedback launcher")
             return False
-        return start_eding_gui_if_needed(self.settings.dll_path, self.settings.task_username)
+        result = start_eding_gui_if_needed(self.settings.dll_path, self.settings.task_username)
+        logger.info(
+            "Startup timing: start_eding_gui_if_needed returned %s in %.1fms",
+            result,
+            (time.perf_counter() - gui_start) * 1000,
+        )
+        return result
 
     def _adapter_address(self) -> str:
         if self.settings.host and self.settings.host not in {"0.0.0.0", "::"}:
@@ -162,27 +252,41 @@ class AppState:
 
     def _on_cnc_ready(self) -> None:
         """Run operator-facing startup actions after the adapter is truly CNC-ready."""
+        logger.info("Startup event: CNC ready callback invoked")
         if self.settings.auto_start_eding_gui:
+            logger.info("Startup event: CNC ready callback skipped operator message because Eding GUI auto-start is enabled")
             return
 
         if self.settings.show_operator_ready_message:
+            message_start = time.perf_counter()
             show_operator_ready_message(
                 self.settings.machine_number,
                 self._adapter_address(),
                 self.settings.task_username,
             )
+            logger.info(
+                "Startup timing: operator ready message request completed in %.1fms",
+                (time.perf_counter() - message_start) * 1000,
+            )
 
     def start(self) -> None:
+        start_begin = time.perf_counter()
+        logger.info("Startup timing: AppState.start begin")
         gui_started = self._auto_start_eding_gui()
         if not gui_started:
             self._auto_start_cnc_server()
+            manager_start = time.perf_counter()
             self.connection_manager.start()
+            logger.info("Startup timing: ConnectionManager.start returned in %.1fms", (time.perf_counter() - manager_start) * 1000)
         else:
+            logger.info("Startup timing: scheduling delayed ConnectionManager start after Eding GUI")
             asyncio.create_task(self._start_connection_manager_after_gui_delay())
 
-        # Start job monitor to continuously watch for job starts/finishes.
+        monitor_start = time.perf_counter()
         asyncio.create_task(self.job_monitor.start_monitoring())
         logger.info("Job monitor started - watching for job state changes")
+        logger.info("Startup timing: JobMonitor start task scheduled in %.1fms", (time.perf_counter() - monitor_start) * 1000)
+        logger.info("Startup timing: AppState.start completed in %.1fms gui_started=%s", (time.perf_counter() - start_begin) * 1000, gui_started)
 
     async def _start_connection_manager_after_gui_delay(self) -> None:
         delay = min(max(self.settings.cnc_retry_interval * 2, 10), 30)
@@ -191,12 +295,11 @@ class AppState:
         self.connection_manager.start()
 
     async def shutdown(self) -> None:
-        # Watchdog: force-exit if DLL threads keep the process alive
+        shutdown_start = time.perf_counter()
         watchdog = threading.Timer(5.0, lambda: os._exit(0))
         watchdog.daemon = True
         watchdog.start()
 
-        # Stop job monitor if one exists
         if self.job_monitor is not None and self.job_monitor.is_monitoring:
             logger.info("Stopping job monitor...")
             await self.job_monitor.stop_monitoring()
@@ -207,6 +310,7 @@ class AppState:
         await self.connection_manager.stop()
         self._remove_pid_file()
         logger.info("Shutdown complete")
+        logger.info("Shutdown timing: AppState shutdown completed in %.1fms", (time.perf_counter() - shutdown_start) * 1000)
 
         watchdog.cancel()
 
@@ -216,7 +320,6 @@ class AppState:
             os.remove(PID_FILE)
         except OSError:
             pass
-
 
 
 # --- FastAPI Depends() getters ---------------------------------------------------
@@ -231,4 +334,3 @@ def get_connection_manager(request: Request) -> ConnectionManager:
 
 def get_settings(request: Request) -> Settings:
     return request.app.state.services.settings
-

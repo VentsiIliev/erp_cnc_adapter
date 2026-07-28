@@ -28,12 +28,14 @@ class ConnectionManager:
         client: CncClientProtocol,
         settings: Settings,
         on_ready: Callable[[], None] | None = None,
+        on_cnc_server_missing: Callable[[], None] | None = None,
     ) -> None:
         self._client = client
         self._retry_interval = settings.cnc_retry_interval
         self._health_interval = settings.cnc_health_interval
         self._startup_ready_timeout = settings.cnc_startup_ready_timeout
         self._on_ready = on_ready
+        self._on_cnc_server_missing = on_cnc_server_missing
         self._ready_callback_called = False
 
         self._state: str = "disconnected"
@@ -139,7 +141,8 @@ class ConnectionManager:
             if not process_alive:
                 self._state = "cnc_not_running"
                 self._last_error = getattr(self._client, "startup_error", "CncServer.exe not found")
-                logger.info("CNC server not running, waiting...")
+                logger.info("CNC server not running, attempting recovery before retry...")
+                await self._request_cnc_server_recovery()
                 await self._interruptible_sleep(self._retry_interval)
                 continue
 
@@ -195,7 +198,7 @@ class ConnectionManager:
                 logger.warning(self._last_error)
             else:
                 self._machine_state = state
-                if state in (0, 1, 2):
+                if state in (1, 2):
                     return True
                 self._state = "cnc_not_ready"
                 self._last_error = f"CNC connected but machine state is not ready: {state}"
@@ -214,6 +217,19 @@ class ConnectionManager:
             self._on_ready()
         except Exception:
             logger.exception("CNC ready callback failed")
+
+    async def _request_cnc_server_recovery(self) -> None:
+        if self._on_cnc_server_missing is None:
+            return
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(self._on_cnc_server_missing),
+                timeout=10.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("CNC server recovery callback timed out")
+        except Exception:
+            logger.exception("CNC server recovery callback failed")
 
     async def _heartbeat_loop(self) -> None:
         """Periodically check the connection is still alive."""
@@ -235,6 +251,7 @@ class ConnectionManager:
                 logger.warning("CNC server process stopped")
                 self._state = "cnc_not_running"
                 self._last_error = "CncServer.exe exited"
+                await self._request_cnc_server_recovery()
                 return
 
             try:
@@ -272,4 +289,5 @@ class ConnectionManager:
                     logger.warning("CNC server process stopped")
                     self._state = "cnc_not_running"
                     self._last_error = "CncServer.exe exited"
+                    await self._request_cnc_server_recovery()
                 return

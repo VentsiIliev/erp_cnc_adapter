@@ -190,3 +190,8 @@ def test_pyinstaller_spec_bundles_resources_directory():
 
     assert "(os.path.join(PROJECT_ROOT, 'resources'), 'resources')" in spec
 
+def test_pyinstaller_spec_disables_upx_for_faster_startup_on_cnc_pcs():
+    spec = Path(__file__).resolve().parent.parent.joinpath("util_scripts", "erp-cnc-adapter.spec").read_text(encoding="utf-8")
+
+    assert "upx=False" in spec
+    assert "upx=True" not in spec

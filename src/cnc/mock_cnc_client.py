@@ -67,6 +67,10 @@ class MockCncClient:
     def clear_cnc_messages(self) -> None:
         self._last_cnc_message = None
 
+    def home_all_axes_gui_sequence(self) -> int:
+        logger.info("[MOCK] home_all_axes_gui_sequence()")
+        return 0
+
     def home_all_axes_sequence(self) -> int:
         logger.info("[MOCK] home_all_axes_sequence() via gosub home_all")
         return 0

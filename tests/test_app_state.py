@@ -147,6 +147,90 @@ class TestAppStateInit:
         assert "Failed to load CNC DLL" in state.cnc_client.startup_error
 
 
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    def test_connection_manager_gets_cnc_server_recovery_callback(self, _atexit, _kill, _write):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\fake.dll",
+            ini_path=r"C:\fake.ini",
+            dev_mode=True,
+        )
+        state = AppState(settings)
+
+        assert state.connection_manager._on_cnc_server_missing == state._restart_adapter_after_cnc_server_loss
+
+
+class TestCncServerLossRecovery:
+
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    def test_dev_mode_restarts_only_cnc_server(self, _atexit, _kill, _write):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\fake.dll",
+            ini_path=r"C:\fake.ini",
+            dev_mode=True,
+        )
+        state = AppState(settings)
+
+        with patch.object(state, "_auto_start_cnc_server") as mock_auto_start, \
+             patch("src.core.app_state.os._exit") as mock_exit:
+            state._restart_adapter_after_cnc_server_loss()
+
+        mock_auto_start.assert_called_once_with()
+        mock_exit.assert_not_called()
+
+    @patch("src.core.app_state.os._exit")
+    @patch("src.core.app_state.request_adapter_recovery_restart")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    def test_recovery_requests_watchdog_restart_then_exits_with_failure(
+        self, _atexit, _kill, _write, mock_recovery_restart, mock_exit
+    ):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\fake.dll",
+            ini_path=r"C:\fake.ini",
+            dev_mode=True,
+        )
+        state = AppState(settings)
+        state.settings.dev_mode = False
+
+        state._restart_adapter_after_cnc_server_loss()
+
+        mock_recovery_restart.assert_called_once_with()
+        mock_exit.assert_called_once_with(1)
+
+    @patch("src.core.app_state.os._exit")
+    @patch("src.core.app_state.request_adapter_recovery_restart")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    def test_recovery_uses_same_watchdog_restart_when_not_frozen(
+        self, _atexit, _kill, _write, mock_recovery_restart, mock_exit
+    ):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\fake.dll",
+            ini_path=r"C:\fake.ini",
+            dev_mode=True,
+        )
+        state = AppState(settings)
+        state.settings.dev_mode = False
+
+        state._restart_adapter_after_cnc_server_loss()
+
+        mock_recovery_restart.assert_called_once_with()
+        mock_exit.assert_called_once_with(1)
+
 # ---------------------------------------------------------------------------
 # AppState lifecycle
 # ---------------------------------------------------------------------------

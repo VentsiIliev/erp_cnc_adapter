@@ -52,6 +52,26 @@ class TestConnectionManagerRetry:
 
         await mgr.stop()
 
+    async def test_cnc_not_running_requests_recovery_callback(self, fake_client, settings):
+        fake_client._server_process_alive = False
+        fake_client._connect_rc = 0
+        settings.cnc_retry_interval = 0.1
+        recovery_calls = []
+
+        def recover_server():
+            recovery_calls.append(True)
+            fake_client._server_process_alive = True
+
+        mgr = ConnectionManager(fake_client, settings, on_cnc_server_missing=recover_server)
+        mgr.start()
+
+        await asyncio.sleep(0.5)
+
+        assert recovery_calls == [True]
+        assert mgr.connected is True
+
+        await mgr.stop()
+
     async def test_cnc_not_running_uses_startup_error_when_present(self, fake_client, settings):
         fake_client._server_process_alive = False
         fake_client.startup_error = "Failed to load CNC DLL"
@@ -98,8 +118,8 @@ class TestConnectionManagerRetry:
 
         await mgr.stop()
 
-    async def test_powerup_state_does_not_block_connection(self, fake_client, settings):
-        """Some GUI-owned Eding sessions report state 0 while the GUI is ready."""
+    async def test_powerup_state_blocks_connection_until_ready(self, fake_client, settings):
+        """Power-up/state 0 means CncServer is running but not ready for adapter operations."""
         fake_client._server_process_alive = True
         fake_client._connect_rc = 0
         fake_client._state = 0
@@ -112,10 +132,20 @@ class TestConnectionManagerRetry:
 
         await asyncio.sleep(0.5)
 
+        assert mgr.state == "cnc_not_ready"
+        assert mgr.connected is False
+        assert mgr.machine_state == 0
+        assert mgr.last_error == "CNC connected but machine state is not ready: 0"
+        assert ready_calls == []
+
+        fake_client._state = 2
+        mgr.nudge()
+
+        await asyncio.sleep(0.5)
+
         assert mgr.state == "connected"
         assert mgr.connected is True
-        assert mgr.machine_state == 0
-        assert mgr.last_error is None
+        assert mgr.machine_state == 2
         assert ready_calls == [True]
 
         await mgr.stop()
@@ -186,6 +216,36 @@ class TestConnectionManagerHeartbeat:
         assert mgr.connected is False
         assert mgr.last_error in ("CncServer.exe exited", "CncServer.exe not found")
         assert fake_client.is_connected is False
+
+        await mgr.stop()
+
+
+    async def test_heartbeat_recovers_when_server_process_exits(self, fake_client, settings):
+        fake_client._server_process_alive = True
+        fake_client._server_connected = True
+        fake_client._connect_rc = 0
+        settings.cnc_health_interval = 0.1
+        settings.cnc_retry_interval = 0.1
+        recovery_calls = []
+
+        def recover_server():
+            recovery_calls.append(True)
+            fake_client._server_process_alive = True
+
+        mgr = ConnectionManager(fake_client, settings, on_cnc_server_missing=recover_server)
+        mgr.start()
+
+        await asyncio.sleep(0.3)
+        assert mgr.connected is True
+
+        fake_client._server_process_alive = False
+        fake_client._server_connected = True
+
+        await asyncio.sleep(0.7)
+
+        assert recovery_calls == [True]
+        assert mgr.connected is True
+        assert fake_client.is_connected is True
 
         await mgr.stop()
 

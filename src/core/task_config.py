@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -12,8 +13,9 @@ from pathlib import Path
 
 TASK_NAME = "ERPCNCAdapter"
 WATCHDOG_TASK_NAME = "ERPCNCAdapterWatchdog"
-DEFAULT_STARTUP_DELAY_SECONDS = 90
+DEFAULT_STARTUP_DELAY_SECONDS = 15
 
+logger = logging.getLogger(__name__)
 
 def _startupinfo() -> subprocess.STARTUPINFO:
     info = subprocess.STARTUPINFO()
@@ -253,3 +255,25 @@ def restart_scheduled_adapter_task() -> None:
         close_fds=True,
         startupinfo=_startupinfo(),
     )
+
+
+def request_adapter_recovery_restart() -> None:
+    """Launch the installed restart script to reset adapter, GUI, and CncServer."""
+    install_dir = _resolve_install_dir()
+    restart_script = install_dir / "scripts" / "restart.bat"
+    logger.warning("Recovery restart requested: install_dir=%s restart_script=%s", install_dir, restart_script)
+    if not restart_script.exists():
+        logger.warning("Recovery restart script missing; falling back to scheduled adapter task restart")
+        restart_scheduled_adapter_task()
+        return
+
+    env = os.environ.copy()
+    env["ERPCNC_MANUAL_TASK"] = "1"
+    subprocess.Popen(
+        ["cmd.exe", "/c", "call", str(restart_script)],
+        cwd=str(restart_script.parent),
+        close_fds=True,
+        env=env,
+        startupinfo=_startupinfo(),
+    )
+    logger.warning("Recovery restart script launched: %s", restart_script)

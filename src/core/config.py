@@ -15,7 +15,7 @@ class Settings:
     cnc_health_interval: int = 10  # seconds between heartbeat checks
     cnc_startup_ready_timeout: int = 60  # seconds to wait for CNC to leave startup states
     auto_start_adapter_on_logon: bool = True
-    adapter_startup_delay_seconds: int = 90
+    adapter_startup_delay_seconds: int = 15
     auto_start_cnc_server: bool = True
     auto_start_eding_gui: bool = False
     show_operator_ready_message: bool = True
