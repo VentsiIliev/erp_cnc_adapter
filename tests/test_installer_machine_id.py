@@ -258,7 +258,11 @@ class TestInstallWorkerTaskHandling:
         worker = InstallWorker(str(tmp_path))
         worker._create_watchdog_task(tmp_path / "watchdog.bat", io.StringIO())
 
+        launcher = tmp_path / "watchdog_hidden.vbs"
+        assert launcher.exists()
+        assert "cmd.exe /c" in launcher.read_text(encoding="utf-8")
         command = mock_run.call_args.args[0]
+        assert command[command.index("/TR") + 1].startswith('"wscript.exe"')
         assert "/RU" in command
         assert command[command.index("/RU") + 1] == "SYSTEM"
         assert "/RP" not in command
@@ -273,6 +277,7 @@ class TestInstallWorkerTaskHandling:
         worker._create_watchdog_task(tmp_path / "watchdog.bat", io.StringIO())
 
         command = mock_run.call_args.args[0]
+        assert command[command.index("/TR") + 1].startswith('"wscript.exe"')
         assert command[command.index("/RU") + 1] == r"DOMAIN\adapter"
         assert command[command.index("/RP") + 1] == "secret"
 
@@ -293,12 +298,26 @@ class TestInstallWorkerTaskHandling:
 
         script = worker._build_passwordless_watchdog_task_script(tmp_path / "watchdog.bat")
         assert "ERPCNCAdapterWatchdog" in script
-        assert "New-ScheduledTaskAction -Execute $watchdogPath" in script
+        assert "watchdog_hidden.vbs" in script
+        assert "New-ScheduledTaskAction -Execute 'wscript.exe'" in script
         assert "New-ScheduledTaskTrigger -Once" in script
         assert "-RepetitionInterval (New-TimeSpan -Minutes 2)" in script
         assert "-LogonType Interactive" in script
         assert r"DOMAIN\adapter" in script
         assert "-Password" not in script
+
+    def test_watchdog_hidden_launcher_runs_batch_without_console(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1")
+        launcher = worker._write_watchdog_hidden_launcher(tmp_path / "watchdog.bat")
+        text = launcher.read_text(encoding="utf-8")
+
+        assert launcher.name == "watchdog_hidden.vbs"
+        assert "WScript.Shell" in text
+        assert "cmd.exe /c" in text
+        assert ", 0, False" in text
+        assert "watchdog.bat" in text
 
     def test_hidden_launcher_runs_adapter_without_console(self, tmp_path):
         from src.installer.worker import InstallWorker

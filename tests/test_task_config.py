@@ -112,3 +112,6 @@ def test_configure_task_launch_account_writes_logon_trigger_delay(tmp_path):
     assert "$startupDelay = 'PT1M30S'" in script_text
     assert "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser" in script_text
     assert "$trigger.Delay = $startupDelay" in script_text
+    assert "$watchdogLauncherPath" in script_text
+    assert "New-ScheduledTaskAction -Execute 'wscript.exe'" in script_text
+    assert "watchdog_hidden.vbs" in script_text

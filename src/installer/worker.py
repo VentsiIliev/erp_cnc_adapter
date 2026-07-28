@@ -283,15 +283,32 @@ class InstallWorker(QThread):
                     installation_log.write(f"STDERR: {result.stderr}\n")
         time.sleep(2)
 
+    def _write_watchdog_hidden_launcher(self, watchdog_path: Path, installation_log=None) -> Path:
+        launcher_path = watchdog_path.parent / "watchdog_hidden.vbs"
+
+        def vbs_quote(value: str) -> str:
+            return value.replace('"', '""')
+
+        lines = [
+            'Set shell = CreateObject("WScript.Shell")',
+            f'shell.CurrentDirectory = "{vbs_quote(str(watchdog_path.parent))}"',
+            f'shell.Run "cmd.exe /c ""{vbs_quote(str(watchdog_path))}""", 0, False',
+        ]
+        launcher_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        if installation_log:
+            installation_log.write(f"Hidden watchdog launcher: {launcher_path}\n")
+        return launcher_path
+
     def _build_passwordless_watchdog_task_script(self, watchdog_path: Path) -> str:
         watchdog_path = Path(watchdog_path)
+        launcher_path = self._write_watchdog_hidden_launcher(watchdog_path)
         return (
             "$ErrorActionPreference = 'Stop'\n"
             "Unregister-ScheduledTask -TaskName 'ERPCNCAdapterWatchdog' -Confirm:$false -ErrorAction SilentlyContinue\n"
-            f"$watchdogPath = '{self._ps_quote(str(watchdog_path))}'\n"
+            f"$watchdogLauncherPath = '{self._ps_quote(str(launcher_path))}'\n"
             f"$workDir = '{self._ps_quote(str(watchdog_path.parent))}'\n"
             f"$taskUser = '{self._ps_quote(self.task_username)}'\n"
-            "$action = New-ScheduledTaskAction -Execute $watchdogPath -WorkingDirectory $workDir\n"
+            "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $watchdogLauncherPath + '\"') -WorkingDirectory $workDir\n"
             "$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) "
             "-RepetitionInterval (New-TimeSpan -Minutes 2) -RepetitionDuration (New-TimeSpan -Days 3650)\n"
             "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
@@ -319,6 +336,7 @@ class InstallWorker(QThread):
             os.unlink(ps_file.name)
 
     def _create_watchdog_task(self, watchdog_path: Path, installation_log) -> subprocess.CompletedProcess:
+        launcher_path = self._write_watchdog_hidden_launcher(Path(watchdog_path), installation_log)
         if self.task_username and not self.task_password:
             installation_log.write(f"Watchdog Run As: {self.task_username} (interactive, no stored password)\n")
             return self._create_passwordless_watchdog_task(watchdog_path)
@@ -326,7 +344,7 @@ class InstallWorker(QThread):
         command = [
             "schtasks", "/Create",
             "/TN", "ERPCNCAdapterWatchdog",
-            "/TR", f'"{watchdog_path}"',
+            "/TR", f'"wscript.exe" "{launcher_path}"',
             "/SC", "MINUTE",
             "/MO", "2",
             "/RL", "HIGHEST",
