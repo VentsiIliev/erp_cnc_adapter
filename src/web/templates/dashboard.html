@@ -1175,7 +1175,7 @@
                 button.classList.toggle("active", button.dataset.view === normalized);
             });
             document.getElementById("currentViewLabel").textContent = viewLabels[normalized];
-            const target = document.querySelector('[data-view="' + normalized + '"]');
+            const target = document.querySelector('section.content-card[data-view="' + normalized + '"]');
             if (target) {
                 target.scrollIntoView({ behavior: "smooth", block: "start" });
             }

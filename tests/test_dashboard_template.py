@@ -111,3 +111,9 @@ def test_config_form_can_edit_svn_update_credentials():
     assert 'payload.update_password = updatePassword;' in dashboard
     assert '"updateUsername"' in dashboard
     assert '"updatePassword"' in dashboard
+
+def test_nav_buttons_scroll_to_content_sections_not_nav_buttons():
+    dashboard = _dashboard_html()
+
+    assert "document.querySelector('section.content-card[data-view=\"' + normalized + '\"]')" in dashboard
+    assert "document.querySelector('[data-view=\"' + normalized + '\"]')" not in dashboard
