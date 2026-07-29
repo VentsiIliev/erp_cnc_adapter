@@ -990,6 +990,16 @@
                             <div class="helper">Current: <span id="currentAdapterPort">Loading...</span> (restart required)</div>
                         </div>
                         <div class="field">
+                            <label for="updateUsername">SVN Update Username</label>
+                            <input type="text" id="updateUsername" name="update_username" placeholder="SVN username">
+                            <div class="helper">Current: <span id="currentUpdateUsername">Not configured</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="updatePassword">SVN Update Password</label>
+                            <input type="password" id="updatePassword" name="update_password" placeholder="Enter password to set or change">
+                            <div class="helper">Current: <span id="currentUpdatePasswordStatus">Not configured</span></div>
+                        </div>
+                        <div class="field">
                             <label>Network Bind</label>
                             <div class="detail-item">
                                 <div class="detail-value"><span id="configHost">--</span>:<span id="configPort">--</span></div>
@@ -1339,6 +1349,8 @@
             document.getElementById("currentPollInterval").textContent = body.job_monitor_poll_interval + "s";
             document.getElementById("currentJogPadPauseHoldInterval").textContent = body.jog_pad_pause_hold_interval_ms + "ms";
             document.getElementById("currentAdapterPort").textContent = body.port;
+            document.getElementById("currentUpdateUsername").textContent = body.update_username || "Not configured";
+            document.getElementById("currentUpdatePasswordStatus").textContent = body.update_password_configured ? "Password configured" : "Not configured";
             document.getElementById("configHost").textContent = body.host;
             document.getElementById("configPort").textContent = body.port;
             document.getElementById("runAsUserToggle").checked = Boolean(body.run_as_windows_user);
@@ -1351,7 +1363,7 @@
         }
 
         function resetConfigForm() {
-            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "adapterStartupDelay", "retryInterval", "healthInterval", "startupReadyTimeout", "pollInterval", "jogPadPauseHoldInterval", "adapterPort"].forEach((id) => {
+            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "adapterStartupDelay", "retryInterval", "healthInterval", "startupReadyTimeout", "pollInterval", "jogPadPauseHoldInterval", "adapterPort", "updateUsername", "updatePassword"].forEach((id) => {
                 document.getElementById(id).value = "";
             });
         }
@@ -1466,6 +1478,8 @@
             const poll = document.getElementById("pollInterval").value;
             const jogPadPauseHoldInterval = document.getElementById("jogPadPauseHoldInterval").value;
             const adapterPort = document.getElementById("adapterPort").value;
+            const updateUsername = document.getElementById("updateUsername").value.trim();
+            const updatePassword = document.getElementById("updatePassword").value;
 
             if (machineNumber) payload.machine_number = machineNumber;
             if (dllPath) payload.dll_path = dllPath;
@@ -1496,6 +1510,8 @@
             if (poll) payload.job_monitor_poll_interval = parseFloat(poll);
             if (jogPadPauseHoldInterval !== "") payload.jog_pad_pause_hold_interval_ms = parseInt(jogPadPauseHoldInterval, 10);
             if (adapterPort) payload.port = parseInt(adapterPort, 10);
+            if (updateUsername) payload.update_username = updateUsername;
+            if (updatePassword) payload.update_password = updatePassword;
             if (options.restartAdapterTask) payload.restart_adapter_task = true;
 
             if (!Object.keys(payload).length) {

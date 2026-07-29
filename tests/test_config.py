@@ -76,6 +76,7 @@ class TestConfigAPI:
     async def test_get_config_includes_timing(self, client):
         """GET /api/config returns timing fields."""
         with patch("src.api.config_api.get_task_launch_settings") as mock_task, \
+             patch("src.api.config_api.get_persisted_config", return_value={"update_username": "svn-user", "update_password": "secret"}), \
              patch("src.api.config_api.get_machine_ip", return_value="192.168.2.55"):
             mock_task.return_value = {
                 "run_as_windows_user": True,
@@ -98,6 +99,8 @@ class TestConfigAPI:
         assert data["auto_start_adapter_on_logon"] is False
         assert data["adapter_startup_delay_seconds"] == 120
         assert data["local_ip"] == "192.168.2.55"
+        assert data["update_username"] == "svn-user"
+        assert data["update_password_configured"] is True
 
     @pytest.mark.asyncio
     async def test_post_config_updates_timing_and_port(self, client, settings, tmp_path):
@@ -134,6 +137,25 @@ class TestConfigAPI:
         assert persist_call["job_monitor_poll_interval"] == 3.5
         assert persist_call["jog_pad_pause_hold_interval_ms"] == 250
         assert persist_call["port"] == 8010
+
+
+    @pytest.mark.asyncio
+    async def test_post_config_updates_svn_update_credentials(self, client):
+        with patch("src.api.config_api.update_persisted_config") as mock_persist:
+            mock_persist.return_value = True
+            resp = await client.post("/api/config", json={
+                "update_username": "IlV",
+                "update_password": "Nekazvam1991",
+            })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert "update_username: updated" in data["changes"]
+        assert "update_password: updated" in data["changes"]
+        persist_call = mock_persist.call_args[0][0]
+        assert persist_call["update_username"] == "IlV"
+        assert persist_call["update_password"] == "Nekazvam1991"
 
     @pytest.mark.asyncio
     async def test_post_config_updates_dll_and_ini_paths(self, client, settings):

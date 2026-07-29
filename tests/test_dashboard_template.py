@@ -94,3 +94,20 @@ def test_config_form_can_edit_jog_pad_pause_hold_interval():
     assert 'const jogPadPauseHoldInterval = document.getElementById("jogPadPauseHoldInterval").value;' in dashboard
     assert 'payload.jog_pad_pause_hold_interval_ms = parseInt(jogPadPauseHoldInterval, 10);' in dashboard
     assert '"jogPadPauseHoldInterval"' in dashboard
+
+
+def test_config_form_can_edit_svn_update_credentials():
+    dashboard = _dashboard_html()
+
+    assert 'label for="updateUsername"' in dashboard
+    assert 'id="updateUsername"' in dashboard
+    assert 'id="currentUpdateUsername"' in dashboard
+    assert 'label for="updatePassword"' in dashboard
+    assert 'id="updatePassword"' in dashboard
+    assert 'id="currentUpdatePasswordStatus"' in dashboard
+    assert 'const updateUsername = document.getElementById("updateUsername").value.trim();' in dashboard
+    assert 'const updatePassword = document.getElementById("updatePassword").value;' in dashboard
+    assert 'payload.update_username = updateUsername;' in dashboard
+    assert 'payload.update_password = updatePassword;' in dashboard
+    assert '"updateUsername"' in dashboard
+    assert '"updatePassword"' in dashboard

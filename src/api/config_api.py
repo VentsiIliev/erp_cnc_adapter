@@ -4,7 +4,7 @@ import logging
 import socket
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
-from src.core.config_persistence import update_persisted_config
+from src.core.config_persistence import get_persisted_config, update_persisted_config
 from src.core.task_config import (
     configure_task_launch_account,
     get_task_launch_settings,
@@ -38,6 +38,8 @@ class ConfigUpdate(BaseModel):
     show_operator_ready_message: bool | None = Field(None, description="Show a desktop ready message when GUI auto-start is disabled")
     job_monitor_poll_interval: float | None = Field(None, ge=0.1, le=60.0, description="Seconds between job monitor status checks")
     jog_pad_pause_hold_interval_ms: int | None = Field(None, ge=0, le=10000, description="Milliseconds between jog-pad pause hold requests; 0 disables")
+    update_username: str | None = Field(None, min_length=1, max_length=200, description="Username for authenticated update catalog/package downloads")
+    update_password: str | None = Field(None, min_length=1, max_length=500, description="Password for authenticated update catalog/package downloads")
 
 
 class ConfigResponse(BaseModel):
@@ -64,6 +66,8 @@ class ConfigResponse(BaseModel):
     show_operator_ready_message: bool
     job_monitor_poll_interval: float
     jog_pad_pause_hold_interval_ms: int
+    update_username: str
+    update_password_configured: bool
 
 
 def get_machine_ip() -> str:
@@ -102,6 +106,8 @@ async def get_config(request: Request):
                 "adapter_startup_delay_seconds": settings.adapter_startup_delay_seconds,
             }
 
+        persisted_config = get_persisted_config()
+
         return ConfigResponse(
             machine_number=settings.machine_number,
             job_done_report_url=settings.job_done_report_url,
@@ -125,6 +131,8 @@ async def get_config(request: Request):
             show_operator_ready_message=settings.show_operator_ready_message,
             job_monitor_poll_interval=settings.job_monitor_poll_interval,
             jog_pad_pause_hold_interval_ms=settings.jog_pad_pause_hold_interval_ms,
+            update_username=str(persisted_config.get("update_username", "") or ""),
+            update_password_configured=bool(persisted_config.get("update_password", "")),
         )
     except Exception as e:
         logger.error("Error getting configuration: %s", e)
@@ -295,6 +303,15 @@ async def update_config(request: Request, config: ConfigUpdate):
             changes.append(f"jog_pad_pause_hold_interval_ms: {old_value} -> {config.jog_pad_pause_hold_interval_ms}")
             logger.info("Updated jog_pad_pause_hold_interval_ms: %s -> %s", old_value, config.jog_pad_pause_hold_interval_ms)
 
+        # Update SVN/update credentials
+        if config.update_username is not None:
+            changes.append("update_username: updated")
+            logger.info("Updated update_username: %s", config.update_username)
+
+        if config.update_password is not None:
+            changes.append("update_password: updated")
+            logger.info("Updated update_password: configured")
+
         if task_config_changed:
             requested_run_as_user = (
                 config.run_as_windows_user
@@ -380,6 +397,10 @@ async def update_config(request: Request, config: ConfigUpdate):
             persist_dict["job_monitor_poll_interval"] = config.job_monitor_poll_interval
         if config.jog_pad_pause_hold_interval_ms is not None:
             persist_dict["jog_pad_pause_hold_interval_ms"] = config.jog_pad_pause_hold_interval_ms
+        if config.update_username is not None:
+            persist_dict["update_username"] = config.update_username
+        if config.update_password is not None:
+            persist_dict["update_password"] = config.update_password
 
         if persist_dict:
             if update_persisted_config(persist_dict):
