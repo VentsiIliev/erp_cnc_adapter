@@ -18,7 +18,7 @@ echo  Building Self-Contained Installer
 echo ========================================
 echo.
 
-REM Check PyQt5 is installed (build dependency — has 32-bit Windows wheels)
+REM Check PyQt5 is installed (build dependency - has 32-bit Windows wheels)
 "%VENV_PYTHON%" -c "import PyQt5" >nul 2>&1
 if %errorlevel% neq 0 (
     echo PyQt5 not found. Installing build dependency...
@@ -33,9 +33,10 @@ if %errorlevel% neq 0 (
 
 REM Step 1: Build the main application (skip pause so we continue automatically)
 echo Step 1: Building application...
+set "OUTER_BUILD_NO_PAUSE=%BUILD_NO_PAUSE%"
 set BUILD_NO_PAUSE=1
 call "%~dp0build.bat"
-set BUILD_NO_PAUSE=
+set "BUILD_NO_PAUSE=%OUTER_BUILD_NO_PAUSE%"
 if %errorlevel% neq 0 (
     echo ERROR: Failed to build application
     pause
