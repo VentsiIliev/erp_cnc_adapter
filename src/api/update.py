@@ -286,6 +286,8 @@ def _spawn_updater(exe_path: str, staged_path: str, package_kind: str | None = N
             SERVICE_NAME,
             "--package-kind",
             package_kind,
+            "--adapter-pid",
+            str(os.getpid()),
         ]
     else:
         worker = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "update_worker.py")
@@ -303,6 +305,8 @@ def _spawn_updater(exe_path: str, staged_path: str, package_kind: str | None = N
             SERVICE_NAME,
             "--package-kind",
             package_kind,
+            "--adapter-pid",
+            str(os.getpid()),
         ]
 
     logger.info("Spawning update worker: %s", command)

@@ -270,18 +270,29 @@ def _install_legacy_exe(staged_path: str, exe_path: str, current_version: str) -
     return backup_path
 
 
-def _stop_processes(exe_name: str) -> None:
+def _stop_processes(exe_name: str, adapter_pid: int | None = None) -> None:
     logger.info("Waiting 2 seconds for adapter to exit before force check")
     time.sleep(2)
-    try:
-        result = subprocess.run(["taskkill", "/F", "/IM", exe_name], capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            logger.info("Killed lingering adapter process(es): %s", result.stdout.strip())
-            time.sleep(1)
-        else:
-            logger.info("No lingering adapter processes found")
-    except Exception as exc:
-        logger.warning("Could not check lingering adapter processes: %s", exc)
+
+    current_pid = os.getpid()
+    if adapter_pid and adapter_pid != current_pid:
+        try:
+            result = subprocess.run(["taskkill", "/F", "/PID", str(adapter_pid)], capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                logger.info("Killed lingering adapter process pid=%s: %s", adapter_pid, result.stdout.strip())
+                time.sleep(1)
+            else:
+                logger.info("Adapter pid=%s was not running", adapter_pid)
+            return
+        except Exception as exc:
+            logger.warning("Could not check lingering adapter pid=%s: %s", adapter_pid, exc)
+            return
+
+    if adapter_pid == current_pid:
+        logger.warning("Skipping adapter process kill because target pid is update worker pid=%s", current_pid)
+        return
+
+    logger.warning("No adapter pid provided; skipping image-name kill for %s to avoid killing update worker", exe_name)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -290,6 +301,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--staged-path", required=True, help="Path to the staged update package or EXE")
     parser.add_argument("--service-name", default="ERPCNCAdapter", help="Windows service/task name")
     parser.add_argument("--package-kind", choices=("auto", "exe", "zip", "restore"), default="auto")
+    parser.add_argument("--adapter-pid", type=int, default=0, help="PID of adapter process that launched this worker")
     args = parser.parse_args(argv)
 
     exe_path = args.exe_path
@@ -298,6 +310,7 @@ def main(argv: list[str] | None = None) -> None:
     install_dir = os.path.dirname(exe_path)
     exe_name = os.path.basename(exe_path)
     package_kind = args.package_kind
+    adapter_pid = args.adapter_pid or None
     if package_kind == "auto":
         package_kind = "zip" if staged_path.lower().endswith(".zip") else "exe"
 
@@ -320,6 +333,7 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("Staged path: %s (%.2f MB)", staged_path, staged_size_mb)
     logger.info("Install dir: %s", install_dir)
     logger.info("Installation type: %s", install_type)
+    logger.info("Launcher adapter PID: %s; update worker PID: %s", adapter_pid, os.getpid())
     logger.info("=" * 70)
 
     try:
@@ -330,7 +344,7 @@ def main(argv: list[str] | None = None) -> None:
     backup_path = ""
     try:
         stop_adapter(service_name, exe_name, install_type)
-        _stop_processes(exe_name)
+        _stop_processes(exe_name, adapter_pid)
 
         if package_kind == "zip":
             logger.info("Installing full update package")

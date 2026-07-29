@@ -46,3 +46,52 @@ def test_restore_zip_removes_files_not_in_backup_without_manifest(tmp_path):
     assert (install_dir / "erp-cnc-adapter.exe").read_bytes() == b"old"
     assert not (install_dir / "new_only.txt").exists()
     assert (install_dir / "config.json").read_text(encoding="utf-8") == "local config"
+
+
+def test_stop_processes_kills_adapter_pid_without_image_name(monkeypatch):
+    from src import update_worker
+
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+
+        class Result:
+            returncode = 0
+            stdout = "SUCCESS"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(update_worker.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(update_worker.os, "getpid", lambda: 200)
+    monkeypatch.setattr(update_worker.subprocess, "run", fake_run)
+
+    update_worker._stop_processes("erp-cnc-adapter.exe", adapter_pid=100)
+
+    assert calls == [["taskkill", "/F", "/PID", "100"]]
+
+
+def test_stop_processes_does_not_kill_current_update_worker(monkeypatch):
+    from src import update_worker
+
+    calls = []
+    monkeypatch.setattr(update_worker.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(update_worker.os, "getpid", lambda: 200)
+    monkeypatch.setattr(update_worker.subprocess, "run", lambda args, **kwargs: calls.append(args))
+
+    update_worker._stop_processes("erp-cnc-adapter.exe", adapter_pid=200)
+
+    assert calls == []
+
+
+def test_stop_processes_without_pid_skips_image_name_kill(monkeypatch):
+    from src import update_worker
+
+    calls = []
+    monkeypatch.setattr(update_worker.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(update_worker.subprocess, "run", lambda args, **kwargs: calls.append(args))
+
+    update_worker._stop_processes("erp-cnc-adapter.exe", adapter_pid=None)
+
+    assert calls == []
