@@ -6,6 +6,7 @@ import shutil
 import ssl
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -275,8 +276,11 @@ def _spawn_updater(exe_path: str, staged_path: str, package_kind: str | None = N
     package_kind = package_kind or _package_kind(staged_path)
 
     if getattr(sys, "frozen", False):
+        temp_worker = os.path.join(tempfile.gettempdir(), f"erp-cnc-adapter-update-worker-{os.getpid()}.exe")
+        shutil.copy2(sys.executable, temp_worker)
+        logger.info("Copied update worker executable to temporary path: %s", temp_worker)
         command = [
-            sys.executable,
+            temp_worker,
             "--update-worker",
             "--exe-path",
             exe_path,

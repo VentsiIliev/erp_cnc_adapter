@@ -1,4 +1,4 @@
-"""Tests for src/api/update.py — update endpoints and helpers."""
+"""Tests for src/api/update.py - update endpoints and helpers."""
 
 import base64
 import os
@@ -172,6 +172,36 @@ async def update_client():
 # ---------------------------------------------------------------------------
 
 class TestLatestUpdateFlow:
+    def test_frozen_spawn_updater_runs_temp_worker_copy(self, monkeypatch):
+        from src.api import update
+
+        popen_calls = []
+        copy_calls = []
+
+        def fake_copy(source, destination):
+            copy_calls.append((source, destination))
+
+        def fake_popen(command, **kwargs):
+            popen_calls.append((command, kwargs))
+
+            class Process:
+                pid = 123
+
+            return Process()
+
+        monkeypatch.setattr(update.sys, "frozen", True, raising=False)
+        monkeypatch.setattr(update.sys, "executable", r"C:\Install\erp-cnc-adapter.exe")
+        monkeypatch.setattr(update.os, "getpid", lambda: 456)
+        monkeypatch.setattr(update.tempfile, "gettempdir", lambda: r"C:\Temp")
+        monkeypatch.setattr(update.shutil, "copy2", fake_copy)
+        monkeypatch.setattr(update.subprocess, "Popen", fake_popen)
+
+        update._spawn_updater(r"C:\Install\erp-cnc-adapter.exe", r"C:\Install\staged-update.zip", "zip")
+
+        temp_worker = r"C:\Temp\erp-cnc-adapter-update-worker-456.exe"
+        assert copy_calls == [(r"C:\Install\erp-cnc-adapter.exe", temp_worker)]
+        assert popen_calls[0][0][0] == temp_worker
+        assert popen_calls[0][0][2:4] == ["--exe-path", r"C:\Install\erp-cnc-adapter.exe"]
 
     def test_update_tls_verification_disabled_by_default(self, monkeypatch):
         from src.api.update import _verify_update_tls

@@ -31,6 +31,29 @@ def test_full_package_install_removes_obsolete_files_and_preserves_local_config(
     assert (install_dir / "logs" / "adapter.log").read_text(encoding="utf-8") == "keep log"
 
 
+def test_full_package_install_preserves_generated_launcher_scripts(tmp_path):
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    (install_dir / "erp-cnc-adapter.exe").write_bytes(b"old")
+    scripts_dir = install_dir / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "launch_adapter_hidden.vbs").write_text("generated vbs", encoding="utf-8")
+    (scripts_dir / "start_cnc_feedback.ps1").write_text("generated ps1", encoding="utf-8")
+    (scripts_dir / "old_managed.bat").write_text("remove me", encoding="utf-8")
+
+    payload = tmp_path / "payload"
+    payload.mkdir()
+    (payload / "erp-cnc-adapter.exe").write_bytes(b"new")
+    (payload / "VERSION.txt").write_text("Version: 1.0.10\n", encoding="utf-8")
+    package = create_package(payload, "1.0.10", tmp_path / "update.zip")
+
+    _install_zip_payload(str(package), str(install_dir), verify_manifest=True)
+
+    assert (scripts_dir / "launch_adapter_hidden.vbs").read_text(encoding="utf-8") == "generated vbs"
+    assert (scripts_dir / "start_cnc_feedback.ps1").read_text(encoding="utf-8") == "generated ps1"
+    assert not (scripts_dir / "old_managed.bat").exists()
+
+
 def test_restore_zip_removes_files_not_in_backup_without_manifest(tmp_path):
     install_dir = tmp_path / "install"
     install_dir.mkdir()

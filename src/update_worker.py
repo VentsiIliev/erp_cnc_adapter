@@ -32,6 +32,9 @@ PRESERVE_PATTERNS = (
     "logs/*",
     "backups/*",
     "staged-update.*",
+    "scripts/*.vbs",
+    "scripts/start_cnc_feedback.ps1",
+    "scripts/start_eding_handoff.ps1",
 )
 
 
