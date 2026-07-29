@@ -30,6 +30,7 @@ class FakeCncClient:
         self._job_status = _default_job_status()
         self._load_job_rc = 0
         self._run_job_rc = 0
+        self.run_job_calls = 0
         self._pause_job_rc = 0
         self.pause_job_calls = 0
         self._reset_rc = 0
@@ -130,6 +131,7 @@ class FakeCncClient:
         return 0  # Always succeed in tests
 
     def run_job(self) -> int:
+        self.run_job_calls += 1
         return self._run_job_rc
 
     def pause_job(self) -> int:
@@ -263,6 +265,7 @@ def _build_test_app(fake_client: FakeCncClient, manager: ConnectionManager, sett
     job_monitor_mock._was_running = False  # Not running by default
     job_monitor_mock._job_info = {}
     services.job_monitor = job_monitor_mock
+    services.physical_button_service = MagicMock()
 
     # Add last_loaded_job storage
     services.last_loaded_job = None

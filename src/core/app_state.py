@@ -24,6 +24,7 @@ from src.cnc.connection_manager import ConnectionManager
 from src.cnc.mock_cnc_client import MockCncClient
 from src.cnc.unavailable_cnc_client import UnavailableCncClient
 from src.cnc.job_monitor import JobMonitor
+from src.cnc.physical_button_monitor import PhysicalButtonService
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,20 @@ class AppState:
         logger.info("CNC client initialized (connection managed by ConnectionManager)")
         logger.info("Job monitor initialized (will start with application)")
         logger.info("Startup timing: JobMonitor created in %.1fms", (time.perf_counter() - job_monitor_start) * 1000)
+
+        physical_button_start = time.perf_counter()
+        self.physical_button_service = PhysicalButtonService(
+            self.cnc_client,
+            poll_interval_ms=settings.physical_button_poll_interval_ms,
+        )
+        logger.info(
+            "Physical button monitor initialized (poll interval: %sms)",
+            settings.physical_button_poll_interval_ms,
+        )
+        logger.info(
+            "Startup timing: PhysicalButtonService created in %.1fms",
+            (time.perf_counter() - physical_button_start) * 1000,
+        )
         logger.info("Startup timing: AppState init completed in %.1fms", (time.perf_counter() - init_start) * 1000)
 
         # Safety net: disconnect even on unhandled crashes
@@ -286,6 +301,11 @@ class AppState:
         asyncio.create_task(self.job_monitor.start_monitoring())
         logger.info("Job monitor started - watching for job state changes")
         logger.info("Startup timing: JobMonitor start task scheduled in %.1fms", (time.perf_counter() - monitor_start) * 1000)
+
+        physical_button_start = time.perf_counter()
+        asyncio.create_task(self.physical_button_service.start_monitoring())
+        logger.info("Physical button monitor started - watching RUN/PAUSE inputs")
+        logger.info("Startup timing: PhysicalButtonService start task scheduled in %.1fms", (time.perf_counter() - physical_button_start) * 1000)
         logger.info("Startup timing: AppState.start completed in %.1fms gui_started=%s", (time.perf_counter() - start_begin) * 1000, gui_started)
 
     async def _start_connection_manager_after_gui_delay(self) -> None:
@@ -303,6 +323,10 @@ class AppState:
         if self.job_monitor is not None and self.job_monitor.is_monitoring:
             logger.info("Stopping job monitor...")
             await self.job_monitor.stop_monitoring()
+
+        if self.physical_button_service is not None and self.physical_button_service.is_monitoring:
+            logger.info("Stopping physical button monitor...")
+            await self.physical_button_service.stop_monitoring()
 
         logger.info("Disconnecting CNC client...")
         self.cnc_client.disconnect()

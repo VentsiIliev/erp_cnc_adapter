@@ -1,4 +1,4 @@
-"""Tests for src/core/app_state.py — AppState lifecycle and PID management."""
+"""Tests for src/core/app_state.py â€” AppState lifecycle and PID management."""
 
 import os
 from unittest.mock import patch, MagicMock
@@ -363,7 +363,7 @@ class TestAppStateLifecycle:
         mock_gui_start.assert_called_once_with(r"C:\CNC\cncapi.dll", r"DOMAIN\adapter")
         mock_server_start.assert_not_called()
         state.connection_manager.start.assert_not_called()
-        assert mock_create_task.call_count == 2
+        assert mock_create_task.call_count == 3
         for call in mock_create_task.call_args_list:
             call.args[0].close()
 
@@ -411,9 +411,10 @@ class TestAppStateLifecycle:
         with patch("asyncio.create_task") as mock_create_task:
             state.start()
             state.connection_manager.start.assert_called_once()
-            # Verify job monitor start_monitoring was called via create_task
-            mock_create_task.assert_called_once()
-            mock_create_task.call_args.args[0].close()
+            # Verify job monitor and physical button monitor are scheduled via create_task
+            assert mock_create_task.call_count == 2
+            for call in mock_create_task.call_args_list:
+                call.args[0].close()
 
     @patch("src.core.app_state._write_pid_file")
     @patch("src.core.app_state._kill_stale_adapter")

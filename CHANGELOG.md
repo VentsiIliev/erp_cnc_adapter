@@ -57,6 +57,10 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.0.17 - 2026-07-29
+
+- Moved physical RUN/PAUSE button handling from the jog pad into the adapter backend, so the operator buttons keep working even when the jog pad is closed.
+
 ## v1.0.1 - 2026-07-29
 
 - Added read-only physical RUN/PAUSE button diagnostics through `/api/cnc/physical-buttons`.
@@ -70,6 +74,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 

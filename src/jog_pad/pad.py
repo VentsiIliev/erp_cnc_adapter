@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from .button_monitor import PhysicalButtonMonitor, PhysicalButtonMonitorUpdate
+from .button_monitor import PhysicalButtonMonitor
 from .client import AdapterJogClient
 from .config import POSITION_ERROR_DISPLAY_THRESHOLD, THEME, JogPadTheme, resolve_jogpad_icon_path, resolve_reset_icon_path
 from .widgets import (
@@ -634,15 +634,8 @@ class JogPad(QWidget):
     def on_physical_button_status(self, payload: dict) -> None:
         update = self.physical_button_monitor.update(payload)
         self._update_physical_button_indicators(update.indicators)
-        self._dispatch_physical_button_actions(update)
         print(update.log_message)
 
-    def _dispatch_physical_button_actions(self, update: PhysicalButtonMonitorUpdate) -> None:
-        for action in update.actions:
-            if action == PhysicalButtonMonitor.ACTION_START_JOB:
-                self.action_start_job_from_physical_button()
-            elif action == PhysicalButtonMonitor.ACTION_PAUSE_JOB:
-                self.action_pause_job_from_physical_button()
 
     def on_physical_button_error(self, message: str) -> None:
         print(f"Physical button read failed: {message}")
@@ -811,19 +804,6 @@ class JogPad(QWidget):
             self.adapter_client.reset,
         )
 
-    def action_start_job_from_physical_button(self) -> None:
-        """Start/resume the loaded job from the physical RUN button."""
-        self.command_sender.submit(
-            "physical RUN start job",
-            self.adapter_client.start_job,
-        )
-
-    def action_pause_job_from_physical_button(self) -> None:
-        """Pause the loaded job from the physical PAUSE button."""
-        self.command_sender.submit(
-            "physical PAUSE pause job",
-            self.adapter_client.pause_job,
-        )
 
     def action_speed_changed(self, speed_percent: float) -> None:
         """Called whenever the speed slider changes."""

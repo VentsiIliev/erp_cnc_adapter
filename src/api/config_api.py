@@ -38,6 +38,7 @@ class ConfigUpdate(BaseModel):
     show_operator_ready_message: bool | None = Field(None, description="Show a desktop ready message when GUI auto-start is disabled")
     job_monitor_poll_interval: float | None = Field(None, ge=0.1, le=60.0, description="Seconds between job monitor status checks")
     jog_pad_pause_hold_interval_ms: int | None = Field(None, ge=0, le=10000, description="Milliseconds between jog-pad pause hold requests; 0 disables")
+    physical_button_poll_interval_ms: int | None = Field(None, ge=20, le=10000, description="Milliseconds between backend physical RUN/PAUSE input checks")
     update_username: str | None = Field(None, min_length=1, max_length=200, description="Username for authenticated update catalog/package downloads")
     update_password: str | None = Field(None, min_length=1, max_length=500, description="Password for authenticated update catalog/package downloads")
 
@@ -66,6 +67,7 @@ class ConfigResponse(BaseModel):
     show_operator_ready_message: bool
     job_monitor_poll_interval: float
     jog_pad_pause_hold_interval_ms: int
+    physical_button_poll_interval_ms: int
     update_username: str
     update_password_configured: bool
 
@@ -131,6 +133,7 @@ async def get_config(request: Request):
             show_operator_ready_message=settings.show_operator_ready_message,
             job_monitor_poll_interval=settings.job_monitor_poll_interval,
             jog_pad_pause_hold_interval_ms=settings.jog_pad_pause_hold_interval_ms,
+            physical_button_poll_interval_ms=settings.physical_button_poll_interval_ms,
             update_username=str(persisted_config.get("update_username", "") or ""),
             update_password_configured=bool(persisted_config.get("update_password", "")),
         )
@@ -303,6 +306,17 @@ async def update_config(request: Request, config: ConfigUpdate):
             changes.append(f"jog_pad_pause_hold_interval_ms: {old_value} -> {config.jog_pad_pause_hold_interval_ms}")
             logger.info("Updated jog_pad_pause_hold_interval_ms: %s -> %s", old_value, config.jog_pad_pause_hold_interval_ms)
 
+        # Update backend physical button poll interval
+        if config.physical_button_poll_interval_ms is not None:
+            old_value = settings.physical_button_poll_interval_ms
+            settings.physical_button_poll_interval_ms = config.physical_button_poll_interval_ms
+            changes.append(f"physical_button_poll_interval_ms: {old_value} -> {config.physical_button_poll_interval_ms}")
+            logger.info("Updated physical_button_poll_interval_ms: %s -> %s", old_value, config.physical_button_poll_interval_ms)
+
+            if hasattr(services, "physical_button_service") and services.physical_button_service is not None:
+                services.physical_button_service._poll_interval = max(0.01, config.physical_button_poll_interval_ms / 1000.0)
+                logger.info("Updated active physical button monitor poll interval")
+
         # Update SVN/update credentials
         if config.update_username is not None:
             changes.append("update_username: updated")
@@ -397,6 +411,8 @@ async def update_config(request: Request, config: ConfigUpdate):
             persist_dict["job_monitor_poll_interval"] = config.job_monitor_poll_interval
         if config.jog_pad_pause_hold_interval_ms is not None:
             persist_dict["jog_pad_pause_hold_interval_ms"] = config.jog_pad_pause_hold_interval_ms
+        if config.physical_button_poll_interval_ms is not None:
+            persist_dict["physical_button_poll_interval_ms"] = config.physical_button_poll_interval_ms
         if config.update_username is not None:
             persist_dict["update_username"] = config.update_username
         if config.update_password is not None:
@@ -423,4 +439,3 @@ async def update_config(request: Request, config: ConfigUpdate):
             "message": f"Error updating configuration: {str(e)}",
             "changes": []
         }
-

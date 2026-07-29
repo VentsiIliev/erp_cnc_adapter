@@ -528,11 +528,9 @@ def test_jog_pad_has_temp_physical_button_indicators():
     assert "PhysicalButtonMonitor" in text
     assert "self.physical_button_monitor.update(payload)" in text
     assert "self._update_physical_button_indicators(update.indicators)" in text
-    assert "self._dispatch_physical_button_actions(update)" in text
-    assert "action_start_job_from_physical_button" in text
-    assert "action_pause_job_from_physical_button" in text
-    assert "self.adapter_client.start_job" in text
-    assert "self.adapter_client.pause_job" in text
+    assert "self._dispatch_physical_button_actions(update)" not in text
+    assert "action_start_job_from_physical_button" not in text
+    assert "action_pause_job_from_physical_button" not in text
 
 
 def test_jog_pad_has_visible_command_status_for_failures():
