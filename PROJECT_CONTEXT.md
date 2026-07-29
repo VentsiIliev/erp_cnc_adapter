@@ -274,3 +274,10 @@ Compile-check changed Python files:
 - User wants monitor/dashboard behavior compact and operational.
 - User cares more about daily START-CNC speed than one-time installation speed.
 - When something fails on the machine, surface messages to the operator UI, not only logs.
+
+## Future Update Strategy
+
+Current dashboard update flow replaces only `erp-cnc-adapter.exe`. It does not update installed `scripts/`, external `resources/`, task definitions, docs, `VERSION.txt`, or other payload files. Keep this in mind when a release changes runtime resources or installer/runtime scripts.
+
+Future direction: use SVN tags/releases as the source of truth for deployed update packages. A release should be built from a tag such as `/tags/v1.0.2`, include the full runtime payload plus a manifest with version/files/checksums/install actions, and preserve machine-local files such as `config.json` and logs during installation. This would let Git and SVN tags represent the same known release and avoid updating machines with only a standalone EXE swap.
+

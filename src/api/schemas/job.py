@@ -208,9 +208,6 @@ class CncPhysicalButtonStatusResponse(BaseModel):
     pause_raw: int = Field(alias="pauseRaw")
     run_logical: int = Field(default=0, alias="runLogical")
     pause_logical: int = Field(default=0, alias="pauseLogical")
-    feed_hold_active: bool = Field(alias="feedHoldActive")
-    safety_input_value: int = Field(alias="safetyInputValue")
-    motion_enabled: bool = Field(alias="motionEnabled")
 
     model_config = {"populate_by_name": True}
 

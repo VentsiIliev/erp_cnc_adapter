@@ -210,20 +210,15 @@ class CncClient:
         pause_logical = int(self._dll.CncGetInput(CNC_IOID_PAUSE_IN))
         run_raw = int(self._dll.CncGetInputRaw(CNC_IOID_RUN_IN))
         pause_raw = int(self._dll.CncGetInputRaw(CNC_IOID_PAUSE_IN))
-        motion = self._dll.CncGetMotionStatus().contents
-        controller = self._dll.CncGetControllerStatus().contents
         return {
-            # On the tested Eding setup RUN is active-low: released raw=1, pressed raw=0.
-            # PAUSE follows the DLL logical value correctly, so keep it as reported.
-            "runInput": run_raw == 0,
+            # RUN appears to report the released/closed-circuit state on the tested setup.
+            # Keep the API value as the DLL reports it; the jog pad indicator interprets transitions.
+            "runInput": run_logical == 1,
             "pauseInput": pause_logical == 1,
             "runRaw": run_raw,
             "pauseRaw": pause_raw,
             "runLogical": run_logical,
             "pauseLogical": pause_logical,
-            "feedHoldActive": int(motion.feedHoldActive) == 1,
-            "safetyInputValue": int(motion.safetyInputValue),
-            "motionEnabled": int(controller.motionEnabled) == 1,
         }
 
     def get_all_axes_homed(self) -> bool:

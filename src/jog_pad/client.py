@@ -41,6 +41,9 @@ class AdapterJogClient:
     def clear_cnc_messages(self) -> dict:
         return self._post_json("/api/cnc/messages/clear", None, timeout_seconds=min(self.timeout_seconds, 1.0))
 
+    def start_job(self) -> dict:
+        return self._get_json("/api/cnc/job/start", timeout_seconds=max(self.timeout_seconds, 5.0))
+
     def pause_job(self) -> dict:
         return self._post_json("/api/cnc/job/pause", None, timeout_seconds=max(self.timeout_seconds, 25.0))
 

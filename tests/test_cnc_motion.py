@@ -22,13 +22,10 @@ async def test_physical_buttons_endpoint_returns_cnc_input_status(client, fake_c
     fake_client._physical_button_status = {
         "runInput": True,
         "pauseInput": False,
-        "runRaw": 0,
+        "runRaw": 1,
         "pauseRaw": 1,
-        "runLogical": 0,
+        "runLogical": 1,
         "pauseLogical": 0,
-        "feedHoldActive": True,
-        "safetyInputValue": 0,
-        "motionEnabled": True,
     }
 
     response = await client.get("/api/cnc/physical-buttons")
@@ -39,13 +36,10 @@ async def test_physical_buttons_endpoint_returns_cnc_input_status(client, fake_c
         "message": "CNC physical button status read successfully",
         "runInput": True,
         "pauseInput": False,
-        "runRaw": 0,
+        "runRaw": 1,
         "pauseRaw": 1,
-        "runLogical": 0,
+        "runLogical": 1,
         "pauseLogical": 0,
-        "feedHoldActive": True,
-        "safetyInputValue": 0,
-        "motionEnabled": True,
     }
 
 

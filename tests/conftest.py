@@ -46,9 +46,6 @@ class FakeCncClient:
             "pauseRaw": 1,
             "runLogical": 1,
             "pauseLogical": 0,
-            "feedHoldActive": False,
-            "safetyInputValue": 0,
-            "motionEnabled": True,
         }
         self._home_all_axes_rc = 0
         self.home_all_axes_calls = 0

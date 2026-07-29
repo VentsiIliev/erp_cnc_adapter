@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt5.QtCore import QPointF, QRectF, Qt, pyqtSignal
+from PyQt5.QtCore import QEvent, QPointF, QRectF, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
@@ -37,8 +37,31 @@ class ArrowJogButton(QPushButton):
         self.setFixedSize(72, 68)
         self.setCursor(Qt.PointingHandCursor)
         self.setFocusPolicy(Qt.NoFocus)
+        self.setAttribute(Qt.WA_AcceptTouchEvents, True)
+        self._touch_active = False
         self.setToolTip(f"Jog {label}")
         self.setStyleSheet("QPushButton { border: none; background: transparent; }")
+
+    def event(self, event) -> bool:  # noqa: A003, N802 - Qt naming
+        if event.type() == QEvent.TouchBegin:
+            if not self._touch_active:
+                self._touch_active = True
+                self.setDown(True)
+                self.pressed.emit()
+                self.update()
+            event.accept()
+            return True
+
+        if event.type() in (QEvent.TouchEnd, QEvent.TouchCancel):
+            if self._touch_active:
+                self._touch_active = False
+                self.setDown(False)
+                self.released.emit()
+                self.update()
+            event.accept()
+            return True
+
+        return super().event(event)
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt naming
         painter = QPainter(self)

@@ -16,9 +16,6 @@ class MockCncClient:
             "pauseRaw": 1,
             "runLogical": 1,
             "pauseLogical": 0,
-            "feedHoldActive": False,
-            "safetyInputValue": 0,
-            "motionEnabled": True,
         }
         logger.warning("Using MockCncClient - no real CNC hardware")
 

@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from .button_monitor import PhysicalButtonMonitor, PhysicalButtonMonitorUpdate
 from .client import AdapterJogClient
 from .config import POSITION_ERROR_DISPLAY_THRESHOLD, THEME, JogPadTheme, resolve_jogpad_icon_path, resolve_reset_icon_path
 from .widgets import (
@@ -74,6 +75,7 @@ class JogPad(QWidget):
         self.physical_button_poller = self._create_physical_button_poller()
         self.pause_hold_interval_ms = max(0, int(pause_hold_interval_ms))
         self._pause_hold_active = False
+        self.physical_button_monitor = PhysicalButtonMonitor()
         self.pause_hold_thread = self._create_pause_hold_thread()
         self._background_threads_started = False
         self.selected_step: Optional[float] = self.CONTINUOUS
@@ -130,6 +132,7 @@ class JogPad(QWidget):
             self.position_poller.wait(1000)
         self._background_threads_started = False
         self._pause_hold_active = False
+        self.physical_button_monitor.reset()
 
     def stop_pause_hold_thread(self) -> None:
         self.stop_background_threads()
@@ -182,8 +185,6 @@ class JogPad(QWidget):
         for key, label_text in (
             ("runInput", "RUN"),
             ("pauseInput", "PAUSE"),
-            ("feedHoldActive", "HOLD"),
-            ("motionEnabled", "MOTION"),
         ):
             indicator = QLabel(label_text)
             indicator.setObjectName("physicalButtonIndicator")
@@ -631,19 +632,17 @@ class JogPad(QWidget):
             indicator.setStyleSheet(f"background: {background}; border-color: {border}; color: {color};")
 
     def on_physical_button_status(self, payload: dict) -> None:
-        self._update_physical_button_indicators(payload)
-        print(
-            "Physical buttons: "
-            f"run={payload.get('runInput')} "
-            f"pause={payload.get('pauseInput')} "
-            f"runRaw={payload.get('runRaw')} "
-            f"pauseRaw={payload.get('pauseRaw')} "
-            f"runLogical={payload.get('runLogical')} "
-            f"pauseLogical={payload.get('pauseLogical')} "
-            f"feedHoldActive={payload.get('feedHoldActive')} "
-            f"motionEnabled={payload.get('motionEnabled')} "
-            f"safetyInputValue={payload.get('safetyInputValue')}"
-        )
+        update = self.physical_button_monitor.update(payload)
+        self._update_physical_button_indicators(update.indicators)
+        self._dispatch_physical_button_actions(update)
+        print(update.log_message)
+
+    def _dispatch_physical_button_actions(self, update: PhysicalButtonMonitorUpdate) -> None:
+        for action in update.actions:
+            if action == PhysicalButtonMonitor.ACTION_START_JOB:
+                self.action_start_job_from_physical_button()
+            elif action == PhysicalButtonMonitor.ACTION_PAUSE_JOB:
+                self.action_pause_job_from_physical_button()
 
     def on_physical_button_error(self, message: str) -> None:
         print(f"Physical button read failed: {message}")
@@ -810,6 +809,20 @@ class JogPad(QWidget):
         self.command_sender.submit(
             "reset",
             self.adapter_client.reset,
+        )
+
+    def action_start_job_from_physical_button(self) -> None:
+        """Start/resume the loaded job from the physical RUN button."""
+        self.command_sender.submit(
+            "physical RUN start job",
+            self.adapter_client.start_job,
+        )
+
+    def action_pause_job_from_physical_button(self) -> None:
+        """Pause the loaded job from the physical PAUSE button."""
+        self.command_sender.submit(
+            "physical PAUSE pause job",
+            self.adapter_client.pause_job,
         )
 
     def action_speed_changed(self, speed_percent: float) -> None:

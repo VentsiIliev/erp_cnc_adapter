@@ -12,6 +12,7 @@ def jog_pad_source() -> str:
         "client.py",
         "workers.py",
         "widgets.py",
+        "button_monitor.py",
         "pad.py",
         "app.py",
     )
@@ -135,6 +136,28 @@ def test_pause_job_posts_adapter_pause_endpoint(monkeypatch):
         "timeout": 25.0,
         "data": None,
         "method": "POST",
+    }
+
+
+def test_start_job_gets_adapter_start_endpoint(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["timeout"] = timeout
+        captured["method"] = request.get_method()
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    client = AdapterJogClient("http://127.0.0.1:8765/", timeout_seconds=1.25)
+    response = client.start_job()
+
+    assert response == {"status": 0, "message": "ok"}
+    assert captured == {
+        "url": "http://127.0.0.1:8765/api/cnc/job/start",
+        "timeout": 5.0,
+        "method": "GET",
     }
 
 
@@ -499,10 +522,17 @@ def test_jog_pad_has_temp_physical_button_indicators():
     assert "self.physical_button_indicators" in text
     assert '("runInput", "RUN")' in text
     assert '("pauseInput", "PAUSE")' in text
-    assert '("feedHoldActive", "HOLD")' in text
-    assert '("motionEnabled", "MOTION")' in text
+    assert '("feedHoldActive", "HOLD")' not in text
+    assert '("motionEnabled", "MOTION")' not in text
     assert "def _update_physical_button_indicators" in text
-    assert "self._update_physical_button_indicators(payload)" in text
+    assert "PhysicalButtonMonitor" in text
+    assert "self.physical_button_monitor.update(payload)" in text
+    assert "self._update_physical_button_indicators(update.indicators)" in text
+    assert "self._dispatch_physical_button_actions(update)" in text
+    assert "action_start_job_from_physical_button" in text
+    assert "action_pause_job_from_physical_button" in text
+    assert "self.adapter_client.start_job" in text
+    assert "self.adapter_client.pause_job" in text
 
 
 def test_jog_pad_has_visible_command_status_for_failures():

@@ -80,9 +80,6 @@ async def get_physical_button_status(
         pauseRaw=int(status.get("pauseRaw", 0)),
         runLogical=int(status.get("runLogical", 0)),
         pauseLogical=int(status.get("pauseLogical", 0)),
-        feedHoldActive=bool(status.get("feedHoldActive", False)),
-        safetyInputValue=int(status.get("safetyInputValue", 0)),
-        motionEnabled=bool(status.get("motionEnabled", False)),
     )
 
 
