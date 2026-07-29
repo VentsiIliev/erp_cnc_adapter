@@ -1,6 +1,9 @@
 """Tests for src/api/update.py — update endpoints and helpers."""
 
+import base64
 import os
+import urllib.error
+import urllib.request
 from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
@@ -165,6 +168,147 @@ async def update_client():
 
 
 # ---------------------------------------------------------------------------
+# GET /api/update/check and POST /api/update/apply-latest
+# ---------------------------------------------------------------------------
+
+class TestLatestUpdateFlow:
+
+    def test_update_tls_verification_disabled_by_default(self, monkeypatch):
+        from src.api.update import _verify_update_tls
+
+        monkeypatch.delenv("ERP_CNC_UPDATE_VERIFY_TLS", raising=False)
+
+        assert _verify_update_tls() is False
+
+    def test_update_tls_verification_can_be_enabled(self, monkeypatch):
+        from src.api.update import _verify_update_tls
+
+        monkeypatch.setenv("ERP_CNC_UPDATE_VERIFY_TLS", "1")
+
+        assert _verify_update_tls() is True
+
+    def test_update_credentials_from_environment(self, monkeypatch):
+        from src.api.update import _update_credentials
+
+        monkeypatch.setenv("ERP_CNC_UPDATE_USERNAME", "svn-user")
+        monkeypatch.setenv("ERP_CNC_UPDATE_PASSWORD", "svn-pass")
+
+        assert _update_credentials() == ("svn-user", "svn-pass")
+
+    def test_update_credentials_from_config_file(self, monkeypatch, tmp_path):
+        from src.api.update import _update_credentials
+
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            '{"update_username": "config-user", "update_password": "config-pass"}',
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("ERP_CNC_UPDATE_USERNAME", raising=False)
+        monkeypatch.delenv("ERP_CNC_UPDATE_PASSWORD", raising=False)
+        monkeypatch.setattr("src.api.update._get_project_root", lambda: str(tmp_path))
+
+        assert _update_credentials() == ("config-user", "config-pass")
+
+    def test_update_auth_header_uses_basic_auth(self, monkeypatch):
+        from src.api.update import _add_update_auth_header
+
+        monkeypatch.setenv("ERP_CNC_UPDATE_USERNAME", "svn-user")
+        monkeypatch.setenv("ERP_CNC_UPDATE_PASSWORD", "svn-pass")
+        request = urllib.request.Request("https://server/latest.json", method="GET")
+
+        _add_update_auth_header(request)
+
+        expected = base64.b64encode(b"svn-user:svn-pass").decode("ascii")
+        assert request.get_header("Authorization") == f"Basic {expected}"
+
+    def test_read_remote_json_accepts_utf8_bom(self):
+        from src.api.update import _read_remote_json
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b"\xef\xbb\xbf{\"version\": \"1.0.3\", \"package_url\": \"https://server/update.zip\"}"
+
+        with patch("src.api.update._urlopen_update", return_value=FakeResponse()):
+            data = _read_remote_json("https://server/latest.json")
+
+        assert data["version"] == "1.0.3"
+
+    async def test_check_reports_update_available(self, update_client):
+        latest = {"version": "999.0.0", "package_url": "https://server/update.zip", "manifest_url": "https://server/manifest.json"}
+        with patch("src.api.update._read_remote_json", return_value=latest):
+            resp = await update_client.get("/api/update/check")
+
+        body = resp.json()
+        assert body["status"] == 0
+        assert body["update_available"] is True
+        assert body["latest_version"] == "999.0.0"
+        assert body["package_url"] == "https://server/update.zip"
+
+    async def test_check_reports_no_update_when_same_version(self, update_client):
+        from version import VERSION
+        latest = {"version": VERSION, "package_url": "https://server/update.zip"}
+        with patch("src.api.update._read_remote_json", return_value=latest):
+            resp = await update_client.get("/api/update/check")
+
+        body = resp.json()
+        assert body["status"] == 0
+        assert body["update_available"] is False
+        assert "no update" in body["message"].lower()
+
+    async def test_check_failure_returns_status_1(self, update_client):
+        with patch("src.api.update._read_remote_json", side_effect=RuntimeError("offline")):
+            resp = await update_client.get("/api/update/check")
+
+        body = resp.json()
+        assert body["status"] == 1
+        assert "offline" in body["message"]
+
+    async def test_check_401_mentions_credentials(self, update_client):
+        error = urllib.error.HTTPError("https://server/latest.json", 401, "Unauthorized", None, None)
+        with patch("src.api.update._read_remote_json", side_effect=error):
+            resp = await update_client.get("/api/update/check")
+
+        body = resp.json()
+        assert body["status"] == 1
+        assert "requires credentials" in body["message"]
+        assert "ERP_CNC_UPDATE_USERNAME" in body["message"]
+
+    async def test_apply_latest_downloads_zip_and_spawns_update(self, update_client):
+        latest = {"version": "999.0.0", "package_url": "https://server/update.zip"}
+        with patch("src.api.update._read_remote_json", return_value=latest), \
+             patch("src.api.update._download_remote_file", return_value=b"PK-update"), \
+             patch("src.api.update._get_exe_path", return_value=r"C:\Install\erp-cnc-adapter.exe"), \
+             patch("src.api.update._get_exe_dir", return_value=r"C:\Install"), \
+             patch("src.api.update.os.makedirs"), \
+             patch("builtins.open", MagicMock()), \
+             patch("src.api.update._rotate_backups"), \
+             patch("src.api.update._spawn_updater") as spawn:
+            resp = await update_client.post("/api/update/apply-latest")
+
+        body = resp.json()
+        assert body["status"] == 0
+        assert "999.0.0" in body["message"]
+        assert spawn.call_args.args[1] == r"C:\Install\staged-update.zip"
+        assert spawn.call_args.args[2] == "zip"
+
+    async def test_apply_latest_refuses_when_no_newer_version(self, update_client):
+        from version import VERSION
+        latest = {"version": VERSION, "package_url": "https://server/update.zip"}
+        with patch("src.api.update._read_remote_json", return_value=latest):
+            resp = await update_client.post("/api/update/apply-latest")
+
+        body = resp.json()
+        assert body["status"] == 1
+        assert "no update" in body["message"].lower()
+
+
+# ---------------------------------------------------------------------------
 # POST /api/update (upload_update)
 # ---------------------------------------------------------------------------
 
@@ -177,7 +321,7 @@ class TestUploadUpdate:
         )
         body = resp.json()
         assert body["status"] == 1
-        assert ".exe" in body["message"].lower()
+        assert ".zip" in body["message"].lower()
 
     async def test_rejects_empty_file(self, update_client):
         resp = await update_client.post(
@@ -201,6 +345,24 @@ class TestUploadUpdate:
             )
             body = resp.json()
             assert body["status"] == 0
+
+    async def test_accepts_full_zip_package(self, update_client):
+        with patch("src.api.update._get_exe_path", return_value=r"C:\Install\erp-cnc-adapter.exe"), \
+             patch("src.api.update._get_exe_dir", return_value=r"C:\Install"), \
+             patch("src.api.update.os.makedirs"), \
+             patch("builtins.open", MagicMock()), \
+             patch("src.api.update._rotate_backups"), \
+             patch("src.api.update._spawn_updater") as spawn:
+            resp = await update_client.post(
+                "/api/update",
+                files={"file": ("erp-cnc-adapter-update-v1.0.2.ZIP", b"PK" + b"\x00" * 100, "application/zip")},
+            )
+
+        body = resp.json()
+        assert body["status"] == 0
+        assert spawn.call_args.args[1] == r"C:\Install\staged-update.zip"
+        assert spawn.call_args.args[2] == "zip"
+
 
     async def test_write_oserror(self, update_client):
         with patch("src.api.update._get_exe_path", return_value=r"C:\Install\erp-cnc-adapter.exe"), \
@@ -260,6 +422,7 @@ class TestUploadUpdate:
         assert resp.json()["status"] == 0
         command_args = spawn.call_args.args
         assert r"C:\Install\config.json" not in command_args
+        assert command_args[2] == "exe"
 
     async def test_rejects_empty_filename(self, update_client):
         """Empty string filename results in rejection (422 or status=1)."""
@@ -315,6 +478,20 @@ class TestRollback:
             resp = await update_client.post("/api/update/rollback")
             body = resp.json()
             assert body["status"] == 0
+
+    async def test_full_backup_rollback_uses_zip_worker(self, update_client):
+        backup = BackupInfo(filename="install-backup-v1.0.1.20260729_100000.zip", timestamp="20260729_100000", size_mb=5.0)
+        with patch("src.api.update._list_backups", return_value=[backup]), \
+             patch("src.api.update._get_exe_path", return_value=r"C:\Install\erp-cnc-adapter.exe"), \
+             patch("src.api.update._get_exe_dir", return_value=r"C:\Install"), \
+             patch("src.api.update.os.path.exists", return_value=True), \
+             patch("src.api.update.shutil.copy2"), \
+             patch("src.api.update._spawn_updater") as spawn:
+            resp = await update_client.post("/api/update/rollback")
+
+        assert resp.json()["status"] == 0
+        assert spawn.call_args.args[1] == r"C:\Install\staged-update.zip"
+        assert spawn.call_args.args[2] == "restore"
 
 
 # ---------------------------------------------------------------------------

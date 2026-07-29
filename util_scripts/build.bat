@@ -131,6 +131,14 @@ echo.
 echo ================================================================
 ) > "%DIST_FOLDER%\README.txt"
 
+echo   Creating full update package...
+"%VENV_PYTHON%" util_scripts\create_update_package.py --payload-dir "%DIST_FOLDER%" --version "%VERSION%"
+if %errorlevel% neq 0 (
+    echo ERROR: Failed to create update package!
+    pause
+    exit /b 1
+)
+
 echo.
 echo ========================================
 echo  Build Complete!

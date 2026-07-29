@@ -66,6 +66,13 @@ def _run_adapter() -> None:
     uvicorn.run(app, host=settings.host, port=settings.port)
 
 
+def _run_update_worker() -> int:
+    from src.update_worker import main as update_worker_main
+
+    update_worker_main()
+    return 0
+
+
 def _run_jog_pad() -> int:
     from src.jog_pad.jog_pad import main as jog_pad_main
 
@@ -73,6 +80,10 @@ def _run_jog_pad() -> int:
 
 
 if __name__ == "__main__":
+    if "--update-worker" in sys.argv:
+        sys.argv.remove("--update-worker")
+        raise SystemExit(_run_update_worker())
+
     if "--jog-pad" in sys.argv:
         sys.argv.remove("--jog-pad")
         raise SystemExit(_run_jog_pad())

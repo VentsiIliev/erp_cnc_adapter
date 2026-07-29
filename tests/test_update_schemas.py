@@ -5,6 +5,7 @@ from src.api.schemas.update import (
     BackupListResponse,
     RollbackResponse,
     UpdateResponse,
+    UpdateCheckResponse,
 )
 
 
@@ -59,3 +60,11 @@ class TestBackupListResponse:
         resp = BackupListResponse(status=0, message="OK", backups=[info])
         data = resp.model_dump()
         assert data["backups"][0]["filename"] == "f.bak.ts"
+
+
+def test_update_check_response_defaults():
+    resp = UpdateCheckResponse(status=0, message="No update", current_version="1.0.2")
+
+    assert resp.update_available is False
+    assert resp.latest_version == ""
+    assert resp.package_url == ""

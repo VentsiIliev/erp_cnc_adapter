@@ -13,7 +13,7 @@ class TestUpdatePage:
         assert "text/html" in response.headers["content-type"]
         assert response.headers["cache-control"] == "no-store"
         assert "Operations Dashboard" in response.text
-        assert "Upload Update" in response.text
+        assert "Updates" in response.text
 
     @pytest.mark.asyncio
     async def test_update_page_has_file_input(self, client):
@@ -21,7 +21,7 @@ class TestUpdatePage:
         response = await client.get("/update")
         assert 'type="file"' in response.text
         assert 'id="exeFile"' in response.text
-        assert 'accept=".exe"' in response.text
+        assert 'accept=".zip,.exe"' in response.text
 
     @pytest.mark.asyncio
     async def test_update_page_focuses_maintenance_view(self, client):
@@ -68,3 +68,15 @@ class TestUpdatePage:
 
 
 
+
+    @pytest.mark.asyncio
+    async def test_update_page_has_check_for_updates_controls(self, client):
+        response = await client.get("/update")
+
+        assert "checkUpdateBtn" in response.text
+        assert "applyLatestUpdateBtn" in response.text
+        assert "Check for Updates" in response.text
+        assert "Update Now" in response.text
+        assert 'id="applyLatestUpdateBtn" disabled' in response.text
+        assert "/api/update/check" in response.text
+        assert "/api/update/apply-latest" in response.text

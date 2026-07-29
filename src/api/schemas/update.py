@@ -22,3 +22,13 @@ class BackupListResponse(BaseModel):
     status: int
     message: str
     backups: list[BackupInfo] = []
+
+
+class UpdateCheckResponse(BaseModel):
+    status: int
+    message: str
+    current_version: str
+    latest_version: str = ""
+    update_available: bool = False
+    package_url: str = ""
+    manifest_url: str = ""

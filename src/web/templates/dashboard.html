@@ -1016,16 +1016,21 @@
 
                 <div class="maintenance-grid">
                     <div class="panel">
-                        <h3>Upload Update</h3>
-                        <p class="section-copy">The service restarts after the new executable is staged and the updater is spawned.</p>
-                        <form id="updateForm">
+                        <h3>Updates</h3>
+                        <p class="section-copy">Check the company SVN release catalog, then install the latest full update package when a newer version is available.</p>
+                        <div class="update-actions" style="margin-top: 16px;">
+                            <button type="button" class="btn-secondary" id="checkUpdateBtn">Check for Updates</button>
+                            <button type="button" class="btn-primary" id="applyLatestUpdateBtn" disabled>Update Now</button>
+                        </div>
+                        <div class="helper" id="latestUpdateInfo" style="margin-top: 12px;">No update check has been run.</div>
+                        <form id="updateForm" style="margin-top: 20px;">
                             <div class="field">
-                                <label for="exeFile">Executable File</label>
-                                <input type="file" id="exeFile" accept=".exe" required>
+                                <label for="exeFile">Manual Update Package</label>
+                                <input type="file" id="exeFile" accept=".zip,.exe" required>
                                 <div class="helper" id="selectedFileName">No file selected</div>
                             </div>
                             <div class="update-actions" style="margin-top: 16px;">
-                                <button type="submit" class="btn-primary" id="updateBtn" disabled>Upload and Update</button>
+                                <button type="submit" class="btn-secondary" id="updateBtn" disabled>Upload Manual Package</button>
                             </div>
                         </form>
                         <div id="updateMessage" class="message"></div>
@@ -1082,6 +1087,7 @@
         const TEST_QTY = 1;
         const state = {
             config: null,
+            latestUpdate: null,
             lastState: null,
             lastJobName: "",
             wasRunning: false,
@@ -1523,11 +1529,72 @@
             }
         }
 
+        async function checkForUpdates() {
+            const checkButton = document.getElementById("checkUpdateBtn");
+            const applyButton = document.getElementById("applyLatestUpdateBtn");
+            checkButton.disabled = true;
+            applyButton.disabled = true;
+            checkButton.textContent = "Checking...";
+            setMessage("updateMessage", "info", "Checking for updates...");
+            document.getElementById("latestUpdateInfo").textContent = "Checking release catalog...";
+
+            try {
+                const { body } = await fetchJson("/api/update/check");
+                if (body.status !== 0) throw new Error(body.message || "Update check failed.");
+                state.latestUpdate = body;
+                document.getElementById("latestUpdateInfo").textContent = "Current v" + body.current_version + " | Latest v" + body.latest_version;
+                if (body.update_available) {
+                    applyButton.disabled = false;
+                    setMessage("updateMessage", "success", body.message);
+                } else {
+                    applyButton.disabled = true;
+                    setMessage("updateMessage", "info", body.message);
+                }
+            } catch (error) {
+                state.latestUpdate = null;
+                applyButton.disabled = true;
+                document.getElementById("latestUpdateInfo").textContent = "Update check failed.";
+                setMessage("updateMessage", "error", error.message);
+            } finally {
+                checkButton.disabled = false;
+                checkButton.textContent = "Check for Updates";
+            }
+        }
+
+        async function applyLatestUpdate() {
+            const update = state.latestUpdate;
+            if (!update || !update.update_available) {
+                setMessage("updateMessage", "error", "Check for updates before installing.");
+                return;
+            }
+
+            const checkButton = document.getElementById("checkUpdateBtn");
+            const applyButton = document.getElementById("applyLatestUpdateBtn");
+            checkButton.disabled = true;
+            applyButton.disabled = true;
+            applyButton.textContent = "Updating...";
+            setMessage("updateMessage", "info", "Downloading and scheduling update v" + update.latest_version + "...");
+
+            try {
+                const { body } = await fetchJson("/api/update/apply-latest", { method: "POST" });
+                if (body.status !== 0) throw new Error(body.message || "Update failed.");
+                setMessage("updateMessage", "success", body.message + (body.version_info ? " " + body.version_info : ""));
+                state.latestUpdate = null;
+                await refreshBackups();
+            } catch (error) {
+                setMessage("updateMessage", "error", error.message);
+                applyButton.disabled = false;
+            } finally {
+                checkButton.disabled = false;
+                applyButton.textContent = "Update Now";
+            }
+        }
+
         async function submitUpdate(event) {
             event.preventDefault();
             const fileInput = document.getElementById("exeFile");
             if (!fileInput.files.length) {
-                setMessage("updateMessage", "error", "Select an .exe file first.");
+                setMessage("updateMessage", "error", "Select an update .zip package first.");
                 return;
             }
 
@@ -1546,7 +1613,7 @@
                 setMessage("updateMessage", "error", error.message);
             } finally {
                 button.disabled = false;
-                button.textContent = "Upload and Update";
+                button.textContent = "Upload Manual Package";
             }
         }
 
@@ -1621,6 +1688,8 @@
             document.getElementById("configForm").addEventListener("submit", submitConfig);
             document.getElementById("saveAndRestartConfigBtn").addEventListener("click", () => submitConfig(null, { restartAdapterTask: true }));
             document.getElementById("resetConfigBtn").addEventListener("click", resetConfigForm);
+            document.getElementById("checkUpdateBtn").addEventListener("click", checkForUpdates);
+            document.getElementById("applyLatestUpdateBtn").addEventListener("click", applyLatestUpdate);
             document.getElementById("updateForm").addEventListener("submit", submitUpdate);
             document.getElementById("rollbackBtn").addEventListener("click", rollbackUpdate);
             document.getElementById("refreshBackupsBtn").addEventListener("click", refreshBackups);

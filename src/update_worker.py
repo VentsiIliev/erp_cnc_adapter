@@ -1,405 +1,372 @@
 """
-Detached update worker script.
+Detached update worker.
 
-Spawned by the /api/update endpoint as a detached process.
-Survives the service stop and handles the EXE swap + restart.
-
-Usage:
-    python update_worker.py --exe-path <path> --staged-path <path> --service-name ERPCNCAdapter
+Spawned by /api/update. It survives adapter shutdown and applies either:
+- legacy single-EXE updates, or
+- full ZIP update packages containing manifest.json and the installed payload.
 """
 
+from __future__ import annotations
+
 import argparse
+import fnmatch
+import hashlib
+import json
 import logging
 import os
 import shutil
 import subprocess
 import sys
 import time
+import zipfile
 from datetime import datetime
+from pathlib import Path
 
-# Note: LOG_DIR will be set after parsing arguments to use the correct installation directory
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("update_worker")
+
+PRESERVE_PATTERNS = (
+    "config.json",
+    "adapter.pid",
+    ".update-lock",
+    "logs/*",
+    "backups/*",
+    "staged-update.*",
+)
 
 
 def check_installation_type(service_name: str) -> str:
-    """
-    Check if the adapter is installed as a Windows Service or Scheduled Task.
-    Returns: 'service', 'task', or 'unknown'
-    """
-    # Check for Windows Service
-    result = subprocess.run(
-        ["sc", "query", service_name],
-        capture_output=True,
-        text=True,
-        timeout=10
-    )
+    result = subprocess.run(["sc", "query", service_name], capture_output=True, text=True, timeout=10)
     if result.returncode == 0:
         return "service"
-
-    # Check for Scheduled Task
-    result = subprocess.run(
-        ["schtasks", "/Query", "/TN", service_name],
-        capture_output=True,
-        text=True,
-        timeout=10
-    )
+    result = subprocess.run(["schtasks", "/Query", "/TN", service_name], capture_output=True, text=True, timeout=10)
     if result.returncode == 0:
         return "task"
-
     return "unknown"
 
 
 def stop_adapter(service_name: str, exe_name: str, install_type: str) -> bool:
-    """Stop the adapter (service or task)."""
     if install_type == "service":
-        logger.info("  → Detected: Windows Service installation")
-        logger.info("  → Stopping service '%s'...", service_name)
-        cmd = ["net", "stop", service_name]
-        logger.info("Running: %s", " ".join(cmd))
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        logger.info("Detected Windows Service installation; stopping %s", service_name)
+        result = subprocess.run(["net", "stop", service_name], capture_output=True, text=True, timeout=30)
         logger.info("stdout: %s", result.stdout.strip())
         if result.returncode != 0:
             logger.warning("stderr: %s", result.stderr.strip())
-            logger.warning("  → Service stop returned an error (may not have been running)")
-        else:
-            logger.info("  → Service stopped successfully")
         return True
-
-    elif install_type == "task":
-        logger.info("  → Detected: Scheduled Task installation")
-        logger.info("  → Task name: %s", service_name)
-        logger.info("  → No need to stop task (just kill process)")
-        # For scheduled tasks, we just kill the process
-        return True
-
-    else:
-        logger.warning("  → Unknown installation type, will attempt to kill process")
-        return True
+    logger.info("Detected %s installation; adapter process will be stopped by image name", install_type)
+    return True
 
 
 def start_adapter(service_name: str, install_type: str, exe_path: str = "") -> bool:
-    """Start the adapter (service or task).
-
-    For scheduled tasks, launches the EXE directly with the correct working
-    directory instead of using ``schtasks /Run`` (which starts in System32).
-    """
     if install_type == "service":
-        logger.info("  → Starting Windows Service '%s'...", service_name)
-        cmd = ["net", "start", service_name]
-        logger.info("Running: %s", " ".join(cmd))
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(["net", "start", service_name], capture_output=True, text=True, timeout=30)
         logger.info("stdout: %s", result.stdout.strip())
         if result.returncode != 0:
             logger.warning("stderr: %s", result.stderr.strip())
             return False
-        logger.info("  → Service started successfully")
         return True
 
-    elif install_type == "task":
-        logger.info("  → Starting adapter directly (Scheduled Task '%s')...", service_name)
-        if not exe_path or not os.path.exists(exe_path):
-            logger.error("  → EXE path not available or missing: %s", exe_path)
-            return False
-        exe_dir = os.path.dirname(exe_path)
-        logger.info("  → Launching: %s", exe_path)
-        logger.info("  → Working dir: %s", exe_dir)
-        try:
-            CREATE_NEW_PROCESS_GROUP = 0x00000200
-            DETACHED_PROCESS = 0x00000008
-            subprocess.Popen(
-                [exe_path],
-                cwd=exe_dir,
-                creationflags=CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
-                close_fds=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            logger.info("  → Process launched successfully")
+    if install_type == "task":
+        logger.info("Starting scheduled task %s", service_name)
+        result = subprocess.run(["schtasks", "/Run", "/TN", service_name], capture_output=True, text=True, timeout=30)
+        logger.info("stdout: %s", result.stdout.strip())
+        if result.returncode == 0:
             return True
-        except Exception as e:
-            logger.error("  → Failed to launch EXE: %s", e)
-            return False
+        logger.warning("stderr: %s", result.stderr.strip())
+        logger.warning("Scheduled task start failed; falling back to direct launch")
 
-    else:
-        logger.error("  → Cannot start: unknown installation type")
+    if not exe_path or not os.path.exists(exe_path):
+        logger.error("EXE path not available or missing: %s", exe_path)
+        return False
+
+    exe_dir = os.path.dirname(exe_path)
+    try:
+        create_new_process_group = 0x00000200
+        detached_process = 0x00000008
+        subprocess.Popen(
+            [exe_path],
+            cwd=exe_dir,
+            creationflags=create_new_process_group | detached_process,
+            close_fds=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception as exc:
+        logger.error("Failed to launch EXE: %s", exc)
         return False
 
 
-def run_sc(action: str, service_name: str, timeout: int = 30) -> bool:
-    """Legacy function - kept for compatibility."""
-    cmd = ["net", action, service_name]
-    logger.info("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    logger.info("stdout: %s", result.stdout.strip())
-    if result.returncode != 0:
-        logger.warning("stderr: %s", result.stderr.strip())
-    return result.returncode == 0
-
-
 def get_exe_version(exe_path: str) -> str:
-    """
-    Extract version from EXE file.
-    Returns version string or 'unknown' if not found.
-    """
-    try:
-        # Try to run the EXE with --version flag (if supported)
-        result = subprocess.run(
-            [exe_path, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            # Extract version from output (format: "ERP-CNC Adapter v1.0.0")
-            version_line = result.stdout.strip().split('\n')[0]
-            if 'v' in version_line:
-                return version_line.split('v')[-1].strip()
-    except:
-        pass
-
-    # Fallback: Check for VERSION.txt in same directory
     version_file = os.path.join(os.path.dirname(exe_path), "VERSION.txt")
     if os.path.exists(version_file):
         try:
-            with open(version_file, 'r') as f:
-                content = f.read().strip()
-                # Extract version number from file
-                for line in content.split('\n'):
-                    if 'version' in line.lower() or line.replace('.', '').replace('_', '').isdigit():
-                        # Extract version pattern like 1.0.0
-                        import re
-                        match = re.search(r'(\d+\.\d+\.\d+)', line)
-                        if match:
-                            return match.group(1)
-        except:
+            import re
+            text = Path(version_file).read_text(encoding="utf-8", errors="ignore")
+            match = re.search(r"(\d+\.\d+\.\d+)", text)
+            if match:
+                return match.group(1)
+        except OSError:
             pass
-
     return "unknown"
 
 
-def find_latest_backup(exe_dir: str, exe_name: str) -> str | None:
-    """Return the path to the most recent .bak.* file, or None."""
-    # Find all backup files (both old and new format)
-    backups = [
-        f for f in os.listdir(exe_dir)
-        if f.startswith(exe_name) and ".bak." in f
-    ]
-    if not backups:
-        return None
-    # Sort by filename (timestamp is at the end, so this works)
-    backups.sort(reverse=True)
-    return os.path.join(exe_dir, backups[0])
+def _normalize_zip_name(name: str) -> str:
+    return name.replace("\\", "/").lstrip("/")
 
 
-def main() -> None:
+def _is_preserved(relative_path: str) -> bool:
+    normalized = _normalize_zip_name(relative_path)
+    return any(fnmatch.fnmatch(normalized, pattern) for pattern in PRESERVE_PATTERNS)
+
+
+def _sha256_file(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_manifest(package_path: str) -> dict:
+    with zipfile.ZipFile(package_path, "r") as archive:
+        try:
+            with archive.open("manifest.json") as handle:
+                return json.loads(handle.read().decode("utf-8"))
+        except KeyError as exc:
+            raise RuntimeError("Update package is missing manifest.json") from exc
+
+
+def _validate_zip_entry(name: str) -> str:
+    normalized = _normalize_zip_name(name)
+    if not normalized or normalized.startswith("../") or "/../" in normalized:
+        raise RuntimeError(f"Unsafe path in update package: {name}")
+    drive, _ = os.path.splitdrive(normalized)
+    if drive:
+        raise RuntimeError(f"Absolute path in update package: {name}")
+    return normalized
+
+
+def _verify_package(package_path: str, manifest: dict) -> None:
+    files = manifest.get("files")
+    if not isinstance(files, list) or not files:
+        raise RuntimeError("Update manifest has no files list")
+
+    expected = {}
+    for item in files:
+        path = _normalize_zip_name(str(item.get("path", "")))
+        sha256 = str(item.get("sha256", "")).lower()
+        if not path or not sha256:
+            raise RuntimeError("Update manifest contains an invalid file entry")
+        expected[path] = sha256
+
+    if "erp-cnc-adapter.exe" not in expected:
+        raise RuntimeError("Update package does not contain erp-cnc-adapter.exe")
+
+    with zipfile.ZipFile(package_path, "r") as archive:
+        names = {_validate_zip_entry(info.filename) for info in archive.infolist() if not info.is_dir()}
+        for path, expected_hash in expected.items():
+            if path not in names:
+                raise RuntimeError(f"Update package is missing {path}")
+            with archive.open(path) as handle:
+                digest = hashlib.sha256(handle.read()).hexdigest()
+            if digest.lower() != expected_hash:
+                raise RuntimeError(f"Checksum mismatch for {path}")
+
+
+def _manifest_file_set(manifest: dict) -> set[str]:
+    return {_normalize_zip_name(str(item.get("path", ""))) for item in manifest.get("files", []) if item.get("path")} | {"manifest.json"}
+
+
+def _zip_file_set(package_path: str) -> set[str]:
+    with zipfile.ZipFile(package_path, "r") as archive:
+        return {_validate_zip_entry(info.filename) for info in archive.infolist() if not info.is_dir()}
+
+
+def _remove_obsolete_managed_files(install_dir: str, allowed_files: set[str]) -> None:
+    install_root = Path(install_dir)
+    for path in sorted(install_root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(install_root).as_posix()
+        if _is_preserved(relative):
+            continue
+        if relative in allowed_files:
+            continue
+        try:
+            path.unlink()
+            logger.info("Removed obsolete managed file: %s", relative)
+        except OSError as exc:
+            raise RuntimeError(f"Failed to remove obsolete file {relative}: {exc}") from exc
+
+
+def _backup_install_dir(install_dir: str, current_version: str) -> str:
+    backup_dir = os.path.join(install_dir, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(backup_dir, f"install-backup-v{current_version}.{timestamp}.zip")
+    install_root = Path(install_dir)
+    with zipfile.ZipFile(backup_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in install_root.rglob("*"):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(install_root).as_posix()
+            if rel == Path(backup_path).relative_to(install_root).as_posix():
+                continue
+            if rel.startswith("logs/") or rel.startswith("backups/") or rel.startswith("staged-update"):
+                continue
+            archive.write(path, rel)
+    logger.info("Install directory backup created: %s", backup_path)
+    return backup_path
+
+
+def _restore_backup(backup_path: str, install_dir: str) -> None:
+    logger.warning("Restoring install backup: %s", backup_path)
+    _install_zip_payload(backup_path, install_dir, verify_manifest=False)
+
+
+def _install_zip_payload(package_path: str, install_dir: str, verify_manifest: bool = True) -> dict:
+    manifest = {}
+    if verify_manifest:
+        manifest = _read_manifest(package_path)
+        _verify_package(package_path, manifest)
+        allowed_files = _manifest_file_set(manifest)
+        logger.info("Verified update package version: %s", manifest.get("version", "unknown"))
+    else:
+        allowed_files = _zip_file_set(package_path)
+
+    _remove_obsolete_managed_files(install_dir, allowed_files)
+
+    with zipfile.ZipFile(package_path, "r") as archive:
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            relative = _validate_zip_entry(info.filename)
+            if relative == "manifest.json":
+                target = os.path.join(install_dir, relative)
+            elif _is_preserved(relative):
+                logger.info("Preserving local file from package overwrite: %s", relative)
+                continue
+            else:
+                target = os.path.join(install_dir, relative)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with archive.open(info) as source, open(target, "wb") as destination:
+                shutil.copyfileobj(source, destination)
+    return manifest
+
+
+def _install_legacy_exe(staged_path: str, exe_path: str, current_version: str) -> str:
+    exe_dir = os.path.dirname(exe_path)
+    exe_name = os.path.basename(exe_path)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(exe_dir, f"{exe_name}.v{current_version}.bak.{timestamp}")
+    if os.path.exists(exe_path):
+        shutil.copy2(exe_path, backup_path)
+        logger.info("Legacy EXE backup created: %s", backup_path)
+    if os.path.exists(exe_path):
+        os.remove(exe_path)
+    shutil.copy2(staged_path, exe_path)
+    os.remove(staged_path)
+    return backup_path
+
+
+def _stop_processes(exe_name: str) -> None:
+    logger.info("Waiting 2 seconds for adapter to exit before force check")
+    time.sleep(2)
+    try:
+        result = subprocess.run(["taskkill", "/F", "/IM", exe_name], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            logger.info("Killed lingering adapter process(es): %s", result.stdout.strip())
+            time.sleep(1)
+        else:
+            logger.info("No lingering adapter processes found")
+    except Exception as exc:
+        logger.warning("Could not check lingering adapter processes: %s", exc)
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="ERP-CNC Adapter update worker")
     parser.add_argument("--exe-path", required=True, help="Path to the current EXE")
-    parser.add_argument("--staged-path", required=True, help="Path to the staged new EXE")
-    parser.add_argument("--service-name", default="ERPCNCAdapter", help="Windows service name")
-    args = parser.parse_args()
+    parser.add_argument("--staged-path", required=True, help="Path to the staged update package or EXE")
+    parser.add_argument("--service-name", default="ERPCNCAdapter", help="Windows service/task name")
+    parser.add_argument("--package-kind", choices=("auto", "exe", "zip", "restore"), default="auto")
+    args = parser.parse_args(argv)
 
     exe_path = args.exe_path
     staged_path = args.staged_path
     service_name = args.service_name
-    exe_dir = os.path.dirname(exe_path)
+    install_dir = os.path.dirname(exe_path)
     exe_name = os.path.basename(exe_path)
+    package_kind = args.package_kind
+    if package_kind == "auto":
+        package_kind = "zip" if staged_path.lower().endswith(".zip") else "exe"
 
-    # Setup logging with correct path (use the EXE directory, not __file__ directory)
-    log_dir = os.path.join(exe_dir, "logs")
+    log_dir = os.path.join(install_dir, "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "update.log")
-
-    # Add file handler now that we know the correct path
     file_handler = logging.FileHandler(log_file)
     file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(file_handler)
 
-    # Get file sizes for logging
-    current_size_mb = round(os.path.getsize(exe_path) / (1024 * 1024), 2) if os.path.exists(exe_path) else 0
+    current_version = get_exe_version(exe_path)
     staged_size_mb = round(os.path.getsize(staged_path) / (1024 * 1024), 2) if os.path.exists(staged_path) else 0
+    install_type = check_installation_type(service_name)
+    lock_file = os.path.join(install_dir, ".update-lock")
 
     logger.info("=" * 70)
     logger.info("ERP-CNC ADAPTER UPDATE PROCESS STARTED")
-    logger.info("=" * 70)
-    logger.info("Configuration:")
-    logger.info("  Service name:        %s", service_name)
-    logger.info("  Current EXE:         %s", exe_path)
-    logger.info("  Current EXE size:    %.2f MB", current_size_mb)
-    logger.info("  New EXE (staged):    %s", staged_path)
-    logger.info("  New EXE size:        %.2f MB", staged_size_mb)
-    logger.info("  Log file:            %s", log_file)
-    logger.info("  Update time:         %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-    # Detect installation type
-    install_type = check_installation_type(service_name)
-    logger.info("  Installation type:   %s", install_type.upper())
+    logger.info("Current version: %s", current_version)
+    logger.info("Package kind: %s", package_kind)
+    logger.info("Staged path: %s (%.2f MB)", staged_path, staged_size_mb)
+    logger.info("Install dir: %s", install_dir)
+    logger.info("Installation type: %s", install_type)
     logger.info("=" * 70)
 
-    # Create lock file to prevent watchdog from restarting during update
-    lock_file = os.path.join(exe_dir, ".update-lock")
     try:
-        with open(lock_file, "w") as f:
-            f.write(f"Update in progress since {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        logger.info("Lock file created: %s", lock_file)
-    except OSError as e:
-        logger.warning("Could not create lock file: %s", e)
+        Path(lock_file).write_text(f"Update in progress since {datetime.now():%Y-%m-%d %H:%M:%S}\n", encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Could not create lock file: %s", exc)
 
-    def _remove_lock():
+    backup_path = ""
+    try:
+        stop_adapter(service_name, exe_name, install_type)
+        _stop_processes(exe_name)
+
+        if package_kind == "zip":
+            logger.info("Installing full update package")
+            backup_path = _backup_install_dir(install_dir, current_version)
+            _install_zip_payload(staged_path, install_dir, verify_manifest=True)
+            os.remove(staged_path)
+        elif package_kind == "restore":
+            logger.info("Restoring full install backup package")
+            _install_zip_payload(staged_path, install_dir, verify_manifest=False)
+            os.remove(staged_path)
+        else:
+            logger.info("Installing legacy EXE update")
+            backup_path = _install_legacy_exe(staged_path, exe_path, current_version)
+
+        if not start_adapter(service_name, install_type, exe_path):
+            raise RuntimeError("Adapter failed to start after update")
+
+        logger.info("UPDATE COMPLETED SUCCESSFULLY")
+        logger.info("Backup created: %s", backup_path)
+    except Exception as exc:
+        logger.error("UPDATE FAILED: %s", exc)
+        if package_kind == "zip" and backup_path and os.path.exists(backup_path):
+            try:
+                _restore_backup(backup_path, install_dir)
+                start_adapter(service_name, install_type, exe_path)
+                logger.info("Rollback from full backup completed")
+            except Exception as rollback_exc:
+                logger.error("CRITICAL: rollback failed: %s", rollback_exc)
+        raise SystemExit(1) from exc
+    finally:
         try:
             if os.path.exists(lock_file):
                 os.remove(lock_file)
                 logger.info("Lock file removed")
-        except OSError as e:
-            logger.warning("Could not remove lock file: %s", e)
-
-    # Stop the adapter
-    logger.info("")
-    logger.info("PHASE 1: Stopping current adapter")
-    logger.info("-" * 70)
-    stop_adapter(service_name, exe_name, install_type)
-
-    # Give the process time to fully terminate and release file handles
-    logger.info("  → Waiting 5 seconds for service to fully terminate...")
-    time.sleep(5)
-
-    # Kill any lingering processes that might be locking the file
-    logger.info("  → Checking for lingering adapter processes...")
-    try:
-        result = subprocess.run(
-            ["taskkill", "/F", "/IM", exe_name],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        if result.returncode == 0:
-            logger.info("  → Killed lingering process(es), waiting 2 seconds for cleanup...")
-            time.sleep(2)  # Wait for process cleanup
-        else:
-            logger.info("  → No lingering processes found")
-        logger.info("  Status:      ✓ Service stopped successfully, file handles released")
-    except Exception as e:
-        logger.warning(f"  → Warning: Could not check for lingering processes: {e}")
-
-    # Backup current EXE
-    logger.info("")
-    logger.info("PHASE 2: Creating backup and replacing files")
-
-    # Get current version from EXE
-    current_version = get_exe_version(exe_path)
-    logger.info("  Detected current version: %s", current_version)
-
-    # Create backup filename with version and timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"{exe_name}.v{current_version}.bak.{timestamp}"
-    backup_path = os.path.join(exe_dir, backup_filename)
-    current_size = 0
-
-    if os.path.exists(exe_path):
-        current_size = os.path.getsize(exe_path)
-        logger.info("-" * 70)
-        logger.info("STEP 1: Creating backup")
-        logger.info("  Version:     %s", current_version)
-        logger.info("  Source:      %s", exe_path)
-        logger.info("  Destination: %s", backup_filename)
-        logger.info("  Full path:   %s", backup_path)
-        logger.info("  Size:        %.2f MB", current_size / (1024 * 1024))
-        try:
-            shutil.copy2(exe_path, backup_path)
-            logger.info("  Status:      ✓ Backup created successfully")
-        except Exception as e:
-            logger.error("  Status:      ✗ Failed to backup: %s", e)
-            logger.error("Aborting update - cannot proceed without backup")
-            sys.exit(1)
-    else:
-        logger.warning("Current EXE not found at %s, skipping backup", exe_path)
-
-    # Replace EXE with staged update (delete + copy instead of move)
-    staged_size = os.path.getsize(staged_path) if os.path.exists(staged_path) else 0
-    logger.info("-" * 70)
-    logger.info("STEP 2: Replacing EXE file")
-    logger.info("  Old EXE:     %s (%.2f MB)", exe_path, current_size / (1024 * 1024) if os.path.exists(exe_path) else 0)
-    logger.info("  New EXE:     %s (%.2f MB)", staged_path, staged_size / (1024 * 1024))
-    try:
-        # Try to delete the old EXE first
-        if os.path.exists(exe_path):
-            logger.info("  → Deleting old EXE...")
-            os.remove(exe_path)
-            logger.info("  → Old EXE deleted successfully")
-
-        # Copy staged EXE to target location
-        logger.info("  → Copying new EXE to target location...")
-        shutil.copy2(staged_path, exe_path)
-        new_size = os.path.getsize(exe_path)
-        logger.info("  → New EXE copied successfully (%.2f MB)", new_size / (1024 * 1024))
-
-        # Clean up staged file
-        if os.path.exists(staged_path):
-            os.remove(staged_path)
-            logger.info("  → Staged file cleaned up")
-
-        logger.info("  Status:      ✓ EXE replacement completed successfully")
-    except Exception as e:
-        logger.error("  Status:      ✗ Failed to replace EXE: %s", e)
-        # Try to restore from backup
-        if os.path.exists(backup_path):
-            logger.info("-" * 70)
-            logger.info("ROLLBACK: Restoring from backup...")
-            try:
-                shutil.copy2(backup_path, exe_path)
-                logger.info("  Status:      ✓ Backup restored successfully")
-            except Exception as restore_err:
-                logger.error("  Status:      ✗ CRITICAL: Failed to restore backup: %s", restore_err)
-        _remove_lock()
-        sys.exit(1)
-
-    # Start the adapter
-    logger.info("-" * 70)
-    logger.info("STEP 3: Restarting adapter")
-    logger.info("  Name:        %s", service_name)
-    logger.info("  Type:        %s", install_type.upper())
-    if start_adapter(service_name, install_type, exe_path):
-        logger.info("  Status:      ✓ Adapter started successfully")
-        logger.info("=" * 70)
-        logger.info("UPDATE COMPLETED SUCCESSFULLY")
-        logger.info("=" * 70)
-        logger.info("Summary:")
-        logger.info("  • Backup created:    %s", os.path.basename(backup_path))
-        logger.info("  • Old EXE size:      %.2f MB", current_size / (1024 * 1024))
-        logger.info("  • New EXE size:      %.2f MB", staged_size / (1024 * 1024))
-        logger.info("  • Service status:    Running")
-        logger.info("  • Completion time:   %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        logger.info("=" * 70)
-        _remove_lock()
-        logger.info("Update worker finished successfully")
-    else:
-        logger.error("  Status:      ✗ Failed to start service with new EXE")
-        logger.info("=" * 70)
-        logger.info("AUTOMATIC ROLLBACK INITIATED")
-        logger.info("=" * 70)
-
-        # Rollback
-        latest_backup = find_latest_backup(exe_dir, exe_name)
-        if latest_backup:
-            logger.info("  Rolling back to: %s", os.path.basename(latest_backup))
-            try:
-                shutil.copy2(latest_backup, exe_path)
-                logger.info("  Backup restored, attempting to start adapter...")
-                if start_adapter(service_name, install_type, exe_path):
-                    logger.info("  Status:      ✓ Rollback successful, adapter running with previous version")
-                else:
-                    logger.error("  Status:      ✗ CRITICAL: Rollback failed to start adapter!")
-            except Exception as e:
-                logger.error("  Status:      ✗ CRITICAL: Rollback copy failed: %s", e)
-        else:
-            logger.error("  Status:      ✗ No backup found for rollback!")
-        logger.info("=" * 70)
-        _remove_lock()
-        sys.exit(1)
-
+        except OSError as exc:
+            logger.warning("Could not remove lock file: %s", exc)
 
 
 if __name__ == "__main__":
