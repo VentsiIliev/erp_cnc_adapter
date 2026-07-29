@@ -95,3 +95,34 @@ def test_stop_processes_without_pid_skips_image_name_kill(monkeypatch):
     update_worker._stop_processes("erp-cnc-adapter.exe", adapter_pid=None)
 
     assert calls == []
+
+def test_stop_processes_kills_other_adapter_processes_from_same_exe(monkeypatch):
+    from src import update_worker
+
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+
+        class Result:
+            returncode = 0
+            stdout = "4052\n2544\n7104\n"
+            stderr = ""
+
+        if args[0] == "taskkill":
+            Result.stdout = "SUCCESS"
+        return Result()
+
+    monkeypatch.setattr(update_worker.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(update_worker.os, "getpid", lambda: 7104)
+    monkeypatch.setattr(update_worker.subprocess, "run", fake_run)
+
+    update_worker._stop_processes(
+        "erp-cnc-adapter.exe",
+        r"C:\Program Files (x86)\ERP-CNC Adapter\erp-cnc-adapter.exe",
+        adapter_pid=4052,
+    )
+
+    assert ["taskkill", "/F", "/PID", "4052"] in calls
+    assert ["taskkill", "/F", "/PID", "2544"] in calls
+    assert ["taskkill", "/F", "/PID", "7104"] not in calls

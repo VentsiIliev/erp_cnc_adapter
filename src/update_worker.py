@@ -270,30 +270,86 @@ def _install_legacy_exe(staged_path: str, exe_path: str, current_version: str) -
     return backup_path
 
 
-def _stop_processes(exe_name: str, adapter_pid: int | None = None) -> None:
+def _get_process_ids_for_exe_path(exe_path: str) -> list[int]:
+    if os.name != "nt" or not exe_path:
+        return []
+
+    script = (
+        "$target = [Console]::In.ReadToEnd().Trim(); "
+        "Get-CimInstance Win32_Process | "
+        "Where-Object { $_.ExecutablePath -eq $target } | "
+        "ForEach-Object { [string]$_.ProcessId }"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            input=exe_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception as exc:
+        logger.warning("Could not enumerate adapter processes for %s: %s", exe_path, exc)
+        return []
+
+    if result.returncode != 0:
+        logger.warning("Adapter process enumeration failed: %s", result.stderr.strip())
+        return []
+
+    process_ids: list[int] = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            process_ids.append(int(line))
+        except ValueError:
+            logger.debug("Ignoring non-numeric process id from enumeration: %s", line)
+    return process_ids
+
+
+def _kill_process_id(pid: int) -> bool:
+    try:
+        result = subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, text=True, timeout=10)
+    except Exception as exc:
+        logger.warning("Could not kill adapter pid=%s: %s", pid, exc)
+        return False
+
+    if result.returncode == 0:
+        logger.info("Killed lingering adapter process pid=%s: %s", pid, result.stdout.strip())
+        return True
+
+    logger.info("Adapter pid=%s was not running or could not be killed: %s", pid, result.stderr.strip())
+    return False
+
+
+def _stop_processes(exe_name: str, exe_path: str = "", adapter_pid: int | None = None) -> None:
     logger.info("Waiting 2 seconds for adapter to exit before force check")
     time.sleep(2)
 
     current_pid = os.getpid()
+    killed_any = False
+    killed_pids: set[int] = set()
+
     if adapter_pid and adapter_pid != current_pid:
-        try:
-            result = subprocess.run(["taskkill", "/F", "/PID", str(adapter_pid)], capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                logger.info("Killed lingering adapter process pid=%s: %s", adapter_pid, result.stdout.strip())
-                time.sleep(1)
-            else:
-                logger.info("Adapter pid=%s was not running", adapter_pid)
-            return
-        except Exception as exc:
-            logger.warning("Could not check lingering adapter pid=%s: %s", adapter_pid, exc)
-            return
-
-    if adapter_pid == current_pid:
+        if _kill_process_id(adapter_pid):
+            killed_any = True
+        killed_pids.add(adapter_pid)
+    elif adapter_pid == current_pid:
         logger.warning("Skipping adapter process kill because target pid is update worker pid=%s", current_pid)
-        return
 
-    logger.warning("No adapter pid provided; skipping image-name kill for %s to avoid killing update worker", exe_name)
+    if exe_path:
+        for pid in _get_process_ids_for_exe_path(exe_path):
+            if pid == current_pid or pid in killed_pids:
+                continue
+            if _kill_process_id(pid):
+                killed_any = True
+            killed_pids.add(pid)
+    else:
+        logger.warning("No adapter exe path provided; skipping process scan for %s", exe_name)
 
+    if killed_any:
+        time.sleep(1)
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="ERP-CNC Adapter update worker")
@@ -344,7 +400,7 @@ def main(argv: list[str] | None = None) -> None:
     backup_path = ""
     try:
         stop_adapter(service_name, exe_name, install_type)
-        _stop_processes(exe_name, adapter_pid)
+        _stop_processes(exe_name, exe_path, adapter_pid)
 
         if package_kind == "zip":
             logger.info("Installing full update package")
