@@ -1,4 +1,8 @@
-﻿## v1.0.12 - 2026-07-29
+﻿## v1.0.13 - 2026-07-29
+
+- Remove the temporary start-job gate so /api/cnc/job/start sends the actual CNC start job request again
+
+## v1.0.12 - 2026-07-29
 
 - Fix dashboard navigation buttons so Overview, Live Monitor, Configuration, Maintenance, and Testing scroll to their content sections instead of the sidebar buttons
 
@@ -50,6 +54,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 

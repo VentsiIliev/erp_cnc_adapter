@@ -22,13 +22,6 @@ async def start_job(
     """Start a CNC job. The persistent monitor will detect state changes automatically."""
     logger.debug("START JOB request")
 
-    # Temporary operator workflow guard: keep the implementation below intact,
-    # but prevent this endpoint from starting jobs until it is re-enabled.
-    return RunJobResponse(
-        status=503,
-        message="Start endpoint temporarily disabled",
-    )
-
     try:
         # Check monitor state first to avoid unnecessary API call
         services = request.app.state.services
@@ -79,7 +72,7 @@ async def start_job(
             error_info = translate_error(result)
             message = format_error(result, "Start job")
             logger.error("%s (code: %d)", message, result)
-            logger.error("START JOB FAILED — result_code=%d, message=%s", result, message)
+            logger.error("START JOB FAILED - result_code=%d, message=%s", result, message)
 
             # Special handling for common errors
             if result == 6:  # CNC_RC_ALREADY_RUNS
@@ -105,7 +98,7 @@ async def start_job(
         # Job started successfully
         message = "Job started successfully"
         logger.debug(message)
-        logger.debug("START JOB response — status=%d, message=%s", result, message)
+        logger.debug("START JOB response - status=%d, message=%s", result, message)
 
         # Ensure job monitor has the latest job info (should already be set from load_job)
         if hasattr(services, 'last_loaded_job') and services.last_loaded_job and services.job_monitor:
@@ -124,8 +117,5 @@ async def start_job(
         error_info = translate_error(result)
         message = f"Exception calling RunJob: {exc}. {error_info['suggestion']}"
         logger.error(message, exc_info=True)
-        logger.error("START JOB ERROR — Exception occurred: %s", str(exc))
+        logger.error("START JOB ERROR - Exception occurred: %s", str(exc))
         return RunJobResponse(status=result, message=message)
-
-
-
