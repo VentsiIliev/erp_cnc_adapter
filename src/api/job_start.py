@@ -23,29 +23,14 @@ async def start_job(
     logger.debug("START JOB request")
 
     try:
-        # Check monitor state first to avoid unnecessary API call
         services = request.app.state.services
-        if services.job_monitor and services.job_monitor._was_running:
-            logger.warning("Job start rejected: Monitor indicates job is already running")
-            return RunJobResponse(
-                status=6,
-                message="Job is already running. Cannot start another job while one is executing. Wait for current job to finish"
-            )
 
-        # Check current CNC state - must be READY or PAUSED to start
+        # Check current CNC state before asking Eding to start or resume.
         try:
             current_state = client.get_state()
 
-            # State 6 = Running Job
-            if current_state == 6:
-                logger.warning("Job start rejected: CNC state is 6 (Running Job)")
-                return RunJobResponse(
-                    status=6,
-                    message="Job is already running. Cannot start another job while one is executing. Wait for current job to finish"
-                )
-
-            # State 3, 4, 5 = Error states
-            elif current_state in (3, 4, 5):
+            # State 3, 4, 5 = Error states.
+            if current_state in (3, 4, 5):
                 state_names = {3: "Execution Error", 4: "Internal Error", 5: "Aborted"}
                 logger.warning("Job start rejected: Machine in error state %d (%s)", current_state, state_names.get(current_state))
                 return RunJobResponse(
@@ -53,28 +38,30 @@ async def start_job(
                     message=f"Machine is in error state: {state_names.get(current_state)}. Reset or clear the error before starting a job"
                 )
 
-            # State 12 = Paused - OK, will resume
+            # State 6 can also mean feed-hold/paused motion on real machines, so let CncRunOrResumeJob decide.
+            if current_state == 6:
+                logger.info("CNC state is running; calling CncRunOrResumeJob and letting CNC decide")
             elif current_state == 12:
                 logger.info("Job is paused - will resume")
 
-            # State 2 = Ready - OK to start
+            # State 2 = Ready - OK to start.
 
         except Exception as state_exc:
             logger.debug("Could not check state before start: %s", state_exc)
 
-        # Call the CNC API to start/resume job
+        # Call the CNC API to start/resume job.
         logger.debug("About to call client.run_job()")
         result = client.run_job()
         logger.debug("Start job result code: %d", result)
 
         if result != 0:
-            # Translate error code to human-readable message
+            # Translate error code to human-readable message.
             error_info = translate_error(result)
             message = format_error(result, "Start job")
             logger.error("%s (code: %d)", message, result)
             logger.error("START JOB FAILED - result_code=%d, message=%s", result, message)
 
-            # Special handling for common errors
+            # Special handling for common errors.
             if result == 6:  # CNC_RC_ALREADY_RUNS
                 message = "Job is already running. Cannot start another job while one is executing"
             elif result == 10:  # CNC_RC_ERR_STATE
@@ -92,15 +79,13 @@ async def start_job(
             else:
                 message = f"{error_info['message']}. {error_info['suggestion']}"
 
-            # Return error with detailed information
             return RunJobResponse(status=result, message=message)
 
-        # Job started successfully
         message = "Job started successfully"
         logger.debug(message)
         logger.debug("START JOB response - status=%d, message=%s", result, message)
 
-        # Ensure job monitor has the latest job info (should already be set from load_job)
+        # Ensure job monitor has the latest job info (should already be set from load_job).
         if hasattr(services, 'last_loaded_job') and services.last_loaded_job and services.job_monitor:
             job_info = services.last_loaded_job
             services.job_monitor.set_job_info(
