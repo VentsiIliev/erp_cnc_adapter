@@ -1,4 +1,8 @@
-﻿## v1.0.13 - 2026-07-29
+﻿## v1.0.14 - 2026-07-29
+
+- Increased the buttons poller interval from 500ms to 50ms
+
+## v1.0.13 - 2026-07-29
 
 - Remove the temporary start-job gate so /api/cnc/job/start sends the actual CNC start job request again
 
@@ -54,6 +58,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 
