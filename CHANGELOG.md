@@ -1,4 +1,8 @@
-﻿## v1.0.5 - 2026-07-29
+﻿## v1.0.6 - 2026-07-29
+
+- Testing make release script
+
+## v1.0.5 - 2026-07-29
 
 - Added dashboard fields for SVN update username and password
 - Persisted update credentials through /api/config so operators no longer edit config.json manually
@@ -21,4 +25,5 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
