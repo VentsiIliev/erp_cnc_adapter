@@ -9,6 +9,17 @@ class MockCncClient:
     def __init__(self) -> None:
         self._connected = False
         self._last_cnc_message = None
+        self._physical_button_status = {
+            "runInput": False,
+            "pauseInput": False,
+            "runRaw": 1,
+            "pauseRaw": 1,
+            "runLogical": 1,
+            "pauseLogical": 0,
+            "feedHoldActive": False,
+            "safetyInputValue": 0,
+            "motionEnabled": True,
+        }
         logger.warning("Using MockCncClient - no real CNC hardware")
 
     @property
@@ -54,6 +65,9 @@ class MockCncClient:
             "work": {"x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0, "b": 0.0, "c": 0.0},
             "machine": {"x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0, "b": 0.0, "c": 0.0},
         }
+
+    def get_physical_button_status(self) -> dict:
+        return dict(self._physical_button_status)
 
     def get_all_axes_homed(self) -> bool:
         return False

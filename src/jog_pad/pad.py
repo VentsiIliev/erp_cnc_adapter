@@ -31,7 +31,7 @@ from .widgets import (
     StepModeButton,
     ZeroAxisButton,
 )
-from .workers import BackgroundCommandSender, CoordinatePoller, PauseHoldThread
+from .workers import BackgroundCommandSender, CoordinatePoller, PauseHoldThread, PhysicalButtonPoller
 
 
 class JogPad(QWidget):
@@ -71,6 +71,7 @@ class JogPad(QWidget):
         self.coordinate_mode_buttons: dict[str, QPushButton] = {}
         self.latest_positions: dict = {}
         self.position_poller = self._create_position_poller()
+        self.physical_button_poller = self._create_physical_button_poller()
         self.pause_hold_interval_ms = max(0, int(pause_hold_interval_ms))
         self._pause_hold_active = False
         self.pause_hold_thread = self._create_pause_hold_thread()
@@ -96,6 +97,12 @@ class JogPad(QWidget):
         thread.error_received.connect(self.on_pause_hold_error)
         return thread
 
+    def _create_physical_button_poller(self) -> PhysicalButtonPoller:
+        poller = PhysicalButtonPoller(self.adapter_client, self)
+        poller.status_received.connect(self.on_physical_button_status)
+        poller.error_received.connect(self.on_physical_button_error)
+        return poller
+
     def start_background_threads(self) -> None:
         window = self.window()
         if window is not None and not window.isVisible():
@@ -103,6 +110,9 @@ class JogPad(QWidget):
         if not self.position_poller.isRunning():
             self.position_poller = self._create_position_poller()
             self.position_poller.start()
+        if not self.physical_button_poller.isRunning():
+            self.physical_button_poller = self._create_physical_button_poller()
+            self.physical_button_poller.start()
         if self.pause_hold_interval_ms > 0 and not self.pause_hold_thread.isRunning():
             self.pause_hold_thread = self._create_pause_hold_thread()
             self.pause_hold_thread.start()
@@ -112,6 +122,9 @@ class JogPad(QWidget):
         if self.pause_hold_thread.isRunning():
             self.pause_hold_thread.stop()
             self.pause_hold_thread.wait(1000)
+        if self.physical_button_poller.isRunning():
+            self.physical_button_poller.stop()
+            self.physical_button_poller.wait(1000)
         if self.position_poller.isRunning():
             self.position_poller.stop()
             self.position_poller.wait(1000)
@@ -161,9 +174,26 @@ class JogPad(QWidget):
 
         self.status_label = QLabel("Ready")
         self.status_label.setObjectName("statusLabel")
-        self.status_label.setMinimumSize(520, 28)
+        self.status_label.setMinimumSize(420, 28)
         self.status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         status_row.addWidget(self.status_label)
+
+        self.physical_button_indicators: dict[str, QLabel] = {}
+        for key, label_text in (
+            ("runInput", "RUN"),
+            ("pauseInput", "PAUSE"),
+            ("feedHoldActive", "HOLD"),
+            ("motionEnabled", "MOTION"),
+        ):
+            indicator = QLabel(label_text)
+            indicator.setObjectName("physicalButtonIndicator")
+            indicator.setFixedSize(64, 28)
+            indicator.setAlignment(Qt.AlignCenter)
+            indicator.setToolTip(f"Physical diagnostic: {label_text}")
+            self.physical_button_indicators[key] = indicator
+            status_row.addWidget(indicator)
+        self._update_physical_button_indicators({})
+
         status_row.addStretch(1)
         root.addLayout(status_row)
 
@@ -588,6 +618,35 @@ class JogPad(QWidget):
         self.status_label.setText(message)
         color = "#B00020" if error else "#146C2E"
         self.status_label.setStyleSheet(f"color: {color};")
+
+    def _update_physical_button_indicators(self, payload: dict) -> None:
+        for key, indicator in self.physical_button_indicators.items():
+            if key not in payload:
+                indicator.setStyleSheet("background: #D8D8D8; border-color: #AFAFAF; color: #202020;")
+                continue
+            is_active = bool(payload.get(key))
+            background = "#146C2E" if is_active else "#F3F3F3"
+            color = "white" if is_active else "#202020"
+            border = "#0F5523" if is_active else "#B8B8B8"
+            indicator.setStyleSheet(f"background: {background}; border-color: {border}; color: {color};")
+
+    def on_physical_button_status(self, payload: dict) -> None:
+        self._update_physical_button_indicators(payload)
+        print(
+            "Physical buttons: "
+            f"run={payload.get('runInput')} "
+            f"pause={payload.get('pauseInput')} "
+            f"runRaw={payload.get('runRaw')} "
+            f"pauseRaw={payload.get('pauseRaw')} "
+            f"runLogical={payload.get('runLogical')} "
+            f"pauseLogical={payload.get('pauseLogical')} "
+            f"feedHoldActive={payload.get('feedHoldActive')} "
+            f"motionEnabled={payload.get('motionEnabled')} "
+            f"safetyInputValue={payload.get('safetyInputValue')}"
+        )
+
+    def on_physical_button_error(self, message: str) -> None:
+        print(f"Physical button read failed: {message}")
 
     def on_pause_hold_status(self, message: str) -> None:
         self._pause_hold_active = True

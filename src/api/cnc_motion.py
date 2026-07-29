@@ -6,7 +6,7 @@ from src.cnc.cnc_client_protocol import CncClientProtocol
 from src.cnc.error_translator import format_error
 from src.core.app_state import get_cnc_client
 
-from .schemas.job import CncHomedResponse, CncMotionResponse, CncPositionResponse, JogCommandRequest, MoveCommandRequest, SetWorkCoordinateRequest, ZeroAxisRequest
+from .schemas.job import CncHomedResponse, CncMotionResponse, CncPhysicalButtonStatusResponse, CncPositionResponse, JogCommandRequest, MoveCommandRequest, SetWorkCoordinateRequest, ZeroAxisRequest
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,26 @@ async def get_position(
     )
 
 
+
+@router.get("/api/cnc/physical-buttons", response_model=CncPhysicalButtonStatusResponse)
+async def get_physical_button_status(
+    client: CncClientProtocol = Depends(get_cnc_client),
+):
+    """Return physical run/pause input states for diagnostics only."""
+    status = client.get_physical_button_status()
+    return CncPhysicalButtonStatusResponse(
+        status=0,
+        message="CNC physical button status read successfully",
+        runInput=bool(status.get("runInput", False)),
+        pauseInput=bool(status.get("pauseInput", False)),
+        runRaw=int(status.get("runRaw", 0)),
+        pauseRaw=int(status.get("pauseRaw", 0)),
+        runLogical=int(status.get("runLogical", 0)),
+        pauseLogical=int(status.get("pauseLogical", 0)),
+        feedHoldActive=bool(status.get("feedHoldActive", False)),
+        safetyInputValue=int(status.get("safetyInputValue", 0)),
+        motionEnabled=bool(status.get("motionEnabled", False)),
+    )
 
 
 @router.get("/api/cnc/homed", response_model=CncHomedResponse)

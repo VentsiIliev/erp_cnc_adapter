@@ -33,6 +33,40 @@ class FakeResponse:
 
 
 
+def test_get_physical_button_status_gets_adapter_endpoint(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        status = 200
+
+        def read(self):
+            return b'{"status": 0, "message": "ok", "runInput": true, "pauseInput": false}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    client = AdapterJogClient("http://127.0.0.1:8765", timeout_seconds=2.0)
+    response = client.get_physical_button_status()
+
+    assert response["runInput"] is True
+    assert captured == {
+        "url": "http://127.0.0.1:8765/api/cnc/physical-buttons",
+        "method": "GET",
+        "timeout": 0.75,
+    }
+
+
 def test_clear_cnc_messages_posts_adapter_clear_endpoint(monkeypatch):
     captured = {}
 
@@ -303,12 +337,12 @@ def test_resolve_icon_path_uses_project_logo(monkeypatch):
 
 
 
-def test_resolve_home_icon_path_uses_original_jogpad_home_bitmap(monkeypatch):
+def test_resolve_home_icon_path_uses_all_axes_home_bitmap(monkeypatch):
     from src.jog_pad import jog_pad
 
     monkeypatch.setattr(jog_pad.sys, "frozen", False, raising=False)
 
-    assert jog_pad.resolve_home_icon_path().endswith(str(Path("resources") / "jogpad" / "home_x.bmp"))
+    assert jog_pad.resolve_home_icon_path().endswith(str(Path("resources") / "home.bmp"))
 
 
 def test_jog_pad_uses_original_bitmap_icons():
@@ -457,6 +491,18 @@ def test_jog_pad_starts_and_stops_pause_hold_thread():
     assert "def stop_background_threads" in text
     assert "self.position_poller.stop()" in text
     assert "self.pause_hold_thread.stop()" in text
+
+
+def test_jog_pad_has_temp_physical_button_indicators():
+    text = jog_pad_source()
+
+    assert "self.physical_button_indicators" in text
+    assert '("runInput", "RUN")' in text
+    assert '("pauseInput", "PAUSE")' in text
+    assert '("feedHoldActive", "HOLD")' in text
+    assert '("motionEnabled", "MOTION")' in text
+    assert "def _update_physical_button_indicators" in text
+    assert "self._update_physical_button_indicators(payload)" in text
 
 
 def test_jog_pad_has_visible_command_status_for_failures():

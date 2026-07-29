@@ -18,6 +18,38 @@ async def test_position_endpoint_returns_work_and_machine_coordinates(client):
 
 
 @pytest.mark.asyncio
+async def test_physical_buttons_endpoint_returns_cnc_input_status(client, fake_client):
+    fake_client._physical_button_status = {
+        "runInput": True,
+        "pauseInput": False,
+        "runRaw": 0,
+        "pauseRaw": 1,
+        "runLogical": 0,
+        "pauseLogical": 0,
+        "feedHoldActive": True,
+        "safetyInputValue": 0,
+        "motionEnabled": True,
+    }
+
+    response = await client.get("/api/cnc/physical-buttons")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": 0,
+        "message": "CNC physical button status read successfully",
+        "runInput": True,
+        "pauseInput": False,
+        "runRaw": 0,
+        "pauseRaw": 1,
+        "runLogical": 0,
+        "pauseLogical": 0,
+        "feedHoldActive": True,
+        "safetyInputValue": 0,
+        "motionEnabled": True,
+    }
+
+
+@pytest.mark.asyncio
 async def test_reset_endpoint_calls_cnc_client(client, fake_client):
     response = await client.post("/api/cnc/reset")
 

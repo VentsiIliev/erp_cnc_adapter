@@ -16,6 +16,8 @@ CNC_RC_ALREADY_RUNS = 6
 CNC_RC_ALREADY_CONNECTED = 7
 CNC_RC_ERR_SERVER_NOT_RUNNING = 22
 CNC_RC_ERR_NOT_CONNECTED = 24
+CNC_IOID_RUN_IN = 31
+CNC_IOID_PAUSE_IN = 32
 
 
 class CncClient:
@@ -200,6 +202,28 @@ class CncClient:
         return {
             "work": self._cart_to_dict(work),
             "machine": self._cart_to_dict(machine),
+        }
+
+    def get_physical_button_status(self) -> dict:
+        """Return read-only physical run/pause input state for diagnostics."""
+        run_logical = int(self._dll.CncGetInput(CNC_IOID_RUN_IN))
+        pause_logical = int(self._dll.CncGetInput(CNC_IOID_PAUSE_IN))
+        run_raw = int(self._dll.CncGetInputRaw(CNC_IOID_RUN_IN))
+        pause_raw = int(self._dll.CncGetInputRaw(CNC_IOID_PAUSE_IN))
+        motion = self._dll.CncGetMotionStatus().contents
+        controller = self._dll.CncGetControllerStatus().contents
+        return {
+            # On the tested Eding setup RUN is active-low: released raw=1, pressed raw=0.
+            # PAUSE follows the DLL logical value correctly, so keep it as reported.
+            "runInput": run_raw == 0,
+            "pauseInput": pause_logical == 1,
+            "runRaw": run_raw,
+            "pauseRaw": pause_raw,
+            "runLogical": run_logical,
+            "pauseLogical": pause_logical,
+            "feedHoldActive": int(motion.feedHoldActive) == 1,
+            "safetyInputValue": int(motion.safetyInputValue),
+            "motionEnabled": int(controller.motionEnabled) == 1,
         }
 
     def get_all_axes_homed(self) -> bool:
@@ -681,6 +705,8 @@ class CncClient:
             ("CncGetRunningStatus", None, POINTER(CNC_RUNNING_STATUS)),
             ("CncGetMotionStatus", None, POINTER(CNC_MOTION_STATUS)),
             ("CncGetControllerStatus", None, POINTER(CNC_CONTROLLER_STATUS)),
+            ("CncGetInput", [c_int], c_int),
+            ("CncGetInputRaw", [c_int], c_int),
             ("CncRunSingleLine", [c_char_p], c_int),
             ("CncWaitSingleLine", [c_void_p, c_void_p], c_int),
             ("CncStoreIniFile", [c_int], c_int),

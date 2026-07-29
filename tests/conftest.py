@@ -39,6 +39,17 @@ class FakeCncClient:
         self._server_process_alive = True
         self._all_axes_homed = True
         self._motion_enabled = True
+        self._physical_button_status = {
+            "runInput": False,
+            "pauseInput": False,
+            "runRaw": 1,
+            "pauseRaw": 1,
+            "runLogical": 1,
+            "pauseLogical": 0,
+            "feedHoldActive": False,
+            "safetyInputValue": 0,
+            "motionEnabled": True,
+        }
         self._home_all_axes_rc = 0
         self.home_all_axes_calls = 0
         self.home_all_axes_gui_calls = 0
@@ -85,6 +96,9 @@ class FakeCncClient:
             "work": {"x": 1.25, "y": 2.5, "z": -3.75, "a": 0.0, "b": 0.0, "c": 0.0},
             "machine": {"x": 10.0, "y": 20.0, "z": -30.0, "a": 0.0, "b": 0.0, "c": 0.0},
         }
+
+    def get_physical_button_status(self) -> dict:
+        return dict(self._physical_button_status)
 
     def get_all_axes_homed(self) -> bool:
         return self._all_axes_homed

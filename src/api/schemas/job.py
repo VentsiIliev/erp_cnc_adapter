@@ -199,6 +199,22 @@ class CncPositionResponse(BaseModel):
     machine: AxisPosition = Field(default_factory=AxisPosition)
 
 
+class CncPhysicalButtonStatusResponse(BaseModel):
+    status: int
+    message: str
+    run_input: bool = Field(alias="runInput")
+    pause_input: bool = Field(alias="pauseInput")
+    run_raw: int = Field(alias="runRaw")
+    pause_raw: int = Field(alias="pauseRaw")
+    run_logical: int = Field(default=0, alias="runLogical")
+    pause_logical: int = Field(default=0, alias="pauseLogical")
+    feed_hold_active: bool = Field(alias="feedHoldActive")
+    safety_input_value: int = Field(alias="safetyInputValue")
+    motion_enabled: bool = Field(alias="motionEnabled")
+
+    model_config = {"populate_by_name": True}
+
+
 class CncHomedResponse(BaseModel):
     status: int
     message: str

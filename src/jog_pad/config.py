@@ -14,6 +14,7 @@ ACCENT_BLUE = "#224896"
 FALLBACK_ADAPTER_PORT = 8002
 POSITION_READ_TIMEOUT_SECONDS = 0.75
 POSITION_POLL_INTERVAL_MS = 200
+PHYSICAL_BUTTON_POLL_INTERVAL_MS = 500
 POSITION_ERROR_DISPLAY_THRESHOLD = 3
 JOG_PAD_IPC_PREFIX = "erp_cnc_adapter_jog_pad"
 
@@ -46,8 +47,8 @@ def resolve_jogpad_icon_path(file_name: str) -> Optional[str]:
 
 
 def resolve_home_icon_path() -> Optional[str]:
-    """Locate the original home bitmap for dev and installed runs."""
-    return resolve_jogpad_icon_path("home_x.bmp")
+    """Locate the all-axes home bitmap for dev and installed runs."""
+    return resolve_resource_path("home.bmp")
 
 
 def resolve_reset_icon_path() -> Optional[str]:

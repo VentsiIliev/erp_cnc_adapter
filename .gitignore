@@ -68,3 +68,6 @@ run_update.bat
 # Update lock file
 .update-lock
 
+# Local agent/runtime state
+adapter.pid
+.claude/

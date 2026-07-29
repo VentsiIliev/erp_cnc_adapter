@@ -32,6 +32,8 @@ class AdapterJogClient:
     def get_positions(self) -> dict:
         return self._get_json("/api/cnc/position", timeout_seconds=min(self.timeout_seconds, POSITION_READ_TIMEOUT_SECONDS))
 
+    def get_physical_button_status(self) -> dict:
+        return self._get_json("/api/cnc/physical-buttons", timeout_seconds=min(self.timeout_seconds, 0.75))
 
     def home_all_axes(self) -> dict:
         return self._post_json("/api/cnc/home", None)

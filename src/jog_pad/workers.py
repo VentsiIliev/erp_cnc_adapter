@@ -9,7 +9,7 @@ from PyQt5.QtCore import QObject, QThread, pyqtSignal
 from PyQt5.QtWidgets import QWidget
 
 from .client import AdapterJogClient
-from .config import POSITION_POLL_INTERVAL_MS
+from .config import PHYSICAL_BUTTON_POLL_INTERVAL_MS, POSITION_POLL_INTERVAL_MS
 
 
 class BackgroundCommandSender(QObject):
@@ -78,6 +78,32 @@ class CoordinatePoller(QThread):
             except Exception as exc:
                 self.error_received.emit(str(exc))
             self.msleep(POSITION_POLL_INTERVAL_MS)
+
+
+class PhysicalButtonPoller(QThread):
+    status_received = pyqtSignal(dict)
+    error_received = pyqtSignal(str)
+
+    def __init__(self, client: AdapterJogClient, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.client = client
+        self._running = True
+
+    def stop(self) -> None:
+        self._running = False
+
+    def run(self) -> None:
+        last_status = None
+        while self._running:
+            try:
+                status = self.client.get_physical_button_status()
+            except Exception as exc:
+                self.error_received.emit(str(exc))
+            else:
+                if status != last_status:
+                    self.status_received.emit(status)
+                    last_status = status
+            self.msleep(PHYSICAL_BUTTON_POLL_INTERVAL_MS)
 
 
 class PauseHoldThread(QThread):
