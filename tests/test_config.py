@@ -23,7 +23,7 @@ class TestSettings:
         assert s.cnc_retry_interval == 5
         assert s.cnc_health_interval == 10
         assert s.auto_start_adapter_on_logon is True
-        assert s.adapter_startup_delay_seconds == 15
+        assert s.adapter_startup_delay_seconds == 90
         assert s.job_monitor_poll_interval == 1.0
         assert s.jog_pad_pause_hold_interval_ms == 0
         assert s.physical_button_poll_interval_ms == 50
@@ -253,7 +253,7 @@ class TestConfigAPI:
             task_username=r"DOMAIN\adapter",
             task_password="secret",
             auto_start_enabled=True,
-            startup_delay_seconds=15,
+            startup_delay_seconds=90,
         )
         persist_call = mock_persist.call_args[0][0]
         assert persist_call["task_username"] == r"DOMAIN\adapter"
@@ -321,7 +321,7 @@ class TestConfigAPI:
             task_username=r"DOMAIN\adapter",
             task_password="",
             auto_start_enabled=True,
-            startup_delay_seconds=15,
+            startup_delay_seconds=90,
         )
 
     @pytest.mark.asyncio
@@ -349,5 +349,5 @@ class TestConfigAPI:
             task_username=r"DOMAIN\adapter",
             task_password="",
             auto_start_enabled=False,
-            startup_delay_seconds=15,
+            startup_delay_seconds=90,
         )

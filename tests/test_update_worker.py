@@ -229,6 +229,37 @@ def test_wait_until_exe_unlocked_raises_when_file_stays_locked(monkeypatch, tmp_
         update_worker._wait_until_exe_unlocked(str(exe_path), timeout_seconds=0.5)
 
 
+def test_repair_adapter_hidden_launcher_targets_network_preflight(monkeypatch, tmp_path):
+    from src import update_worker
+
+    install_dir = tmp_path / "install"
+    scripts_dir = install_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (install_dir / "erp-cnc-adapter.exe").write_bytes(b"exe")
+    (scripts_dir / "launch_adapter_after_network.ps1").write_text("preflight", encoding="utf-8")
+
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+
+    assert update_worker._repair_adapter_hidden_launcher(str(install_dir)) is True
+
+    launcher = scripts_dir / "launch_adapter_hidden.vbs"
+    text = launcher.read_text(encoding="utf-8")
+    assert "WScript.Shell" in text
+    assert "Scripting.FileSystemObject" in text
+    assert "launch_adapter_after_network.ps1" in text
+    assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File" in text
+    assert "erp-cnc-adapter.exe" in text
+    assert ", 0, False" in text
+
+
+def test_repair_adapter_hidden_launcher_skips_when_exe_missing(monkeypatch, tmp_path):
+    from src import update_worker
+
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+
+    assert update_worker._repair_adapter_hidden_launcher(str(tmp_path)) is False
+    assert not (tmp_path / "scripts" / "launch_adapter_hidden.vbs").exists()
+
 def test_repair_start_cnc_shortcut_targets_hidden_launcher(monkeypatch, tmp_path):
     from src import update_worker
 

@@ -13,7 +13,7 @@ from pathlib import Path
 
 TASK_NAME = "ERPCNCAdapter"
 WATCHDOG_TASK_NAME = "ERPCNCAdapterWatchdog"
-DEFAULT_STARTUP_DELAY_SECONDS = 15
+DEFAULT_STARTUP_DELAY_SECONDS = 90
 
 logger = logging.getLogger(__name__)
 

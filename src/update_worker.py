@@ -262,6 +262,43 @@ def _ps_quote(value: str) -> str:
     return value.replace("'", "''")
 
 
+def _repair_adapter_hidden_launcher(install_dir: str) -> bool:
+    """Point the adapter scheduled-task launcher at the network preflight script."""
+    install_path = Path(install_dir)
+    exe_path = install_path / "erp-cnc-adapter.exe"
+    script_path = install_path / "scripts" / "launch_adapter_after_network.ps1"
+    launcher_path = install_path / "scripts" / "launch_adapter_hidden.vbs"
+    if os.name != "nt":
+        return False
+    if not exe_path.exists():
+        logger.warning("Adapter hidden launcher repair skipped; adapter EXE is missing: %s", exe_path)
+        return False
+
+    def vbs_quote(value: str) -> str:
+        return value.replace('"', '""')
+
+    launcher_text = (
+        'Set shell = CreateObject("WScript.Shell")\n'
+        'Set fso = CreateObject("Scripting.FileSystemObject")\n'
+        f'shell.CurrentDirectory = "{vbs_quote(str(install_path))}"\n'
+        f'preflight = "{vbs_quote(str(script_path))}"\n'
+        f'adapter = "{vbs_quote(str(exe_path))}"\n'
+        'If fso.FileExists(preflight) Then\n'
+        '  shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & preflight & """", 0, False\n'
+        'Else\n'
+        '  shell.Run """" & adapter & """", 0, False\n'
+        'End If\n'
+    )
+    try:
+        launcher_path.parent.mkdir(parents=True, exist_ok=True)
+        launcher_path.write_text(launcher_text, encoding="utf-8")
+    except Exception as exc:
+        logger.warning("Adapter hidden launcher repair failed: %s", exc)
+        return False
+
+    logger.info("Adapter hidden launcher repaired to use network preflight: %s", launcher_path)
+    return True
+
 def _repair_start_cnc_shortcut(install_dir: str) -> bool:
     """Point the desktop START-CNC shortcut at the hidden launcher after updates."""
     launcher_path = Path(install_dir) / "scripts" / "start_cnc_hidden.vbs"
@@ -620,6 +657,7 @@ def main(argv: list[str] | None = None) -> None:
             logger.info("Installing full update package")
             backup_path = _backup_install_dir(install_dir, current_version)
             _install_zip_payload(staged_path, install_dir, verify_manifest=True)
+            _repair_adapter_hidden_launcher(install_dir)
             _repair_start_cnc_shortcut(install_dir)
             _stop_status_indicator_processes(install_dir)
             _repair_status_indicator_task(install_dir)

@@ -21,7 +21,7 @@ class InstallWorker(QThread):
     step_changed = pyqtSignal(str)
     progress_value = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)  # success, message
-    DEFAULT_STARTUP_DELAY_SECONDS = 15
+    DEFAULT_STARTUP_DELAY_SECONDS = 90
     MANUAL_START_TASK_NAME = "ERPCNCAdapterManualStart"
     EDING_HANDOFF_TASK_NAME = "ERPCNCAdapterEdingHandoff"
     STATUS_INDICATOR_TASK_NAME = "ERPCNCAdapterStatusIndicator"
@@ -423,18 +423,25 @@ class InstallWorker(QThread):
         launcher_path.parent.mkdir(parents=True, exist_ok=True)
 
         def vbs_quote(value: str) -> str:
-            return value.replace("\"", "\"\"")
+            return value.replace('"', '""')
 
+        preflight_path = launcher_path.parent / "launch_adapter_after_network.ps1"
         launcher_path.write_text(
             "Set shell = CreateObject(\"WScript.Shell\")\n"
+            "Set fso = CreateObject(\"Scripting.FileSystemObject\")\n"
             f"shell.CurrentDirectory = \"{vbs_quote(str(self.install_path))}\"\n"
-            f"shell.Run \"\"\"{vbs_quote(str(exe_path))}\"\"\", 0, False\n",
+            f"preflight = \"{vbs_quote(str(preflight_path))}\"\n"
+            f"adapter = \"{vbs_quote(str(exe_path))}\"\n"
+            "If fso.FileExists(preflight) Then\n"
+            "  shell.Run \"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"\"\" & preflight & \"\"\"\", 0, False\n"
+            "Else\n"
+            "  shell.Run \"\"\"\" & adapter & \"\"\"\", 0, False\n"
+            "End If\n",
             encoding="utf-8",
         )
         if installation_log:
             installation_log.write(f"Hidden launcher: {launcher_path}\n")
         return launcher_path
-
     def _write_start_cnc_hidden_launcher(self, installation_log=None) -> Path:
         """Create a hidden launcher for the manual START-CNC shortcut."""
         restart_path = self.install_path / "scripts" / "restart.bat"
@@ -1069,7 +1076,11 @@ class InstallWorker(QThread):
             config_data["machine_number"] = self.machine_number
             config_data["task_username"] = self.task_username
             config_data["auto_start_adapter_on_logon"] = self.auto_start_adapter_on_logon
-            config_data.setdefault("adapter_startup_delay_seconds", self.DEFAULT_STARTUP_DELAY_SECONDS)
+            startup_delay = config_data.get("adapter_startup_delay_seconds")
+            if startup_delay in (None, 15):
+                config_data["adapter_startup_delay_seconds"] = self.DEFAULT_STARTUP_DELAY_SECONDS
+            else:
+                config_data["adapter_startup_delay_seconds"] = int(startup_delay)
             config_path.write_text(
                 json.dumps(config_data, indent=2, ensure_ascii=False),
                 encoding="utf-8",

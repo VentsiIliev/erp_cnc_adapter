@@ -33,7 +33,7 @@ echo  Building ERP-CNC Adapter v%VERSION%
 echo ========================================
 echo.
 
-REM Step 0: Run tests first — abort on any failure
+REM Step 0: Run tests first - abort on any failure
 echo Step 0: Running test suite...
 "%VENV_PYTHON%" -m pytest tests/ --timeout=15 -q
 if %errorlevel% neq 0 (
@@ -80,6 +80,7 @@ copy "scripts\uninstall.bat" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\update_adapter.py" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\status.bat" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\restart.bat" "%DIST_FOLDER%\scripts\" >nul
+copy "scripts\launch_adapter_after_network.ps1" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\start_cnc_splash.ps1" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\status_indicator.ps1" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\watchdog.bat" "%DIST_FOLDER%\scripts\" >nul
@@ -150,11 +151,11 @@ echo Version: %VERSION%
 echo Distribution: %DIST_FOLDER%\
 echo.
 echo Contents:
-echo   [√] erp-cnc-adapter.exe
-echo   [√] scripts\ (8 files)
-echo   [√] logs\ (empty directory)
-echo   [√] VERSION.txt
-echo   [√] README.txt
+echo   [v] erp-cnc-adapter.exe
+echo   [v] scripts\ (9 files)
+echo   [v] logs\ (empty directory)
+echo   [v] VERSION.txt
+echo   [v] README.txt
 echo.
 echo Ready to deploy! Copy the dist_v%VERSION% folder to target machines.
 echo.

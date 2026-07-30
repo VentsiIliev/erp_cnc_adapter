@@ -1,4 +1,4 @@
-"""Tests for Machine ID in installer — PathPage UI, worker config writing."""
+"""Tests for Machine ID in installer - PathPage UI, worker config writing."""
 
 import json
 import os
@@ -320,7 +320,7 @@ class TestInstallWorkerTaskHandling:
         assert ", 0, False" in text
         assert "watchdog.bat" in text
 
-    def test_hidden_launcher_runs_adapter_without_console(self, tmp_path):
+    def test_hidden_launcher_runs_network_preflight_without_console(self, tmp_path):
         from src.installer.worker import InstallWorker
 
         worker = InstallWorker(str(tmp_path), "CNC1")
@@ -329,7 +329,9 @@ class TestInstallWorkerTaskHandling:
 
         assert launcher.name == "launch_adapter_hidden.vbs"
         assert "WScript.Shell" in text
-        assert "shell.Run" in text
+        assert "Scripting.FileSystemObject" in text
+        assert "launch_adapter_after_network.ps1" in text
+        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File" in text
         assert ", 0, False" in text
         assert "erp-cnc-adapter.exe" in text
 
@@ -543,7 +545,7 @@ class TestInstallWorkerTaskHandling:
         script = worker._build_interactive_logon_task_script(tmp_path / "launch_adapter_hidden.vbs")
 
         assert "New-ScheduledTaskTrigger -AtLogOn" in script
-        assert "$trigger.Delay = 'PT15S'" in script
+        assert "$trigger.Delay = 'PT90S'" in script
         assert "-Execute 'wscript.exe'" in script
         assert "launch_adapter_hidden.vbs" in script
         assert "-LogonType Interactive" in script
@@ -573,6 +575,19 @@ class TestInstallWorkerTaskHandling:
         script = worker._build_interactive_logon_task_script(tmp_path / "launch_adapter_hidden.vbs")
 
         assert "Disable-ScheduledTask -TaskName 'ERPCNCAdapter'" in script
+
+    def test_installer_migrates_regressed_15_second_startup_delay(self, tmp_path):
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "src"
+            / "installer"
+            / "worker.py"
+        ).read_text(encoding="utf-8")
+
+        assert 'if startup_delay in (None, 15):' in source
+        assert 'config_data["adapter_startup_delay_seconds"] = self.DEFAULT_STARTUP_DELAY_SECONDS' in source
 
     def test_installer_sets_startup_delay_in_registered_task(self, tmp_path):
         from pathlib import Path

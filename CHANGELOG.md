@@ -57,6 +57,14 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.3.1 - 2026-07-30
+
+- Added scripts/launch_adapter_after_network.ps1.
+
+## v1.3.0 - 2026-07-30
+
+- Added scripts/launch_adapter_after_network.ps1.
+
 ## v1.3.0 - 2026-07-30
 
 - fixing no access to mills after boot
@@ -141,6 +149,8 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
+
 
 
 

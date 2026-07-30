@@ -23,7 +23,7 @@ VENV_DIR = PROJECT_ROOT / ".venv"
 VENV_PYTHON = VENV_DIR / "Scripts" / "python.exe"
 
 
-# ── helpers ────────────────────────────────────────────────────────────────
+# -- helpers ---------------------------------------------------------------
 
 def _read_script(name: str) -> str:
     """Return the text content of a script in util_scripts/."""
@@ -60,7 +60,7 @@ class TestSetup32bitVenv:
 
     @pytest.mark.skipif(
         not VENV_PYTHON.exists(),
-        reason=".venv not present â€“ setup_32bit_venv.ps1 has not been run",
+        reason=".venv not present - setup_32bit_venv.ps1 has not been run",
     )
     def test_venv_is_32bit(self):
         """If a .venv exists, its Python should be 32-bit."""
@@ -77,7 +77,7 @@ class TestSetup32bitVenv:
 
     @pytest.mark.skipif(
         not VENV_PYTHON.exists(),
-        reason=".venv not present â€“ setup_32bit_venv.ps1 has not been run",
+        reason=".venv not present - setup_32bit_venv.ps1 has not been run",
     )
     def test_venv_has_required_packages(self):
         """All packages listed in requirements.txt should be installed."""
@@ -150,6 +150,12 @@ class TestBuildScript:
         text = _read_script(self.SCRIPT)
         assert "scripts\\status_indicator.ps1" in text
 
+
+    def test_copies_network_preflight_launcher_script(self):
+        """The adapter task preflight must be shipped in full update packages."""
+        text = _read_script(self.SCRIPT)
+        assert "scripts\\launch_adapter_after_network.ps1" in text
+        assert "scripts\\ (9 files)" in text
 
 # ===========================================================================
 # build_installer.bat
