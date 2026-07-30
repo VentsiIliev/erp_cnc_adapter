@@ -41,6 +41,39 @@ def _build_status_data(manager) -> dict:
     }
 
 
+def _build_indicator_status_data(manager) -> dict:
+    cnc = _build_status_data(manager)["cnc"]
+    connected = bool(cnc["connected"])
+    machine_state = cnc["machine_state"]
+    last_error = cnc["last_error"]
+
+    if last_error:
+        interpreter_status = "error"
+    elif connected and machine_state == 2:
+        interpreter_status = "ready"
+    elif connected:
+        interpreter_status = "not_ready"
+    else:
+        interpreter_status = "offline"
+
+    return {
+        "status": "ok",
+        "version": VERSION,
+        "adapter": {
+            "online": True,
+            "status": "running",
+        },
+        "interpreter": {
+            "online": connected,
+            "status": interpreter_status,
+            "machine_state": machine_state,
+            "machine_state_text": cnc["machine_state_text"],
+            "connection_state": cnc["state"],
+            "last_error": last_error,
+        },
+    }
+
+
 def _format_uptime(seconds: float | None) -> str:
     if seconds is None:
         return "&mdash;"
@@ -139,6 +172,13 @@ async def home(
         return dashboard_response("overview", status_code=200)
 
     return JSONResponse(content=data, status_code=status_code)
+
+
+@router.get("/api/status/indicator")
+async def indicator_status_json(
+    manager: ConnectionManager = Depends(get_connection_manager),
+):
+    return JSONResponse(content=_build_indicator_status_data(manager), status_code=200)
 
 
 @router.get("/api/health")

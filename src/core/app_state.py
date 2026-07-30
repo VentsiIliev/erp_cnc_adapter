@@ -226,8 +226,15 @@ class AppState:
             self._auto_start_cnc_server()
             return
 
+        if not self.connection_manager.ever_ready:
+            logger.warning(
+                "CncServer.exe is not running before first CNC-ready state; restarting CncServer only and waiting for startup"
+            )
+            self._auto_start_cnc_server()
+            return
+
         logger.warning(
-            "CncServer.exe disappeared after adapter startup; restarting adapter to refresh CNC DLL state"
+            "CncServer.exe disappeared after CNC was previously ready; restarting adapter to refresh CNC DLL state"
         )
         try:
             recovery_start = time.perf_counter()

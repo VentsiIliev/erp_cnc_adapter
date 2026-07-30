@@ -16,10 +16,10 @@ if %errorlevel% neq 0 (
 )
 
 echo Step 1: Removing scheduled tasks...
-schtasks /End /TN ERPCNCAdapter >nul 2>&1
-schtasks /Delete /TN ERPCNCAdapter /F >nul 2>&1
-schtasks /End /TN ERPCNCAdapterWatchdog >nul 2>&1
-schtasks /Delete /TN ERPCNCAdapterWatchdog /F >nul 2>&1
+for %%T in (ERPCNCAdapterStatusIndicator ERPCNCAdapterEdingHandoff ERPCNCAdapterManualStart ERPCNCAdapterWatchdog ERPCNCAdapter) do (
+    schtasks /End /TN %%T >nul 2>&1
+    schtasks /Delete /TN %%T /F >nul 2>&1
+)
 
 echo Step 2: Removing old service registration (if any)...
 net stop ERPCNCAdapter >nul 2>&1
@@ -27,6 +27,7 @@ sc delete ERPCNCAdapter >nul 2>&1
 timeout /t 1 >nul
 
 echo Step 3: Killing any running processes...
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$target = Join-Path '%~dp0' 'status_indicator.ps1'; Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($target, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 taskkill /F /IM erp-cnc-adapter.exe /T >nul 2>&1
 
 echo Step 4: Removing firewall rule...

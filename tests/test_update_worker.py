@@ -276,3 +276,82 @@ def test_repair_start_cnc_shortcut_skips_when_hidden_launcher_missing(monkeypatc
 
     assert update_worker._repair_start_cnc_shortcut(str(tmp_path)) is False
     assert calls == []
+
+
+def test_repair_status_indicator_task_registers_independent_logon_task(monkeypatch, tmp_path):
+    from src import update_worker
+
+    install_dir = tmp_path / "install"
+    scripts_dir = install_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (install_dir / "config.json").write_text('{"task_username":"DOMAIN\\adapter"}', encoding="utf-8")
+    (scripts_dir / "status_indicator.ps1").write_text("indicator", encoding="utf-8")
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+    monkeypatch.setattr(update_worker.subprocess, "run", fake_run)
+
+    assert update_worker._repair_status_indicator_task(str(install_dir)) is True
+    launcher = scripts_dir / "status_indicator_hidden.vbs"
+    assert launcher.exists()
+    assert "status_indicator.ps1" in launcher.read_text(encoding="utf-8")
+    args, kwargs = calls[0]
+    script = args[-1]
+    assert "ERPCNCAdapterStatusIndicator" in script
+    assert "New-ScheduledTaskTrigger -AtLogOn -User $taskUser" in script
+    assert "Start-ScheduledTask -TaskName 'ERPCNCAdapterStatusIndicator'" in script
+    assert "ERPCNCAdapterManualStart" not in script
+    assert kwargs["timeout"] == 20
+
+
+def test_repair_status_indicator_task_skips_when_script_missing(monkeypatch, tmp_path):
+    from src import update_worker
+
+    calls = []
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+    monkeypatch.setattr(update_worker.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+
+    assert update_worker._repair_status_indicator_task(str(tmp_path)) is False
+    assert calls == []
+
+
+def test_stop_status_indicator_processes_targets_only_indicator_script(monkeypatch, tmp_path):
+    from src import update_worker
+
+    install_dir = tmp_path / "install"
+    (install_dir / "scripts").mkdir(parents=True)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+
+        class Result:
+            returncode = 0
+            stdout = "456\n"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+    monkeypatch.setattr(update_worker.subprocess, "run", fake_run)
+
+    update_worker._stop_status_indicator_processes(str(install_dir))
+
+    args, kwargs = calls[0]
+    script = args[-1]
+    assert args[:4] == ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass"]
+    assert "status_indicator.ps1" in script
+    assert "Get-CimInstance Win32_Process" in script
+    assert "Stop-Process -Id $_.ProcessId" in script
+    assert "erp-cnc-adapter.exe" not in script
+    assert kwargs["timeout"] == 10

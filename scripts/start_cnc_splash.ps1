@@ -48,7 +48,7 @@ if (Test-Path -LiteralPath $iconPath) {
 }
 
 $title = New-Object System.Windows.Controls.TextBlock
-$title.Text = 'ERP-CNC Adapter'
+$title.Text = 'ERP-CNC'
 $title.FontSize = 22
 $title.FontWeight = 'SemiBold'
 $title.VerticalAlignment = 'Center'

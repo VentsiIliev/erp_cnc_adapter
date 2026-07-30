@@ -24,6 +24,7 @@ class InstallWorker(QThread):
     DEFAULT_STARTUP_DELAY_SECONDS = 15
     MANUAL_START_TASK_NAME = "ERPCNCAdapterManualStart"
     EDING_HANDOFF_TASK_NAME = "ERPCNCAdapterEdingHandoff"
+    STATUS_INDICATOR_TASK_NAME = "ERPCNCAdapterStatusIndicator"
 
     def __init__(
         self,
@@ -264,6 +265,7 @@ class InstallWorker(QThread):
             ["schtasks", "/End", "/TN", "ERPCNCAdapterWatchdog"],
             ["schtasks", "/End", "/TN", self.MANUAL_START_TASK_NAME],
             ["schtasks", "/End", "/TN", self.EDING_HANDOFF_TASK_NAME],
+            ["schtasks", "/End", "/TN", self.STATUS_INDICATOR_TASK_NAME],
             ["taskkill", "/F", "/T", "/IM", "erp-cnc-adapter.exe"],
         ]
         for command in commands:
@@ -363,6 +365,57 @@ class InstallWorker(QThread):
             text=True,
             startupinfo=self._startupinfo(),
         )
+
+    def _write_status_indicator_hidden_launcher(self, installation_log=None) -> Path:
+        """Create a hidden launcher for the always-on operator status indicator."""
+        scripts_dir = self.install_path / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        script_path = scripts_dir / "status_indicator.ps1"
+        launcher_path = scripts_dir / "status_indicator_hidden.vbs"
+
+        def vbs_quote(value: str) -> str:
+            return value.replace('"', '""')
+
+        launcher_path.write_text(
+            "Set shell = CreateObject(\"WScript.Shell\")\n"
+            f"shell.CurrentDirectory = \"{vbs_quote(str(scripts_dir))}\"\n"
+            f"shell.Run \"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"\"{vbs_quote(str(script_path))}\"\"\", 0, False\n",
+            encoding="utf-8",
+        )
+        if installation_log:
+            installation_log.write(f"Hidden status indicator launcher: {launcher_path}\n")
+        return launcher_path
+
+    def _build_status_indicator_task_script(self) -> str:
+        launcher_path = self._write_status_indicator_hidden_launcher()
+        if self.task_username:
+            user_line = f"$taskUser = '{self._ps_quote(self.task_username)}'\n"
+        else:
+            user_line = "$taskUser = ('{0}\\{1}' -f $env:USERDOMAIN, $env:USERNAME)\n"
+        return (
+            "$ErrorActionPreference = 'Stop'\n"
+            f"Unregister-ScheduledTask -TaskName '{self.STATUS_INDICATOR_TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue\n"
+            f"$launcherPath = '{self._ps_quote(str(launcher_path))}'\n"
+            f"$workDir = '{self._ps_quote(str(launcher_path.parent))}'\n"
+            + user_line +
+            "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $launcherPath + '\"') -WorkingDirectory $workDir\n"
+            "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser\n"
+            "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+            "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
+            f"Register-ScheduledTask -TaskName '{self.STATUS_INDICATOR_TASK_NAME}' "
+            "-Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force -ErrorAction Stop | Out-Null\n"
+            f"Start-ScheduledTask -TaskName '{self.STATUS_INDICATOR_TASK_NAME}' -ErrorAction SilentlyContinue\n"
+        )
+
+    def _create_status_indicator_task(self, installation_log) -> bool:
+        result = self._run_powershell_script(self._build_status_indicator_task_script())
+        installation_log.write("Status indicator task creation:\n")
+        installation_log.write(f"Exit code: {result.returncode}\n")
+        if result.stdout:
+            installation_log.write(f"STDOUT:\n{result.stdout}\n")
+        if result.stderr:
+            installation_log.write(f"STDERR:\n{result.stderr}\n")
+        return result.returncode == 0
 
     def _write_hidden_launcher(self, exe_path: Path, installation_log=None) -> Path:
         """Create a wscript launcher so scheduled tasks do not show a console window."""
@@ -840,6 +893,7 @@ class InstallWorker(QThread):
             "$ErrorActionPreference = 'Continue'\n"
             + step("Manual START-CNC task", self._build_manual_start_task_script())
             + step("Eding GUI handoff task", self._build_eding_handoff_task_script())
+            + step("Status indicator task", self._build_status_indicator_task_script())
             + step("START-CNC desktop shortcut", self._build_start_shortcut_script())
         )
 
@@ -875,7 +929,7 @@ class InstallWorker(QThread):
             installation_log.flush()
             return None
 
-        names = ("Manual START-CNC task", "Eding GUI handoff task", "START-CNC desktop shortcut")
+        names = ("Manual START-CNC task", "Eding GUI handoff task", "Status indicator task", "START-CNC desktop shortcut")
         for name in names:
             step = steps.get(name, {"ok": False, "elapsed_ms": "?", "message": "missing step marker"})
             status = "OK" if step["ok"] else "FAILED"
@@ -1054,6 +1108,7 @@ class InstallWorker(QThread):
                 operator_setup = {
                     "Manual START-CNC task": self._create_manual_start_task(installation_log),
                     "Eding GUI handoff task": self._create_eding_handoff_task(installation_log),
+                    "Status indicator task": self._create_status_indicator_task(installation_log),
                     "START-CNC desktop shortcut": self._create_start_shortcut(installation_log),
                 }
             self._log_timed(installation_log, "START-CNC task/shortcut setup", setup_start)
@@ -1070,6 +1125,12 @@ class InstallWorker(QThread):
             else:
                 self.log_message.emit("\u26a0 Eding GUI handoff task creation failed")
                 installation_log.write("\u26a0 Eding GUI handoff task creation failed\n")
+            if operator_setup.get("Status indicator task"):
+                self.log_message.emit("Status indicator task created")
+                installation_log.write("Status indicator task created\n")
+            else:
+                self.log_message.emit("Status indicator task creation failed (non-critical)")
+                installation_log.write("Status indicator task creation failed (non-critical)\n")
             if operator_setup.get("START-CNC desktop shortcut"):
                 self.log_message.emit("\u2713 Desktop shortcut created: START-CNC")
                 installation_log.write("\u2713 Desktop shortcut created: START-CNC\n")

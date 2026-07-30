@@ -247,6 +247,7 @@ class TestInstallWorkerTaskHandling:
         assert ["schtasks", "/End", "/TN", "ERPCNCAdapterWatchdog"] in commands
         assert ["schtasks", "/End", "/TN", "ERPCNCAdapterManualStart"] in commands
         assert ["schtasks", "/End", "/TN", "ERPCNCAdapterEdingHandoff"] in commands
+        assert ["schtasks", "/End", "/TN", "ERPCNCAdapterStatusIndicator"] in commands
         assert ["taskkill", "/F", "/T", "/IM", "erp-cnc-adapter.exe"] in commands
 
     @patch("src.installer.worker.subprocess.run")
@@ -354,6 +355,35 @@ class TestInstallWorkerTaskHandling:
         assert "start-cnc.log" in task_text
         assert "MsgBox" in task_text
 
+
+    def test_status_indicator_hidden_launcher_runs_powershell_without_console(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1")
+        launcher = worker._write_status_indicator_hidden_launcher()
+        text = launcher.read_text(encoding="utf-8")
+
+        assert launcher.name == "status_indicator_hidden.vbs"
+        assert "WScript.Shell" in text
+        assert "status_indicator.ps1" in text
+        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass" in text
+        assert ", 0, False" in text
+
+    def test_status_indicator_task_is_independent_logon_task(self, tmp_path):
+        from src.installer.worker import InstallWorker
+
+        worker = InstallWorker(str(tmp_path), "CNC1", r"DOMAIN\adapter", "")
+        script = worker._build_status_indicator_task_script()
+
+        assert "ERPCNCAdapterStatusIndicator" in script
+        assert "status_indicator_hidden.vbs" in script
+        assert "status_indicator.ps1" not in script  # task targets hidden launcher, not PowerShell directly
+        assert "New-ScheduledTaskTrigger -AtLogOn -User $taskUser" in script
+        assert "-LogonType Interactive" in script
+        assert "Start-ScheduledTask -TaskName 'ERPCNCAdapterStatusIndicator'" in script
+        assert r"DOMAIN\adapter" in script
+        assert "ERPCNCAdapterManualStart" not in script
+
     def test_combined_operator_setup_script_contains_all_operator_steps(self, tmp_path):
         from src.installer.worker import InstallWorker
 
@@ -362,9 +392,11 @@ class TestInstallWorkerTaskHandling:
 
         assert "ERP_STEP|Manual START-CNC task" in script
         assert "ERP_STEP|Eding GUI handoff task" in script
+        assert "ERP_STEP|Status indicator task" in script
         assert "ERP_STEP|START-CNC desktop shortcut" in script
         assert "ERPCNCAdapterManualStart" in script
         assert "ERPCNCAdapterEdingHandoff" in script
+        assert "ERPCNCAdapterStatusIndicator" in script
         assert "START-CNC.lnk" in script
 
     @patch("src.installer.worker.subprocess.run")
@@ -377,6 +409,7 @@ class TestInstallWorkerTaskHandling:
             stdout=(
                 "ERP_STEP|Manual START-CNC task|0|100|\n"
                 "ERP_STEP|Eding GUI handoff task|0|200|\n"
+                "ERP_STEP|Status indicator task|0|30|\n"
                 "ERP_STEP|START-CNC desktop shortcut|0|50|\n"
             ),
             stderr="",
@@ -392,6 +425,7 @@ class TestInstallWorkerTaskHandling:
         assert result == {
             "Manual START-CNC task": True,
             "Eding GUI handoff task": True,
+            "Status indicator task": True,
             "START-CNC desktop shortcut": True,
         }
         assert "Operator task/shortcut combined setup" in log.getvalue()

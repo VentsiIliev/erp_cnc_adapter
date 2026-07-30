@@ -12,6 +12,7 @@ def _uninstall_script_text() -> str:
 def test_uninstall_script_removes_all_adapter_tasks_and_shortcut():
     text = _uninstall_script_text()
 
+    assert "ERPCNCAdapterStatusIndicator" in text
     assert "ERPCNCAdapterEdingHandoff" in text
     assert "ERPCNCAdapterManualStart" in text
     assert "ERPCNCAdapterWatchdog" in text
@@ -33,6 +34,8 @@ def test_uninstall_script_stops_adapter_cnc_and_launcher_processes():
     ):
         assert process_name in text
     assert "taskkill /F /T /IM %%P" in text
+    assert "status_indicator.ps1" in text
+    assert "Get-CimInstance Win32_Process" in text
 
 
 def test_uninstall_script_schedules_install_folder_removal_after_exit():

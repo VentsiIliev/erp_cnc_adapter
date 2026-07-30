@@ -309,6 +309,96 @@ def _repair_start_cnc_shortcut(install_dir: str) -> bool:
     return True
 
 
+def _repair_status_indicator_task(install_dir: str) -> bool:
+    """Create or repair the independent operator status indicator logon task after updates."""
+    script_path = Path(install_dir) / "scripts" / "status_indicator.ps1"
+    launcher_path = Path(install_dir) / "scripts" / "status_indicator_hidden.vbs"
+    if os.name != "nt":
+        return False
+    if not script_path.exists():
+        logger.warning("Status indicator task repair skipped; script is missing: %s", script_path)
+        return False
+
+    launcher_text = (
+        'Set shell = CreateObject("WScript.Shell")\n'
+        f'shell.CurrentDirectory = "{str(script_path.parent).replace(chr(34), chr(34) + chr(34))}"\n'
+        f'shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ""{str(script_path).replace(chr(34), chr(34) + chr(34))}""", 0, False\n'
+    )
+    try:
+        launcher_path.write_text(launcher_text, encoding="utf-8")
+    except Exception as exc:
+        logger.warning("Status indicator launcher repair failed: %s", exc)
+        return False
+
+    script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        f"$installDir = '{_ps_quote(str(install_dir))}'\n"
+        "$configPath = Join-Path $installDir 'config.json'\n"
+        "$taskUser = ('{0}\\{1}' -f $env:USERDOMAIN, $env:USERNAME)\n"
+        "$config = $null\n"
+        "if (Test-Path $configPath) { try { $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json } catch {} }\n"
+        "if ($config -and $config.task_username) { $taskUser = [string]$config.task_username }\n"
+        f"$launcherPath = '{_ps_quote(str(launcher_path))}'\n"
+        f"$workDir = '{_ps_quote(str(launcher_path.parent))}'\n"
+        "Unregister-ScheduledTask -TaskName 'ERPCNCAdapterStatusIndicator' -Confirm:$false -ErrorAction SilentlyContinue\n"
+        "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $launcherPath + '\"') -WorkingDirectory $workDir\n"
+        "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser\n"
+        "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+        "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
+        "Register-ScheduledTask -TaskName 'ERPCNCAdapterStatusIndicator' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force -ErrorAction Stop | Out-Null\n"
+        "Start-ScheduledTask -TaskName 'ERPCNCAdapterStatusIndicator' -ErrorAction SilentlyContinue\n"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except Exception as exc:
+        logger.warning("Status indicator task repair failed to run: %s", exc)
+        return False
+
+    if result.returncode != 0:
+        logger.warning("Status indicator task repair failed: %s", (result.stderr or result.stdout).strip())
+        return False
+
+    logger.info("Status indicator task repaired and started")
+    return True
+
+
+def _stop_status_indicator_processes(install_dir: str) -> None:
+    """Stop only the old status indicator PowerShell process so updated scripts take effect."""
+    script_path = Path(install_dir) / "scripts" / "status_indicator.ps1"
+    if os.name != "nt":
+        return
+
+    script = (
+        "$ErrorActionPreference = 'SilentlyContinue'\n"
+        f"$target = '{_ps_quote(str(script_path))}'\n"
+        "$currentPid = $PID\n"
+        "Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe' OR Name = 'pwsh.exe'\" | "
+        "Where-Object { $_.ProcessId -ne $currentPid -and $_.CommandLine -and $_.CommandLine.IndexOf($target, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | "
+        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Output $_.ProcessId }\n"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception as exc:
+        logger.warning("Could not stop status indicator process: %s", exc)
+        return
+
+    stopped = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if stopped:
+        logger.info("Stopped old status indicator process IDs: %s", ", ".join(stopped))
+    elif result.returncode != 0:
+        logger.warning("Status indicator process stop returned %s: %s", result.returncode, result.stderr.strip())
+
+
 def _install_legacy_exe(staged_path: str, exe_path: str, current_version: str) -> str:
     exe_dir = os.path.dirname(exe_path)
     exe_name = os.path.basename(exe_path)
@@ -531,6 +621,8 @@ def main(argv: list[str] | None = None) -> None:
             backup_path = _backup_install_dir(install_dir, current_version)
             _install_zip_payload(staged_path, install_dir, verify_manifest=True)
             _repair_start_cnc_shortcut(install_dir)
+            _stop_status_indicator_processes(install_dir)
+            _repair_status_indicator_task(install_dir)
             os.remove(staged_path)
         elif package_kind == "restore":
             logger.info("Restoring full install backup package")

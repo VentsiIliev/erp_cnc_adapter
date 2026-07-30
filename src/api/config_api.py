@@ -1,5 +1,6 @@
 """Configuration management API endpoints."""
 
+import asyncio
 import logging
 import socket
 from fastapi import APIRouter, Request
@@ -97,7 +98,7 @@ async def get_config(request: Request):
         services = request.app.state.services
         settings = services.settings
         try:
-            launch_settings = get_task_launch_settings()
+            launch_settings = await asyncio.to_thread(get_task_launch_settings)
         except Exception as task_exc:
             logger.warning("Could not query scheduled task launch settings: %s", task_exc)
             launch_settings = {
@@ -108,7 +109,7 @@ async def get_config(request: Request):
                 "adapter_startup_delay_seconds": settings.adapter_startup_delay_seconds,
             }
 
-        persisted_config = get_persisted_config()
+        persisted_config = await asyncio.to_thread(get_persisted_config)
 
         return ConfigResponse(
             machine_number=settings.machine_number,
@@ -120,7 +121,7 @@ async def get_config(request: Request):
             dll_path=settings.dll_path,
             ini_path=settings.ini_path,
             host=settings.host,
-            local_ip=get_machine_ip(),
+            local_ip=await asyncio.to_thread(get_machine_ip),
             port=settings.port,
             log_level=settings.log_level,
             cnc_retry_interval=settings.cnc_retry_interval,

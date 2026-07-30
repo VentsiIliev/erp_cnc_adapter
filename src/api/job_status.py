@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends
@@ -45,9 +46,9 @@ async def get_job_status(
 ):
     # logger.info("GET job status request")
     try:
-        state = client.get_state()
+        state = await asyncio.to_thread(client.get_state)
         state_text = STATE_MAP.get(state, f"Unknown state: {state}")
-        job = client.get_job_status()
+        job = await asyncio.to_thread(client.get_job_status)
         if is_placeholder_job(job.get("jobName")):
             job["jobName"] = ""
         # logger.info("State: %s (code %d), job: %s", state_text, state, job.get("jobName", ""))

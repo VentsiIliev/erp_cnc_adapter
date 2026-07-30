@@ -40,7 +40,7 @@ if %errorlevel% equ 0 (
 
 echo.
 echo Step 2: Stopping and removing scheduled tasks...
-for %%T in (ERPCNCAdapterEdingHandoff ERPCNCAdapterManualStart ERPCNCAdapterWatchdog ERPCNCAdapter) do (
+for %%T in (ERPCNCAdapterStatusIndicator ERPCNCAdapterEdingHandoff ERPCNCAdapterManualStart ERPCNCAdapterWatchdog ERPCNCAdapter) do (
     schtasks /Query /TN %%T >nul 2>&1
     if !errorlevel! equ 0 (
         set FOUND_SOMETHING=1
@@ -58,6 +58,9 @@ for %%T in (ERPCNCAdapterEdingHandoff ERPCNCAdapterManualStart ERPCNCAdapterWatc
 
 echo.
 echo Step 3: Stopping adapter, Eding GUI, CNC Server, and script launchers...
+if exist "%INSTALL_DIR%\scripts\status_indicator.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$target = Join-Path '%INSTALL_DIR%' 'scripts\status_indicator.ps1'; Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($target, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+)
 for %%P in (erp-cnc-adapter.exe cnc4.03.exe cnc.exe CncServer.exe wscript.exe) do (
     tasklist /FI "IMAGENAME eq %%P" 2>nul | find /I "%%P" >nul 2>&1
     if !errorlevel! equ 0 (

@@ -1,5 +1,6 @@
 """Monitor status API endpoint for the test page."""
 
+import asyncio
 import logging
 from fastapi import APIRouter, Request
 
@@ -40,9 +41,9 @@ async def get_monitor_status(request: Request):
         # Get real-time job status from CNC
         try:
             cnc_client = services.cnc_client
-            state = cnc_client.get_state()
+            state = await asyncio.to_thread(cnc_client.get_state)
             state_text = STATE_MAP.get(state, f"Unknown state: {state}")
-            job_status = cnc_client.get_job_status()
+            job_status = await asyncio.to_thread(cnc_client.get_job_status)
 
             # Combine monitor status with real-time job data
             return {

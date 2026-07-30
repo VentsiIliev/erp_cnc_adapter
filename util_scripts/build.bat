@@ -81,6 +81,7 @@ copy "scripts\update_adapter.py" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\status.bat" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\restart.bat" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\start_cnc_splash.ps1" "%DIST_FOLDER%\scripts\" >nul
+copy "scripts\status_indicator.ps1" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\watchdog.bat" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\README.md" "%DIST_FOLDER%\scripts\" >nul
 
@@ -150,7 +151,7 @@ echo Distribution: %DIST_FOLDER%\
 echo.
 echo Contents:
 echo   [√] erp-cnc-adapter.exe
-echo   [√] scripts\ (7 files)
+echo   [√] scripts\ (8 files)
 echo   [√] logs\ (empty directory)
 echo   [√] VERSION.txt
 echo   [√] README.txt

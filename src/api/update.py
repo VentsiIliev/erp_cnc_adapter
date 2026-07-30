@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -492,5 +493,5 @@ async def rollback():
 
 @router.get("/backups", response_model=BackupListResponse)
 async def list_backups():
-    backups = _list_backups()
+    backups = await asyncio.to_thread(_list_backups)
     return BackupListResponse(status=0, message=f"Found {len(backups)} backup(s).", backups=backups)

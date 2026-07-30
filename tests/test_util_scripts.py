@@ -145,6 +145,11 @@ class TestBuildScript:
         text = _read_script(self.SCRIPT)
         assert "scripts\\start_cnc_splash.ps1" in text
 
+    def test_copies_status_indicator_script(self):
+        """The always-on operator status indicator must be shipped in full update packages."""
+        text = _read_script(self.SCRIPT)
+        assert "scripts\\status_indicator.ps1" in text
+
 
 # ===========================================================================
 # build_installer.bat

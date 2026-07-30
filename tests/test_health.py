@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.api.health import _build_status_data, _format_uptime, _render_html
+from src.api.health import _build_indicator_status_data, _build_status_data, _format_uptime, _render_html
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +83,37 @@ class TestRenderHtml:
         assert "Last error" not in html
 
 
+class TestIndicatorStatusData:
+
+    def test_indicator_ready_when_connected_and_machine_ready(self, fake_client, connection_manager):
+        connection_manager._state = "connected"
+        connection_manager._machine_state = 2
+        fake_client._connected = True
+
+        data = _build_indicator_status_data(connection_manager)
+
+        assert data["status"] == "ok"
+        assert data["adapter"] == {"online": True, "status": "running"}
+        assert data["interpreter"]["online"] is True
+        assert data["interpreter"]["status"] == "ready"
+        assert data["interpreter"]["machine_state"] == 2
+
+    def test_indicator_offline_when_cnc_disconnected(self, connection_manager):
+        data = _build_indicator_status_data(connection_manager)
+
+        assert data["adapter"]["online"] is True
+        assert data["interpreter"]["online"] is False
+        assert data["interpreter"]["status"] == "offline"
+
+    def test_indicator_error_when_last_error_present(self, connection_manager):
+        connection_manager._last_error = "connect() timed out"
+
+        data = _build_indicator_status_data(connection_manager)
+
+        assert data["interpreter"]["status"] == "error"
+        assert data["interpreter"]["last_error"] == "connect() timed out"
+
+
 class TestFormatUptime:
 
     def test_none(self):
@@ -137,6 +168,26 @@ class TestHealthEndpoint:
 
         assert body["cnc"]["last_error"] == "connect() timed out"
         assert body["cnc"]["retry_count"] == 3
+
+    async def test_indicator_status_returns_200_when_cnc_disconnected(self, client):
+        resp = await client.get("/api/status/indicator")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["adapter"]["online"] is True
+        assert body["interpreter"]["status"] == "offline"
+
+    async def test_indicator_status_reports_ready_interpreter(self, client, fake_client, connection_manager):
+        connection_manager._state = "connected"
+        connection_manager._machine_state = 2
+        fake_client._connected = True
+
+        resp = await client.get("/api/status/indicator")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["interpreter"]["online"] is True
+        assert body["interpreter"]["status"] == "ready"
 
 
 class TestHomeEndpoint:

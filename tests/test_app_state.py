@@ -185,6 +185,56 @@ class TestCncServerLossRecovery:
         mock_auto_start.assert_called_once_with()
         mock_exit.assert_not_called()
 
+
+    @patch("src.core.app_state.os._exit")
+    @patch("src.core.app_state.request_adapter_recovery_restart")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    def test_recovery_before_first_ready_restarts_only_cnc_server(
+        self, _atexit, _kill, _write, mock_recovery_restart, mock_exit
+    ):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\fake.dll",
+            ini_path=r"C:\fake.ini",
+            dev_mode=True,
+        )
+        state = AppState(settings)
+        state.settings.dev_mode = False
+
+        with patch.object(state, "_auto_start_cnc_server") as mock_auto_start:
+            state._restart_adapter_after_cnc_server_loss()
+
+        mock_auto_start.assert_called_once_with()
+        mock_recovery_restart.assert_not_called()
+        mock_exit.assert_not_called()
+
+    @patch("src.core.app_state.os._exit")
+    @patch("src.core.app_state.request_adapter_recovery_restart")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    def test_recovery_after_first_ready_restarts_adapter(
+        self, _atexit, _kill, _write, mock_recovery_restart, mock_exit
+    ):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\fake.dll",
+            ini_path=r"C:\fake.ini",
+            dev_mode=True,
+        )
+        state = AppState(settings)
+        state.settings.dev_mode = False
+        state.connection_manager._ever_ready = True
+
+        state._restart_adapter_after_cnc_server_loss()
+
+        mock_recovery_restart.assert_called_once_with()
+        mock_exit.assert_called_once_with(1)
+
     @patch("src.core.app_state.os._exit")
     @patch("src.core.app_state.request_adapter_recovery_restart")
     @patch("src.core.app_state._write_pid_file")
@@ -202,6 +252,8 @@ class TestCncServerLossRecovery:
         )
         state = AppState(settings)
         state.settings.dev_mode = False
+
+        state.connection_manager._ever_ready = True
 
         state._restart_adapter_after_cnc_server_loss()
 
@@ -225,6 +277,7 @@ class TestCncServerLossRecovery:
         )
         state = AppState(settings)
         state.settings.dev_mode = False
+        state.connection_manager._ever_ready = True
 
         state._restart_adapter_after_cnc_server_loss()
 

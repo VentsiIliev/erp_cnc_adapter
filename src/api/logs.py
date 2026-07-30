@@ -1,5 +1,6 @@
 """Logs API endpoint for retrieving server logs."""
 
+import asyncio
 import logging
 from pathlib import Path
 from fastapi import APIRouter
@@ -7,6 +8,12 @@ import sys
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _read_log_lines(log_file: Path, lines: int) -> list[str]:
+    with log_file.open("r", encoding="utf-8", errors="replace") as f:
+        content = f.readlines()[-lines:]
+    return [line.rstrip('\n\r') for line in content if line.strip()]
 
 
 @router.get("/api/logs")
@@ -24,11 +31,7 @@ async def get_logs(lines: int = 200):
             logger.warning("Log file not found: %s", log_file)
             return {"lines": []}
 
-        with log_file.open("r", encoding="utf-8", errors="replace") as f:
-            content = f.readlines()[-lines:]
-
-        # Strip newlines and filter out empty lines
-        content = [line.rstrip('\n\r') for line in content if line.strip()]
+        content = await asyncio.to_thread(_read_log_lines, log_file, lines)
 
         # logger.debug("Retrieved %d log lines from %s", len(content), log_file)
         return {"lines": content}

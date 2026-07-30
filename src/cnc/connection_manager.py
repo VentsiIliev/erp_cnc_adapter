@@ -37,6 +37,7 @@ class ConnectionManager:
         self._on_ready = on_ready
         self._on_cnc_server_missing = on_cnc_server_missing
         self._ready_callback_called = False
+        self._ever_ready = False
 
         self._state: str = "disconnected"
         self._retry_count: int = 0
@@ -67,6 +68,10 @@ class ConnectionManager:
     @property
     def last_error(self) -> str | None:
         return self._last_error
+
+    @property
+    def ever_ready(self) -> bool:
+        return self._ever_ready
 
     @property
     def uptime_seconds(self) -> float | None:
@@ -161,6 +166,7 @@ class ConnectionManager:
                         self._last_error = None
                         self._retry_count = 0
                         self._last_connected_at = datetime.now(timezone.utc)
+                        self._ever_ready = True
                         logger.info("CNC connection established and machine is ready")
                         self._notify_ready_once()
                         return
