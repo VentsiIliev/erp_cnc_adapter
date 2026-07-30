@@ -17,7 +17,7 @@ class JogPadWindow(QMainWindow):
     def __init__(self, adapter_url: Optional[str] = None, pause_hold_interval_ms: int = 0) -> None:
         super().__init__()
         self.setWindowTitle("Jog Pad")
-        self.setWindowFlags(Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowStaysOnTopHint)
         icon_path = resolve_icon_path()
         if icon_path:
             self.setWindowIcon(QIcon(icon_path))

@@ -398,6 +398,7 @@ def test_jog_pad_window_hides_native_close_and_minimize_buttons():
 
     assert "Qt.CustomizeWindowHint" in text
     assert "Qt.WindowTitleHint" in text
+    assert "Qt.WindowSystemMenuHint" in text
     assert "Qt.WindowCloseButtonHint" not in text
     assert "Qt.WindowMinimizeButtonHint" not in text
 
