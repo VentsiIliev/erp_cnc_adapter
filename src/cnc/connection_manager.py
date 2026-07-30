@@ -170,6 +170,9 @@ class ConnectionManager:
                         logger.info("CNC connection established and machine is ready")
                         self._notify_ready_once()
                         return
+                    logger.warning("CNC interpreter did not become ready before startup timeout; requesting recovery")
+                    self._client._connected = False  # noqa: SLF001
+                    await self._request_cnc_server_recovery()
                 elif rc == CNC_RC_ERR_SERVER_NOT_RUNNING:
                     self._state = "cnc_not_running"
                     self._last_error = "CNC server not running"

@@ -150,6 +150,30 @@ class TestConnectionManagerRetry:
 
         await mgr.stop()
 
+
+    async def test_powerup_timeout_requests_recovery_callback(self, fake_client, settings):
+        fake_client._server_process_alive = True
+        fake_client._connect_rc = 0
+        fake_client._state = 0
+        settings.cnc_retry_interval = 0.1
+        settings.cnc_startup_ready_timeout = 0.2
+        recovery_calls = []
+
+        def recover_server():
+            recovery_calls.append(True)
+            fake_client._state = 2
+
+        mgr = ConnectionManager(fake_client, settings, on_cnc_server_missing=recover_server)
+        mgr.start()
+
+        await asyncio.sleep(0.7)
+
+        assert recovery_calls == [True]
+        assert mgr.connected is True
+        assert mgr.ever_ready is True
+
+        await mgr.stop()
+
     async def test_ready_callback_runs_once_when_machine_ready(self, fake_client, settings):
         fake_client._server_process_alive = True
         fake_client._connect_rc = 0

@@ -204,10 +204,10 @@ class TestCncServerLossRecovery:
         state = AppState(settings)
         state.settings.dev_mode = False
 
-        with patch.object(state, "_auto_start_cnc_server") as mock_auto_start:
+        with patch.object(state, "_restart_cnc_server") as mock_restart_server:
             state._restart_adapter_after_cnc_server_loss()
 
-        mock_auto_start.assert_called_once_with()
+        mock_restart_server.assert_called_once_with()
         mock_recovery_restart.assert_not_called()
         mock_exit.assert_not_called()
 
@@ -283,6 +283,30 @@ class TestCncServerLossRecovery:
 
         mock_recovery_restart.assert_called_once_with()
         mock_exit.assert_called_once_with(1)
+
+    @patch("src.core.app_state.restart_cnc_server")
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    def test_restart_cnc_server_disconnects_client_and_forces_server_restart(
+        self, _atexit, _kill, _write, mock_restart_server
+    ):
+        from src.core.config import Settings
+        from src.core.cnc_server_process import CncServerStartResult
+
+        mock_restart_server.return_value = CncServerStartResult(status="started", pid=123)
+        settings = Settings(
+            dll_path=r"C:\CNC\cncapi.dll",
+            ini_path=r"C:\CNC\cnc.ini",
+            dev_mode=True,
+        )
+        state = AppState(settings)
+        state.cnc_client.disconnect = MagicMock()
+
+        state._restart_cnc_server()
+
+        state.cnc_client.disconnect.assert_called_once_with()
+        mock_restart_server.assert_called_once_with(r"C:\CNC\CncServer.exe")
 
 # ---------------------------------------------------------------------------
 # AppState lifecycle

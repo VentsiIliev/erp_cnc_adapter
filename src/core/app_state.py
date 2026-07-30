@@ -15,7 +15,7 @@ from src.core.cnc_runtime import (
     cnc_server_path_from_dll,
     start_eding_gui_if_needed,
 )
-from src.core.cnc_server_process import start_cnc_server_if_needed
+from src.core.cnc_server_process import restart_cnc_server, start_cnc_server_if_needed
 from src.core.task_config import request_adapter_recovery_restart
 from src.cnc.cnc_client import CncClient
 from src.cnc.cnc_client_protocol import CncClientProtocol
@@ -219,6 +219,22 @@ class AppState:
         else:
             logger.error("Auto-start CncServer.exe failed: %s", result.message)
 
+    def _restart_cnc_server(self) -> None:
+        """Force-restart CncServer.exe during startup recovery."""
+        cnc_server_exe = cnc_server_path_from_dll(self.settings.dll_path)
+        logger.warning("Restarting CncServer.exe during startup recovery: %s", cnc_server_exe)
+        try:
+            self.cnc_client.disconnect()
+        except Exception:
+            logger.debug("Ignoring CNC disconnect failure before CncServer restart", exc_info=True)
+        result = restart_cnc_server(str(cnc_server_exe))
+        logger.warning(
+            "CncServer startup recovery restart result: status=%s pid=%s message=%s",
+            result.status,
+            result.pid,
+            result.message,
+        )
+
     def _restart_adapter_after_cnc_server_loss(self) -> None:
         """Restart the adapter so CNC DLL state is recreated after CncServer exits."""
         if self.settings.dev_mode:
@@ -230,7 +246,7 @@ class AppState:
             logger.warning(
                 "CncServer.exe is not running before first CNC-ready state; restarting CncServer only and waiting for startup"
             )
-            self._auto_start_cnc_server()
+            self._restart_cnc_server()
             return
 
         logger.warning(

@@ -56,6 +56,38 @@ def is_cnc_server_running() -> bool:
     return PROCESS_NAME in result.stdout
 
 
+def stop_cnc_server_if_running() -> bool:
+    """Stop CncServer.exe if it is running."""
+    if not is_cnc_server_running():
+        logger.info("%s is not running; nothing to stop", PROCESS_NAME)
+        return False
+
+    try:
+        result = subprocess.run(
+            ["taskkill", "/F", "/T", "/IM", PROCESS_NAME],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=10,
+        )
+    except Exception as exc:
+        logger.warning("Could not stop %s: %s", PROCESS_NAME, exc)
+        return False
+
+    if result.returncode != 0:
+        logger.warning("taskkill failed while stopping %s: %s", PROCESS_NAME, (result.stderr or result.stdout).strip())
+        return False
+
+    logger.info("Stopped %s", PROCESS_NAME)
+    return True
+
+
+def restart_cnc_server(cnc_server_exe: str) -> CncServerStartResult:
+    """Force-restart CncServer.exe, then start a fresh instance."""
+    stop_cnc_server_if_running()
+    return start_cnc_server_if_needed(cnc_server_exe)
+
+
 def start_cnc_server_if_needed(cnc_server_exe: str) -> CncServerStartResult:
     """Start CncServer.exe only when it is not already running."""
     if is_cnc_server_running():

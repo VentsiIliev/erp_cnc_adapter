@@ -105,6 +105,19 @@ class TestIndicatorStatusData:
         assert data["interpreter"]["online"] is False
         assert data["interpreter"]["status"] == "offline"
 
+
+    def test_indicator_power_up_while_connected_is_not_ready_not_error(self, fake_client, connection_manager):
+        connection_manager._state = "connected"
+        connection_manager._machine_state = 0
+        connection_manager._last_error = "CNC connected but machine state is not ready: 0"
+        fake_client._connected = True
+
+        data = _build_indicator_status_data(connection_manager)
+
+        assert data["interpreter"]["online"] is True
+        assert data["interpreter"]["status"] == "not_ready"
+        assert data["interpreter"]["machine_state_text"] == "Power-up"
+
     def test_indicator_error_when_last_error_present(self, connection_manager):
         connection_manager._last_error = "connect() timed out"
 

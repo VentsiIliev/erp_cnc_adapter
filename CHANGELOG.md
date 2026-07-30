@@ -57,6 +57,10 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.2.8 - 2026-07-30
+
+- 
+
 ## v1.2.7 - 2026-07-30
 
 - Added sstatus indicator poll, fixed watchdog trigger because of dashboard updates, and fixed watchdog trigger when startup is slow and it triggeres reset before even cnc has ever been in ready state
@@ -129,6 +133,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 

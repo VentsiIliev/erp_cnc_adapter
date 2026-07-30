@@ -47,12 +47,12 @@ def _build_indicator_status_data(manager) -> dict:
     machine_state = cnc["machine_state"]
     last_error = cnc["last_error"]
 
-    if last_error:
-        interpreter_status = "error"
-    elif connected and machine_state == 2:
+    if connected and machine_state in (1, 2):
         interpreter_status = "ready"
     elif connected:
         interpreter_status = "not_ready"
+    elif last_error:
+        interpreter_status = "error"
     else:
         interpreter_status = "offline"
 
