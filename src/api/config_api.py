@@ -35,7 +35,7 @@ class ConfigUpdate(BaseModel):
     adapter_startup_delay_seconds: int | None = Field(None, ge=0, le=600, description="Delay before scheduled boot/logon adapter startup")
     auto_start_cnc_server: bool | None = Field(None, description="Start CncServer.exe automatically when the adapter starts")
     auto_start_eding_gui: bool | None = Field(None, description="Start the Eding CNC GUI after the adapter confirms CNC readiness")
-    show_operator_ready_message: bool | None = Field(None, description="Show a desktop ready message when GUI auto-start is disabled")
+    show_operator_ready_message: bool | None = Field(None, description="Legacy ready popup setting; START-CNC splash/feedback is used for normal readiness display")
     job_monitor_poll_interval: float | None = Field(None, ge=0.1, le=60.0, description="Seconds between job monitor status checks")
     jog_pad_pause_hold_interval_ms: int | None = Field(None, ge=0, le=10000, description="Milliseconds between jog-pad pause hold requests; 0 disables")
     physical_button_poll_interval_ms: int | None = Field(None, ge=20, le=10000, description="Milliseconds between backend physical RUN/PAUSE input checks")

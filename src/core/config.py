@@ -18,7 +18,7 @@ class Settings:
     adapter_startup_delay_seconds: int = 15
     auto_start_cnc_server: bool = True
     auto_start_eding_gui: bool = False
-    show_operator_ready_message: bool = True
+    show_operator_ready_message: bool = False
     job_monitor_poll_interval: float = 1.0  # seconds between job monitor status checks
     jog_pad_pause_hold_interval_ms: int = 0  # milliseconds between jog-pad pause hold requests; 0 disables
     physical_button_poll_interval_ms: int = 50  # milliseconds between backend physical RUN/PAUSE input checks

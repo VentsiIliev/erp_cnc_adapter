@@ -13,7 +13,6 @@ from fastapi import Request
 from src.core.config import Settings
 from src.core.cnc_runtime import (
     cnc_server_path_from_dll,
-    show_operator_ready_message,
     start_eding_gui_if_needed,
 )
 from src.core.cnc_server_process import start_cnc_server_if_needed
@@ -288,16 +287,7 @@ class AppState:
             return
 
         if self.settings.show_operator_ready_message:
-            message_start = time.perf_counter()
-            show_operator_ready_message(
-                self.settings.machine_number,
-                self._adapter_address(),
-                self.settings.task_username,
-            )
-            logger.info(
-                "Startup timing: operator ready message request completed in %.1fms",
-                (time.perf_counter() - message_start) * 1000,
-            )
+            logger.info("Startup event: operator ready popup suppressed; START-CNC splash/feedback handles readiness")
 
     def start(self) -> None:
         start_begin = time.perf_counter()

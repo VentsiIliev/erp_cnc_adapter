@@ -235,6 +235,28 @@ class TestCncServerLossRecovery:
 # AppState lifecycle
 # ---------------------------------------------------------------------------
 
+
+class TestCncReadyCallback:
+
+    @patch("src.core.app_state._write_pid_file")
+    @patch("src.core.app_state._kill_stale_adapter")
+    @patch("src.core.app_state.atexit.register")
+    def test_on_cnc_ready_suppresses_legacy_ready_popup(self, _atexit, _kill, _write, caplog):
+        from src.core.config import Settings
+
+        settings = Settings(
+            dll_path=r"C:\fake.dll",
+            ini_path=r"C:\fake.ini",
+            dev_mode=True,
+            show_operator_ready_message=True,
+        )
+        state = AppState(settings)
+
+        with caplog.at_level("INFO", logger="src.core.app_state"):
+            state._on_cnc_ready()
+
+        assert "operator ready popup suppressed" in caplog.text
+
 class TestAppStateLifecycle:
 
 
