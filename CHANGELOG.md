@@ -57,6 +57,10 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.0.19 - 2026-07-30
+
+- testing no installer release script flag
+
 ## v1.0.18 - 2026-07-30
 
 - Added the PL logo icon to the jog pad title bar by enabling the native window system-menu icon area.
@@ -78,6 +82,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 

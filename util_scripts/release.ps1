@@ -9,6 +9,7 @@ param(
     [string]$SvnWorkingCopy = (Join-Path $env:USERPROFILE "Desktop\erp_cnc_adapter_svn"),
     [string]$SvnRoot = "https://192.168.2.101:8443/svn/2245_RouterRetrofit",
     [switch]$SkipBuild,
+    [switch]$NoInstaller,
     [switch]$SkipGitPush,
     [switch]$SkipSvn,
     [Alias("h")]
@@ -27,13 +28,15 @@ function Show-Help {
     Write-Host "  .\util_scripts\$scriptName -Version 1.0.5 -Notes 'Added dashboard SVN credential settings'"
     Write-Host "  .\util_scripts\$scriptName -Version 1.0.5 -NotesFile .\release-notes.txt"
     Write-Host "  .\util_scripts\$scriptName -Version 1.0.5 -SkipSvn"
+    Write-Host "  .\util_scripts\$scriptName -Version 1.0.5 -NoInstaller"
     Write-Host ""
     Write-Host "Behavior:"
     Write-Host "  1. Prompts for notes when -Notes/-NotesFile are omitted."
     Write-Host "  2. Updates version.py and prepends CHANGELOG.md."
-    Write-Host "  3. Runs util_scripts\build_installer.bat unless -SkipBuild is used."
+    Write-Host "  3. Runs util_scripts\build_installer.bat unless -SkipBuild or -NoInstaller is used."
     Write-Host "  4. Commits, tags, and pushes Git."
     Write-Host "  5. Mirrors Git HEAD to SVN trunk, updates trunk/release/latest.json, creates the SVN tag, and imports the ZIP/manifest/installer."
+    Write-Host "     With -NoInstaller, only the ZIP and manifest are required/imported."
     Write-Host ""
     Write-Host "Options:"
     Write-Host "  -Version <x.y.z>          Release version, with or without leading v. Required."
@@ -44,6 +47,7 @@ function Show-Help {
     Write-Host "  -SvnWorkingCopy <path>    Local SVN trunk checkout. Default: %USERPROFILE%\Desktop\erp_cnc_adapter_svn."
     Write-Host "  -SvnRoot <url>            SVN project root containing trunk/ and tags/."
     Write-Host "  -SkipBuild                Do not run the build script. Requires existing dist\dist_v<version>."
+    Write-Host "  -NoInstaller             Build/publish only the update ZIP and manifest; skip setup EXE."
     Write-Host "  -SkipGitPush              Commit/tag locally but do not push Git."
     Write-Host "  -SkipSvn                  Do not mirror or publish SVN."
     Write-Host "  -Help, -h, --help         Show this help."
@@ -171,7 +175,7 @@ function Mirror-ToSvnTrunk([string]$TagVersion) {
     }
 }
 
-function Publish-SvnRelease([string]$TagVersion) {
+function Publish-SvnRelease([string]$TagVersion, [bool]$IncludeInstaller = $true) {
     $tagUrl = "$SvnRoot/tags/$TagVersion"
     svn copy "$SvnRoot/trunk" $tagUrl -m "Tag ERP-CNC Adapter $TagVersion"
     if ($LASTEXITCODE -ne 0) { throw "svn copy tag failed with exit code $LASTEXITCODE" }
@@ -182,14 +186,18 @@ function Publish-SvnRelease([string]$TagVersion) {
     $installer = Join-Path $distDir "ERP-CNC-Adapter-Setup-$TagVersion.exe"
     if (-not (Test-Path -LiteralPath $manifest)) { throw "Missing release manifest: $manifest" }
     if (-not (Test-Path -LiteralPath $zip)) { throw "Missing release ZIP: $zip" }
-    if (-not (Test-Path -LiteralPath $installer)) { throw "Missing release installer: $installer" }
+    if ($IncludeInstaller -and -not (Test-Path -LiteralPath $installer)) { throw "Missing release installer: $installer" }
 
     svn import $manifest "$tagUrl/release/manifest.json" -m "Add $TagVersion update manifest"
     if ($LASTEXITCODE -ne 0) { throw "svn import manifest failed with exit code $LASTEXITCODE" }
     svn import $zip "$tagUrl/release/erp-cnc-adapter-update-$TagVersion.zip" -m "Add $TagVersion update package ZIP"
     if ($LASTEXITCODE -ne 0) { throw "svn import ZIP failed with exit code $LASTEXITCODE" }
-    svn import $installer "$tagUrl/release/ERP-CNC-Adapter-Setup-$TagVersion.exe" -m "Add $TagVersion installer"
-    if ($LASTEXITCODE -ne 0) { throw "svn import installer failed with exit code $LASTEXITCODE" }
+    if ($IncludeInstaller) {
+        svn import $installer "$tagUrl/release/ERP-CNC-Adapter-Setup-$TagVersion.exe" -m "Add $TagVersion installer"
+        if ($LASTEXITCODE -ne 0) { throw "svn import installer failed with exit code $LASTEXITCODE" }
+    } else {
+        Write-Host "Skipping SVN installer import because -NoInstaller was used."
+    }
 }
 
 $cleanVersion = $Version.Trim().TrimStart("v")
@@ -206,7 +214,11 @@ Update-Changelog $tagVersion $releaseNotes
 
 if (-not $SkipBuild) {
     $env:BUILD_NO_PAUSE = "1"
-    Invoke-Checked (Join-Path $RepoRoot "util_scripts\build_installer.bat") @()
+    if ($NoInstaller) {
+        Invoke-Checked (Join-Path $RepoRoot "util_scripts\build.bat") @()
+    } else {
+        Invoke-Checked (Join-Path $RepoRoot "util_scripts\build_installer.bat") @()
+    }
 }
 
 $distDir = Join-Path $RepoRoot "dist\dist_$tagVersion"
@@ -216,7 +228,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $distDir "erp-cnc-adapter-update-$ta
 if (-not (Test-Path -LiteralPath (Join-Path $distDir "manifest.json"))) {
     throw "Manifest not found after build: $distDir"
 }
-if (-not (Test-Path -LiteralPath (Join-Path $distDir "ERP-CNC-Adapter-Setup-$tagVersion.exe"))) {
+if (-not $NoInstaller -and -not (Test-Path -LiteralPath (Join-Path $distDir "ERP-CNC-Adapter-Setup-$tagVersion.exe"))) {
     throw "Installer not found after build: $distDir"
 }
 
@@ -236,7 +248,7 @@ if (-not $SkipGitPush) {
 
 if (-not $SkipSvn) {
     Mirror-ToSvnTrunk $tagVersion
-    Publish-SvnRelease $tagVersion
+    Publish-SvnRelease $tagVersion (-not $NoInstaller)
 }
 
 Write-Host "Release complete: $tagVersion"

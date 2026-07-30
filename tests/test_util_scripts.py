@@ -60,7 +60,7 @@ class TestSetup32bitVenv:
 
     @pytest.mark.skipif(
         not VENV_PYTHON.exists(),
-        reason=".venv not present – setup_32bit_venv.ps1 has not been run",
+        reason=".venv not present â€“ setup_32bit_venv.ps1 has not been run",
     )
     def test_venv_is_32bit(self):
         """If a .venv exists, its Python should be 32-bit."""
@@ -77,7 +77,7 @@ class TestSetup32bitVenv:
 
     @pytest.mark.skipif(
         not VENV_PYTHON.exists(),
-        reason=".venv not present – setup_32bit_venv.ps1 has not been run",
+        reason=".venv not present â€“ setup_32bit_venv.ps1 has not been run",
     )
     def test_venv_has_required_packages(self):
         """All packages listed in requirements.txt should be installed."""
@@ -166,6 +166,34 @@ class TestBuildInstallerScript:
         text = _read_script(self.SCRIPT)
         assert "machine_health_dashboard" not in text
 
+
+
+# ===========================================================================
+# release.ps1
+# ===========================================================================
+class TestReleaseScript:
+    SCRIPT = "release.ps1"
+
+    def test_script_exists_and_nonempty(self):
+        path = UTIL_SCRIPTS / self.SCRIPT
+        assert path.exists(), f"{self.SCRIPT} not found"
+        assert path.stat().st_size > 0, f"{self.SCRIPT} is empty"
+
+    def test_no_installer_switch_uses_update_package_build_only(self):
+        text = _read_script(self.SCRIPT)
+
+        assert "[switch]$NoInstaller" in text
+        assert "if ($NoInstaller)" in text
+        assert 'util_scripts\\build.bat' in text
+        assert 'util_scripts\\build_installer.bat' in text
+        assert "-not $NoInstaller -and -not (Test-Path" in text
+
+    def test_no_installer_switch_skips_svn_installer_import(self):
+        text = _read_script(self.SCRIPT)
+
+        assert "Publish-SvnRelease $tagVersion (-not $NoInstaller)" in text
+        assert "if ($IncludeInstaller)" in text
+        assert "Skipping SVN installer import because -NoInstaller was used." in text
 
 # ===========================================================================
 # run_tests.bat
