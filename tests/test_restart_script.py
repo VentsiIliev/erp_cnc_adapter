@@ -90,5 +90,6 @@ def test_restart_script_starts_splash_screen_when_available():
 
     assert splash < stop_processes
     assert 'if not "%ERPCNC_SHOW_SPLASH%"=="0"' in elevated_section
-    assert 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "!INSTALL_DIR!\\scripts\\start_cnc_splash.ps1"' in elevated_section
+    assert 'start "START-CNC Splash" /D "!INSTALL_DIR!"' in elevated_section
+    assert r'%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "!INSTALL_DIR!\scripts\start_cnc_splash.ps1"' in elevated_section
     assert 'Starting START-CNC splash screen' in elevated_section

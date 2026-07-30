@@ -21,7 +21,7 @@ call :log "Restart context: PATH=%PATH%"
 if not "%ERPCNC_SHOW_SPLASH%"=="0" (
     if exist "!INSTALL_DIR!\scripts\start_cnc_splash.ps1" (
         call :log "Starting START-CNC splash screen..."
-        start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "!INSTALL_DIR!\scripts\start_cnc_splash.ps1"
+        start "START-CNC Splash" /D "!INSTALL_DIR!" "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "!INSTALL_DIR!\scripts\start_cnc_splash.ps1"
     ) else (
         call :log "START-CNC splash script missing; continuing without splash."
     )

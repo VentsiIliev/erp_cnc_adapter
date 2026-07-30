@@ -57,6 +57,10 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.2.3 - 2026-07-30
+
+- fixed splash not visible
+
 ## v1.2.2 - 2026-07-30
 
 - removed adapter ready message popup
@@ -109,6 +113,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 
