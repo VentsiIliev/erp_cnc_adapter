@@ -1041,6 +1041,9 @@ class InstallWorker(QThread):
             self._write_start_cnc_hidden_launcher(installation_log)
             self._write_eding_handoff_script(installation_log)
             self._write_start_cnc_feedback_script(installation_log)
+            splash_path = self.install_path / "scripts" / "start_cnc_splash.ps1"
+            if splash_path.exists():
+                installation_log.write(f"START-CNC splash script: {splash_path}\n")
             self._log_timed(installation_log, "START-CNC script generation", setup_start)
 
             self.log_message.emit("Creating START-CNC tasks and shortcut...")

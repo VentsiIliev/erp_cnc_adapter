@@ -66,7 +66,7 @@ def test_restart_script_defers_gui_only_when_auto_gui_is_disabled():
     marker = elevated_section.index("manual_start_defer_gui.flag")
     adapter_start = elevated_section.index("schtasks /Run /TN ERPCNCAdapter")
     auto_gui_branch = elevated_section.index('if "!AUTO_GUI!"=="1"')
-    disabled_branch = elevated_section.index(") else (")
+    disabled_branch = elevated_section.index(") else (", auto_gui_branch)
 
     assert auto_gui_branch < disabled_branch < marker < adapter_start
     assert "Deferring Eding GUI launch until adapter readiness is confirmed" in text
@@ -80,3 +80,15 @@ def test_restart_script_logs_routine_output_instead_of_showing_console_messages(
     assert "Restarting ERP-CNC Adapter... > \"!LOG_FILE!\"" in text
     assert "exit /b 1" in text
     assert "exit /b 0" in text
+
+def test_restart_script_starts_splash_screen_when_available():
+    text = _restart_script_text()
+    elevated_section = text[text.index('echo [%date% %time%] Restarting ERP-CNC Adapter'):]
+
+    splash = elevated_section.index('start_cnc_splash.ps1')
+    stop_processes = elevated_section.index('Stop-Process -Force')
+
+    assert splash < stop_processes
+    assert 'if not "%ERPCNC_SHOW_SPLASH%"=="0"' in elevated_section
+    assert 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "!INSTALL_DIR!\\scripts\\start_cnc_splash.ps1"' in elevated_section
+    assert 'Starting START-CNC splash screen' in elevated_section
