@@ -56,7 +56,7 @@ def stop_adapter(service_name: str, exe_name: str, install_type: str) -> bool:
         if result.returncode != 0:
             logger.warning("stderr: %s", result.stderr.strip())
         return True
-    logger.info("Detected %s installation; adapter process will be stopped by image name", install_type)
+    logger.info("Detected %s installation; adapter process will be stopped by launcher PID and exact executable path", install_type)
     return True
 
 
@@ -273,6 +273,53 @@ def _install_legacy_exe(staged_path: str, exe_path: str, current_version: str) -
     return backup_path
 
 
+def _normalize_path_for_compare(path: str) -> str:
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _parse_wmic_process_lines(output: str, exe_path: str) -> list[int]:
+    target = _normalize_path_for_compare(exe_path)
+    process_ids: list[int] = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or line.lower().startswith("executablepath"):
+            continue
+        parts = line.rsplit(None, 1)
+        if len(parts) != 2:
+            continue
+        executable, pid_text = parts
+        try:
+            pid = int(pid_text)
+        except ValueError:
+            continue
+        if _normalize_path_for_compare(executable) == target:
+            process_ids.append(pid)
+    return process_ids
+
+
+def _get_process_ids_for_exe_path_wmic(exe_path: str) -> list[int]:
+    if os.name != "nt" or not exe_path:
+        return []
+
+    exe_name = os.path.basename(exe_path)
+    try:
+        result = subprocess.run(
+            ["wmic", "process", "where", f"name='{exe_name}'", "get", "ProcessId,ExecutablePath"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception as exc:
+        logger.warning("Could not enumerate adapter processes through WMIC for %s: %s", exe_path, exc)
+        return []
+
+    if result.returncode != 0:
+        logger.warning("Adapter process enumeration through WMIC failed: %s", result.stderr.strip())
+        return []
+
+    return _parse_wmic_process_lines(result.stdout, exe_path)
+
+
 def _get_process_ids_for_exe_path(exe_path: str) -> list[int]:
     if os.name != "nt" or not exe_path:
         return []
@@ -292,12 +339,12 @@ def _get_process_ids_for_exe_path(exe_path: str) -> list[int]:
             timeout=10,
         )
     except Exception as exc:
-        logger.warning("Could not enumerate adapter processes for %s: %s", exe_path, exc)
-        return []
+        logger.warning("Could not enumerate adapter processes through PowerShell for %s: %s", exe_path, exc)
+        return _get_process_ids_for_exe_path_wmic(exe_path)
 
     if result.returncode != 0:
-        logger.warning("Adapter process enumeration failed: %s", result.stderr.strip())
-        return []
+        logger.warning("Adapter process enumeration through PowerShell failed: %s", result.stderr.strip())
+        return _get_process_ids_for_exe_path_wmic(exe_path)
 
     process_ids: list[int] = []
     for line in result.stdout.splitlines():
@@ -326,6 +373,26 @@ def _kill_process_id(pid: int) -> bool:
     return False
 
 
+def _wait_until_exe_unlocked(exe_path: str, timeout_seconds: float = 30.0) -> None:
+    if not exe_path or not os.path.exists(exe_path):
+        return
+
+    deadline = time.monotonic() + timeout_seconds
+    probe_path = f"{exe_path}.update-probe"
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            os.replace(exe_path, probe_path)
+            os.replace(probe_path, exe_path)
+            logger.info("Adapter executable is unlocked and replaceable: %s", exe_path)
+            return
+        except OSError as exc:
+            last_error = exc
+            time.sleep(0.5)
+
+    raise RuntimeError(f"Adapter executable is still locked after {timeout_seconds:.0f}s: {exe_path}: {last_error}")
+
+
 def _stop_processes(exe_name: str, exe_path: str = "", adapter_pid: int | None = None) -> None:
     logger.info("Waiting 2 seconds for adapter to exit before force check")
     time.sleep(2)
@@ -344,6 +411,7 @@ def _stop_processes(exe_name: str, exe_path: str = "", adapter_pid: int | None =
     if exe_path:
         for pid in _get_process_ids_for_exe_path(exe_path):
             if pid == current_pid or pid in killed_pids:
+                logger.info("Skipping adapter pid=%s because it is current worker or already handled", pid)
                 continue
             if _kill_process_id(pid):
                 killed_any = True
@@ -353,6 +421,8 @@ def _stop_processes(exe_name: str, exe_path: str = "", adapter_pid: int | None =
 
     if killed_any:
         time.sleep(1)
+
+    _wait_until_exe_unlocked(exe_path)
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="ERP-CNC Adapter update worker")
