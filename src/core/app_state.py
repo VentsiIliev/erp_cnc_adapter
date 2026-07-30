@@ -303,8 +303,14 @@ class AppState:
         return f"{host}:{self.settings.port}"
 
     def _on_cnc_ready(self) -> None:
-        """Run operator-facing startup actions after the adapter is truly CNC-ready."""
+        """Run startup actions after the adapter is truly CNC-ready."""
         logger.info("Startup event: CNC ready callback invoked")
+        if self.physical_button_service is not None and not self.physical_button_service.is_monitoring:
+            physical_button_start = time.perf_counter()
+            asyncio.create_task(self.physical_button_service.start_monitoring())
+            logger.info("Physical button monitor started after CNC became ready - watching RUN/PAUSE inputs")
+            logger.info("Startup timing: PhysicalButtonService start task scheduled in %.1fms", (time.perf_counter() - physical_button_start) * 1000)
+
         if self.settings.auto_start_eding_gui:
             logger.info("Startup event: CNC ready callback skipped operator message because Eding GUI auto-start is enabled")
             return
@@ -335,10 +341,7 @@ class AppState:
         logger.info("CNC message monitor started - watching Eding FIFO messages")
         logger.info("Startup timing: CncMessageService start task scheduled in %.1fms", (time.perf_counter() - message_monitor_start) * 1000)
 
-        physical_button_start = time.perf_counter()
-        asyncio.create_task(self.physical_button_service.start_monitoring())
-        logger.info("Physical button monitor started - watching RUN/PAUSE inputs")
-        logger.info("Startup timing: PhysicalButtonService start task scheduled in %.1fms", (time.perf_counter() - physical_button_start) * 1000)
+
         logger.info("Startup timing: AppState.start completed in %.1fms gui_started=%s", (time.perf_counter() - start_begin) * 1000, gui_started)
 
     async def _start_connection_manager_after_gui_delay(self) -> None:

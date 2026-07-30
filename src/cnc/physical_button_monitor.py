@@ -137,6 +137,16 @@ class PhysicalButtonService:
         payload = await asyncio.to_thread(self._client.get_physical_button_status)
         self._last_error = None
         update = self._monitor.update(payload)
+        if update.actions and not self._client.is_connected:
+            logger.info(
+                "Physical button actions ignored because CNC is not connected yet: %s",
+                ",".join(update.actions),
+            )
+            update = PhysicalButtonMonitorUpdate(
+                indicators=update.indicators,
+                actions=(),
+                log_message=update.log_message.rsplit("actions=", 1)[0] + "actions=none ignored=cnc_not_connected",
+            )
         if update.actions or payload != self._last_payload:
             logger.info(update.log_message)
         self._last_payload = dict(payload)

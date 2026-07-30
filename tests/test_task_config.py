@@ -70,6 +70,7 @@ def test_request_adapter_recovery_restart_launches_restart_script(tmp_path):
     assert args[0] == ["cmd.exe", "/c", "call", str(restart_script)]
     assert kwargs["cwd"] == str(scripts_dir)
     assert kwargs["env"]["ERPCNC_MANUAL_TASK"] == "1"
+    assert kwargs["env"]["ERPCNC_SHOW_SPLASH"] == "0"
     mock_restart_task.assert_not_called()
 
 

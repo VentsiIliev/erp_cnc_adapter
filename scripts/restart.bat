@@ -18,14 +18,6 @@ echo [%date% %time%] Restarting ERP-CNC Adapter... > "!LOG_FILE!"
 call :log "Restart context: install_dir=!INSTALL_DIR! manual_task=%ERPCNC_MANUAL_TASK% username=%USERNAME% computer=%COMPUTERNAME%"
 call :log "Restart context: PATH=%PATH%"
 
-if not "%ERPCNC_SHOW_SPLASH%"=="0" (
-    if exist "!INSTALL_DIR!\scripts\start_cnc_splash.ps1" (
-        call :log "Starting START-CNC splash screen..."
-        start "START-CNC Splash" /D "!INSTALL_DIR!" "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "!INSTALL_DIR!\scripts\start_cnc_splash.ps1"
-    ) else (
-        call :log "START-CNC splash script missing; continuing without splash."
-    )
-)
 
 call :log "Stopping adapter, Eding CNC GUI, and CNC Server..."
 powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "'erp-cnc-adapter','cnc4.03','cnc','CncServer' | ForEach-Object { $name = $_; $procs = Get-Process -Name $name -ErrorAction SilentlyContinue; if ($procs) { $procs | ForEach-Object { Write-Output ('Stopping {0} pid={1}' -f $_.ProcessName,$_.Id) }; $procs | Stop-Process -Force -ErrorAction SilentlyContinue } else { Write-Output ('Not running: {0}' -f $name) } }" >> "!LOG_FILE!" 2>&1
@@ -37,6 +29,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "
 
 call :log "Waiting 2 seconds before reading configuration..."
 timeout /t 2 >nul
+if not "%ERPCNC_SHOW_SPLASH%"=="0" (
+    if exist "!INSTALL_DIR!\scripts\start_cnc_splash.ps1" (
+        call :log "Starting START-CNC splash screen..."
+        start "START-CNC Splash" /D "!INSTALL_DIR!" "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "!INSTALL_DIR!\scripts\start_cnc_splash.ps1"
+    ) else (
+        call :log "START-CNC splash script missing; continuing without splash."
+    )
+)
 set "AUTO_GUI=0"
 call :log "Reading auto_start_eding_gui from !INSTALL_DIR!\config.json"
 for /f "usebackq delims=" %%G in (`powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p='!INSTALL_DIR!\config.json'; if (Test-Path -LiteralPath $p) { try { $c = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if ($c.auto_start_eding_gui) { '1' } else { '0' } } catch { '0' } } else { '0' }"`) do set "AUTO_GUI=%%G"

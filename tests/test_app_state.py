@@ -1,4 +1,4 @@
-"""Tests for src/core/app_state.py â€” AppState lifecycle and PID management."""
+"""Tests for src/core/app_state.py - AppState lifecycle and PID management."""
 
 import os
 from unittest.mock import patch, MagicMock
@@ -328,6 +328,7 @@ class TestCncReadyCallback:
             show_operator_ready_message=True,
         )
         state = AppState(settings)
+        state.physical_button_service._monitoring = True
 
         with caplog.at_level("INFO", logger="src.core.app_state"):
             state._on_cnc_ready()
@@ -462,7 +463,7 @@ class TestAppStateLifecycle:
         mock_gui_start.assert_called_once_with(r"C:\CNC\cncapi.dll", r"DOMAIN\adapter")
         mock_server_start.assert_not_called()
         state.connection_manager.start.assert_not_called()
-        assert mock_create_task.call_count == 4
+        assert mock_create_task.call_count == 3
         for call in mock_create_task.call_args_list:
             call.args[0].close()
 
@@ -510,8 +511,8 @@ class TestAppStateLifecycle:
         with patch("asyncio.create_task") as mock_create_task:
             state.start()
             state.connection_manager.start.assert_called_once()
-            # Verify job monitor, CNC message monitor, and physical button monitor are scheduled via create_task
-            assert mock_create_task.call_count == 3
+            # Verify job monitor and CNC message monitor are scheduled immediately; physical buttons start after CNC ready
+            assert mock_create_task.call_count == 2
             for call in mock_create_task.call_args_list:
                 call.args[0].close()
 

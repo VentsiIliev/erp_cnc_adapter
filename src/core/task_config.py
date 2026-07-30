@@ -278,6 +278,7 @@ def request_adapter_recovery_restart() -> None:
 
     env = os.environ.copy()
     env["ERPCNC_MANUAL_TASK"] = "1"
+    env["ERPCNC_SHOW_SPLASH"] = "0"
     subprocess.Popen(
         ["cmd.exe", "/c", "call", str(restart_script)],
         cwd=str(restart_script.parent),
