@@ -22,6 +22,7 @@ class Settings:
     job_monitor_poll_interval: float = 1.0  # seconds between job monitor status checks
     jog_pad_pause_hold_interval_ms: int = 0  # milliseconds between jog-pad pause hold requests; 0 disables
     physical_button_poll_interval_ms: int = 50  # milliseconds between backend physical RUN/PAUSE input checks
+    cnc_message_poll_interval_ms: int = 100  # milliseconds between backend CNC FIFO message checks
     machine_number: str = "CNC1"  # Machine identifier (e.g., CNC1, CNC2, MILL1, etc.)
     task_username: str = ""
     # job_done_report_url: str = "http://localhost:8002/actions/cnc_job_done.php"  # Local testing
@@ -105,6 +106,10 @@ class Settings:
                 if "physical_button_poll_interval_ms" in user_config:
                     self.physical_button_poll_interval_ms = int(user_config["physical_button_poll_interval_ms"])
                     logger.info("Loaded persisted physical_button_poll_interval_ms: %s", self.physical_button_poll_interval_ms)
+
+                if "cnc_message_poll_interval_ms" in user_config:
+                    self.cnc_message_poll_interval_ms = int(user_config["cnc_message_poll_interval_ms"])
+                    logger.info("Loaded persisted cnc_message_poll_interval_ms: %s", self.cnc_message_poll_interval_ms)
 
                 if "port" in user_config:
                     self.port = int(user_config["port"])

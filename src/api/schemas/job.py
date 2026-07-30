@@ -192,6 +192,21 @@ class AxisPosition(BaseModel):
     c: float = 0.0
 
 
+class CncMessageEntry(BaseModel):
+    timestamp_utc: str = Field(alias="timestampUtc")
+    text: str
+
+    model_config = {"populate_by_name": True}
+
+
+class CncRecentMessagesResponse(BaseModel):
+    status: int
+    message: str
+    messages: list[CncMessageEntry] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
 class CncPositionResponse(BaseModel):
     status: int
     message: str

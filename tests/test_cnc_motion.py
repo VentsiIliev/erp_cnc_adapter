@@ -57,6 +57,17 @@ async def test_reset_endpoint_calls_cnc_client(client, fake_client):
 
 
 @pytest.mark.asyncio
+async def test_reset_endpoint_prefers_eding_cnc_message(client, fake_client):
+    fake_client._last_cnc_message = "Reset complete"
+
+    response = await client.post("/api/cnc/reset")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == 0
+    assert body["message"] == "Reset complete"
+
+@pytest.mark.asyncio
 async def test_reset_endpoint_returns_cnc_error(client, fake_client):
     fake_client._reset_rc = 14
 
@@ -413,7 +424,7 @@ async def test_jog_endpoint_prefers_eding_cnc_message(client, fake_client):
     assert body["message"] == "drives not enabled"
 
 @pytest.mark.asyncio
-async def test_clear_cnc_messages_endpoint_calls_cnc_client(client, fake_client):
+async def test_clear_cnc_messages_endpoint_calls_cnc_client(client, fake_client, test_app):
     fake_client._last_cnc_message = "old message"
 
     response = await client.post("/api/cnc/messages/clear")
@@ -425,4 +436,24 @@ async def test_clear_cnc_messages_endpoint_calls_cnc_client(client, fake_client)
     assert body["command"] == "clear_messages"
     assert body["dryRun"] is False
     assert fake_client.clear_cnc_messages_calls == 1
+    test_app.state.services.cnc_message_service.clear.assert_called_once_with()
     assert fake_client._last_cnc_message is None
+@pytest.mark.asyncio
+async def test_recent_cnc_messages_endpoint_returns_service_messages(client, test_app):
+    test_app.state.services.cnc_message_service.recent_messages.return_value = [
+        {"timestampUtc": "2026-07-30T10:00:00+00:00", "text": "Home X"},
+        {"timestampUtc": "2026-07-30T10:00:01+00:00", "text": "home complete!"},
+    ]
+
+    response = await client.get("/api/cnc/messages/recent?limit=5")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": 0,
+        "message": "CNC recent messages read successfully",
+        "messages": [
+            {"timestampUtc": "2026-07-30T10:00:00+00:00", "text": "Home X"},
+            {"timestampUtc": "2026-07-30T10:00:01+00:00", "text": "home complete!"},
+        ],
+    }
+    test_app.state.services.cnc_message_service.recent_messages.assert_called_once_with(limit=5)

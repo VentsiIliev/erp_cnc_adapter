@@ -1,12 +1,12 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Request
 
 from src.cnc.cnc_client_protocol import CncClientProtocol
 from src.cnc.error_translator import format_error
 from src.core.app_state import get_cnc_client
 
-from .schemas.job import CncHomedResponse, CncMotionResponse, CncPhysicalButtonStatusResponse, CncPositionResponse, JogCommandRequest, MoveCommandRequest, SetWorkCoordinateRequest, ZeroAxisRequest
+from .schemas.job import CncHomedResponse, CncMotionResponse, CncPhysicalButtonStatusResponse, CncPositionResponse, CncRecentMessagesResponse, JogCommandRequest, MoveCommandRequest, SetWorkCoordinateRequest, ZeroAxisRequest
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +38,34 @@ def _message(
 
 @router.post("/api/cnc/messages/clear", response_model=CncMotionResponse)
 async def clear_cnc_messages(
+    request: Request,
     client: CncClientProtocol = Depends(get_cnc_client),
 ):
     """Clear stale operator-facing CNC FIFO messages."""
     logger.info("CNC message FIFO clear requested")
     client.clear_cnc_messages()
+    request.app.state.services.cnc_message_service.clear()
     return CncMotionResponse(
         status=0,
         message="CNC message FIFO cleared",
         command="clear_messages",
         dry_run=False,
     )
+
+@router.get("/api/cnc/messages/recent", response_model=CncRecentMessagesResponse)
+async def get_recent_cnc_messages(
+    request: Request,
+    limit: int = Query(default=10, ge=1, le=50),
+):
+    """Return recent operator-facing CNC FIFO messages captured by the background listener."""
+    service = request.app.state.services.cnc_message_service
+    messages = service.recent_messages(limit=limit)
+    return CncRecentMessagesResponse(
+        status=0,
+        message="CNC recent messages read successfully",
+        messages=messages,
+    )
+
 
 @router.get("/api/cnc/position", response_model=CncPositionResponse)
 async def get_position(

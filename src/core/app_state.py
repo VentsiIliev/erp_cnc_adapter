@@ -24,6 +24,7 @@ from src.cnc.connection_manager import ConnectionManager
 from src.cnc.mock_cnc_client import MockCncClient
 from src.cnc.unavailable_cnc_client import UnavailableCncClient
 from src.cnc.job_monitor import JobMonitor
+from src.cnc.message_monitor import CncMessageService
 from src.cnc.physical_button_monitor import PhysicalButtonService
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,20 @@ class AppState:
         logger.info("CNC client initialized (connection managed by ConnectionManager)")
         logger.info("Job monitor initialized (will start with application)")
         logger.info("Startup timing: JobMonitor created in %.1fms", (time.perf_counter() - job_monitor_start) * 1000)
+
+        message_monitor_start = time.perf_counter()
+        self.cnc_message_service = CncMessageService(
+            self.cnc_client,
+            poll_interval_ms=settings.cnc_message_poll_interval_ms,
+        )
+        logger.info(
+            "CNC message monitor initialized (poll interval: %sms)",
+            settings.cnc_message_poll_interval_ms,
+        )
+        logger.info(
+            "Startup timing: CncMessageService created in %.1fms",
+            (time.perf_counter() - message_monitor_start) * 1000,
+        )
 
         physical_button_start = time.perf_counter()
         self.physical_button_service = PhysicalButtonService(
@@ -302,6 +317,11 @@ class AppState:
         logger.info("Job monitor started - watching for job state changes")
         logger.info("Startup timing: JobMonitor start task scheduled in %.1fms", (time.perf_counter() - monitor_start) * 1000)
 
+        message_monitor_start = time.perf_counter()
+        asyncio.create_task(self.cnc_message_service.start_monitoring())
+        logger.info("CNC message monitor started - watching Eding FIFO messages")
+        logger.info("Startup timing: CncMessageService start task scheduled in %.1fms", (time.perf_counter() - message_monitor_start) * 1000)
+
         physical_button_start = time.perf_counter()
         asyncio.create_task(self.physical_button_service.start_monitoring())
         logger.info("Physical button monitor started - watching RUN/PAUSE inputs")
@@ -327,6 +347,10 @@ class AppState:
         if self.physical_button_service is not None and self.physical_button_service.is_monitoring:
             logger.info("Stopping physical button monitor...")
             await self.physical_button_service.stop_monitoring()
+
+        if self.cnc_message_service is not None and self.cnc_message_service.is_monitoring:
+            logger.info("Stopping CNC message monitor...")
+            await self.cnc_message_service.stop_monitoring()
 
         logger.info("Disconnecting CNC client...")
         self.cnc_client.disconnect()

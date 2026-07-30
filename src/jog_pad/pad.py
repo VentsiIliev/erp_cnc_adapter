@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSlider,
     QSpacerItem,
@@ -32,7 +33,7 @@ from .widgets import (
     StepModeButton,
     ZeroAxisButton,
 )
-from .workers import BackgroundCommandSender, CoordinatePoller, PauseHoldThread, PhysicalButtonPoller
+from .workers import BackgroundCommandSender, CncMessagePoller, CoordinatePoller, PauseHoldThread, PhysicalButtonPoller
 
 
 class JogPad(QWidget):
@@ -72,6 +73,7 @@ class JogPad(QWidget):
         self.coordinate_mode_buttons: dict[str, QPushButton] = {}
         self.latest_positions: dict = {}
         self.position_poller = self._create_position_poller()
+        self.message_poller = self._create_message_poller()
         self.physical_button_poller = self._create_physical_button_poller()
         self.pause_hold_interval_ms = max(0, int(pause_hold_interval_ms))
         self._pause_hold_active = False
@@ -82,7 +84,7 @@ class JogPad(QWidget):
         self._active_axis: Optional[str] = None
 
         self.setObjectName("jogPad")
-        self.setMinimumSize(1060, 470)
+        self.setMinimumSize(1060, 570)
         self._build_ui()
         self._connect_actions()
         self._apply_style()
@@ -99,6 +101,12 @@ class JogPad(QWidget):
         thread.error_received.connect(self.on_pause_hold_error)
         return thread
 
+    def _create_message_poller(self) -> CncMessagePoller:
+        poller = CncMessagePoller(self.adapter_client, self)
+        poller.messages_received.connect(self.on_cnc_messages_received)
+        poller.error_received.connect(self.on_cnc_messages_error)
+        return poller
+
     def _create_physical_button_poller(self) -> PhysicalButtonPoller:
         poller = PhysicalButtonPoller(self.adapter_client, self)
         poller.status_received.connect(self.on_physical_button_status)
@@ -112,6 +120,9 @@ class JogPad(QWidget):
         if not self.position_poller.isRunning():
             self.position_poller = self._create_position_poller()
             self.position_poller.start()
+        if not self.message_poller.isRunning():
+            self.message_poller = self._create_message_poller()
+            self.message_poller.start()
         if not self.physical_button_poller.isRunning():
             self.physical_button_poller = self._create_physical_button_poller()
             self.physical_button_poller.start()
@@ -127,6 +138,9 @@ class JogPad(QWidget):
         if self.physical_button_poller.isRunning():
             self.physical_button_poller.stop()
             self.physical_button_poller.wait(1000)
+        if self.message_poller.isRunning():
+            self.message_poller.stop()
+            self.message_poller.wait(1000)
         if self.position_poller.isRunning():
             self.position_poller.stop()
             self.position_poller.wait(1000)
@@ -139,8 +153,8 @@ class JogPad(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(28, 28, 28, 10)
-        root.setSpacing(18)
+        root.setContentsMargins(24, 20, 24, 8)
+        root.setSpacing(10)
 
         motion_row = QHBoxLayout()
         motion_row.setSpacing(26)
@@ -153,9 +167,11 @@ class JogPad(QWidget):
         motion_row.addSpacing(54)
         motion_row.addWidget(self._build_coordinate_panel(), 0, Qt.AlignTop)
         motion_row.addStretch(1)
+        self.reset_button = BitmapCommandButton("Reset CNC errors", resolve_reset_icon_path(), "RESET", self.theme)
+        motion_row.addWidget(self.reset_button, 0, Qt.AlignTop)
         root.addLayout(motion_row)
 
-        root.addSpacing(6)
+        root.addSpacing(2)
 
         self.speed_slider = QSlider(Qt.Horizontal)
         self.speed_slider.setRange(1, 100)
@@ -198,6 +214,22 @@ class JogPad(QWidget):
         status_row.addStretch(1)
         root.addLayout(status_row)
 
+        self.cnc_messages_area = QScrollArea()
+        self.cnc_messages_area.setObjectName("cncMessagesArea")
+        self.cnc_messages_area.setMinimumWidth(740)
+        self.cnc_messages_area.setFixedHeight(78)
+        self.cnc_messages_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.cnc_messages_area.setWidgetResizable(True)
+        self.cnc_messages_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        self.cnc_messages_label = QLabel("No CNC messages")
+        self.cnc_messages_label.setObjectName("cncMessagesLabel")
+        self.cnc_messages_label.setWordWrap(True)
+        self.cnc_messages_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.cnc_messages_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.cnc_messages_area.setWidget(self.cnc_messages_label)
+        root.addWidget(self.cnc_messages_area)
+
         root.addStretch(1)
         root.addLayout(self._build_bottom_controls())
 
@@ -237,6 +269,13 @@ class JogPad(QWidget):
             row.addWidget(zero_button)
             row.addWidget(readout)
             layout.addLayout(row)
+
+        home_row = QHBoxLayout()
+        home_row.setSpacing(8)
+        self.home_button = HomeStatusButton(self.theme)
+        home_row.addWidget(self.home_button)
+        home_row.addStretch(1)
+        layout.addLayout(home_row)
 
         return panel
 
@@ -295,8 +334,6 @@ class JogPad(QWidget):
         self.step_001_button = StepModeButton("0.01", self.theme)
         self.step_01_button = StepModeButton("0.1", self.theme)
         self.step_1_button = StepModeButton("1", self.theme)
-        self.home_button = HomeStatusButton(self.theme)
-        self.reset_button = BitmapCommandButton("Reset CNC errors", resolve_reset_icon_path(), "RESET", self.theme)
 
         mode_buttons = (
             self.continuous_button,
@@ -316,8 +353,6 @@ class JogPad(QWidget):
         row.addWidget(self.step_001_button)
         row.addWidget(self.step_01_button)
         row.addWidget(self.step_1_button)
-        row.addWidget(self.home_button)
-        row.addWidget(self.reset_button)
 
         custom_column = QVBoxLayout()
         custom_column.setSpacing(4)
@@ -442,6 +477,20 @@ class JogPad(QWidget):
                 color: white;
                 font-family: "Times New Roman";
                 font-size: 40px;
+            }}
+
+            QScrollArea#cncMessagesArea {{
+                background: #FFFFFF;
+                border: 1px solid {accent_border_light};
+                border-radius: 4px;
+            }}
+
+            QLabel#cncMessagesLabel {{
+                background: #FFFFFF;
+                border: none;
+                padding: 6px 8px;
+                color: #1B1B1B;
+                font-size: 12px;
             }}
 
             QLineEdit {{
@@ -630,6 +679,26 @@ class JogPad(QWidget):
             color = "white" if is_active else "#202020"
             border = "#0F5523" if is_active else "#B8B8B8"
             indicator.setStyleSheet(f"background: {background}; border-color: {border}; color: {color};")
+
+    def on_cnc_messages_received(self, messages: list) -> None:
+        lines = []
+        for message in messages[-10:]:
+            if isinstance(message, dict):
+                text = str(message.get("text", "")).strip()
+            else:
+                text = str(message).strip()
+            if text:
+                lines.append(text)
+        self.cnc_messages_label.setText("\n".join(lines) if lines else "No CNC messages")
+        QTimer.singleShot(
+            0,
+            lambda: self.cnc_messages_area.verticalScrollBar().setValue(
+                self.cnc_messages_area.verticalScrollBar().maximum()
+            ),
+        )
+
+    def on_cnc_messages_error(self, message: str) -> None:
+        print(f"CNC message poll failed: {message}")
 
     def on_physical_button_status(self, payload: dict) -> None:
         update = self.physical_button_monitor.update(payload)

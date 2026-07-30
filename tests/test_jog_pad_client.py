@@ -34,6 +34,40 @@ class FakeResponse:
 
 
 
+
+def test_get_recent_cnc_messages_gets_adapter_endpoint(monkeypatch):
+    captured = {}
+
+    class MessagesResponse:
+        status = 200
+
+        def read(self):
+            return b'{"status": 0, "message": "ok", "messages": [{"timestampUtc": "now", "text": "Home X"}]}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["timeout"] = timeout
+        return MessagesResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    client = AdapterJogClient("http://127.0.0.1:8765", timeout_seconds=2.0)
+    response = client.get_recent_cnc_messages(limit=5)
+
+    assert response["messages"][0]["text"] == "Home X"
+    assert captured == {
+        "url": "http://127.0.0.1:8765/api/cnc/messages/recent?limit=5",
+        "method": "GET",
+        "timeout": 0.75,
+    }
+
 def test_get_physical_button_status_gets_adapter_endpoint(monkeypatch):
     captured = {}
 
@@ -485,7 +519,8 @@ def test_jog_pad_has_home_status_button():
     assert "Always-active home command button" in text
     assert "fill = self.theme.accent" in text
     assert "self.home_button = HomeStatusButton(self.theme)" in text
-    assert "row.addWidget(self.home_button)" in text
+    assert "home_row = QHBoxLayout()" in text
+    assert "home_row.addWidget(self.home_button)" in text
     assert "CncGetAllAxesHomed" not in text
     assert "poller.homed_status_received.connect" not in text
     assert 'payload.get("allAxesHomed")' not in text
@@ -566,7 +601,8 @@ def test_jog_pad_has_reset_button():
     assert "resolve_reset_icon_path" in text
     assert "class BitmapCommandButton" in text
     assert 'self.reset_button = BitmapCommandButton("Reset CNC errors", resolve_reset_icon_path(), "RESET", self.theme)' in text
-    assert "row.addWidget(self.reset_button)" in text
+    assert "motion_row.addStretch(1)" in text
+    assert "motion_row.addWidget(self.reset_button, 0, Qt.AlignTop)" in text
     assert "self.reset_button.clicked.connect(self.action_reset)" in text
     assert "def action_reset" in text
     assert "self.adapter_client.reset" in text
@@ -578,3 +614,21 @@ def test_jog_pad_clears_cnc_messages_each_time_it_is_shown():
     assert '"/api/cnc/messages/clear"' in text
     assert "QTimer.singleShot(0, self.jog_pad.clear_cnc_messages_on_show)" in text
     assert "QTimer.singleShot(0, window.jog_pad.clear_cnc_messages_on_show)" in text
+
+def test_jog_pad_shows_recent_cnc_messages():
+    text = jog_pad_source()
+
+    assert "class CncMessagePoller(QThread)" in text
+    assert "MESSAGE_POLL_INTERVAL_MS = 250" in text
+    assert '"/api/cnc/messages/recent?limit="' in text
+    assert "self.message_poller = self._create_message_poller()" in text
+    assert "self.cnc_messages_label = QLabel" in text
+    assert "self.cnc_messages_area = QScrollArea()" in text
+    assert "self.cnc_messages_area.setFixedHeight(78)" in text
+    assert "self.cnc_messages_area.setWidget(self.cnc_messages_label)" in text
+    assert "def on_cnc_messages_received" in text
+    assert "messages[-10:]" in text
+    assert "self.message_poller.stop()" in text
+    assert "verticalScrollBar()" in text
+    assert "self.resize(1165, 590)" in text
+    assert "self.setMinimumSize(1060, 570)" in text

@@ -21,8 +21,8 @@ class JogPadWindow(QMainWindow):
         icon_path = resolve_icon_path()
         if icon_path:
             self.setWindowIcon(QIcon(icon_path))
-        self.resize(1165, 497)
-        self.setMinimumSize(1060, 470)
+        self.resize(1165, 590)
+        self.setMinimumSize(1060, 570)
         self.jog_pad = JogPad(adapter_url=adapter_url, pause_hold_interval_ms=pause_hold_interval_ms)
         self.setCentralWidget(self.jog_pad)
         self._background_start_scheduled = False

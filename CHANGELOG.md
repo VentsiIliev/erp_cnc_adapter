@@ -57,6 +57,13 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.1.0 - 2026-07-30
+
+- Added dedicated CNC FIFO message listener.
+- Added scrollable jog pad CNC message panel showing recent Eding messages.
+- Fixed jog pad layout so the message
+  panel does not squash or overlap jog controls.
+
 ## v1.0.19 - 2026-07-30
 
 - testing no installer release script flag
@@ -82,6 +89,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 

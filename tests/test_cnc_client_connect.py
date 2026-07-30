@@ -44,6 +44,34 @@ def test_stop_jog_without_axis_stops_all_cartesian_axes():
     assert [call.args[0].value for call in client._dll.CncStopJog.call_args_list] == [0, 1, 2, 3, 4, 5]
 
 
+def test_start_jog_failure_captures_delayed_fifo_message():
+    import ctypes
+    from cncapi.python.cncstructs import CNC_LOG_MESSAGE
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._last_cnc_message = None
+    client._captured_cnc_messages = []
+    client._dll = MagicMock()
+    client._dll.CncStartJog2.return_value = 10
+
+    reads = iter([None, b"Limit switch active", None, None])
+
+    def fake_fifo_get(message_ref):
+        next_message = next(reads, None)
+        if next_message is None:
+            return 1
+        message = ctypes.cast(message_ref, ctypes.POINTER(CNC_LOG_MESSAGE)).contents
+        message.text = next_message
+        return 0
+
+    client._dll.CncLogFifoGet.side_effect = fake_fifo_get
+
+    assert client.start_jog("X", 1, 1.0, 0.1, True) == 10
+    assert client.poll_cnc_messages() == ["Limit switch active"]
+    assert client.get_last_cnc_message() == "Limit switch active"
+
+
 def test_move_to_calls_cnc_move_to_for_single_axis():
     from src.cnc.cnc_client import CncClient
 
@@ -58,6 +86,35 @@ def test_move_to_calls_cnc_move_to_for_single_axis():
     assert move.z == 1
     assert move.x == 0
     assert velocity.value == 0.2
+
+
+def test_move_to_captures_delayed_fifo_message():
+    import ctypes
+    from cncapi.python.cncstructs import CNC_LOG_MESSAGE
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._last_cnc_message = None
+    client._captured_cnc_messages = []
+    client._dll = MagicMock()
+    client._dll.CncMoveTo.return_value = 0
+
+    reads = iter([None, b"Move accepted", None, None])
+
+    def fake_fifo_get(message_ref):
+        next_message = next(reads, None)
+        if next_message is None:
+            return 1
+        message = ctypes.cast(message_ref, ctypes.POINTER(CNC_LOG_MESSAGE)).contents
+        message.text = next_message
+        return 0
+
+    client._dll.CncLogFifoGet.side_effect = fake_fifo_get
+
+    assert client.move_to("Z", -12.75, 0.2) == 0
+    assert client.poll_cnc_messages() == ["Move accepted"]
+    assert client.get_last_cnc_message() == "Move accepted"
+
 
 def test_get_positions_reads_work_and_machine_coordinates():
     from cncapi.python.cncstructs import CNC_CART_DOUBLE
@@ -82,6 +139,7 @@ def test_get_positions_reads_work_and_machine_coordinates():
         "machine": {"x": 10.0, "y": 20.0, "z": 30.0, "a": 0.0, "b": 0.0, "c": 0.0},
     }
 
+
 def test_zero_work_axis_runs_g10_l20_for_active_coordinate_system():
     from src.cnc.cnc_client import CncClient
 
@@ -102,6 +160,41 @@ def test_zero_work_axis_runs_g10_l20_for_active_coordinate_system():
     save_fixtures = client._dll.CncStoreIniFile.call_args.args[0]
     assert save_fixtures.value == 1
 
+
+def test_zero_work_axis_captures_delayed_fifo_message():
+    import ctypes
+    from cncapi.python.cncstructs import CNC_LOG_MESSAGE
+    from src.cnc.cnc_client import CncClient
+
+    status = MagicMock()
+    status.activeOffsetAndPlane.currentG5X = 0
+
+    client = CncClient.__new__(CncClient)
+    client._last_cnc_message = None
+    client._captured_cnc_messages = []
+    client._dll = MagicMock()
+    client._dll.CncGetRunningStatus.return_value.contents = status
+    client._dll.CncRunSingleLine.return_value = 0
+    client._dll.CncWaitSingleLine.return_value = 0
+    client._dll.CncStoreIniFile.return_value = 0
+
+    reads = iter([None, b"Zero X complete", None, None])
+
+    def fake_fifo_get(message_ref):
+        next_message = next(reads, None)
+        if next_message is None:
+            return 1
+        message = ctypes.cast(message_ref, ctypes.POINTER(CNC_LOG_MESSAGE)).contents
+        message.text = next_message
+        return 0
+
+    client._dll.CncLogFifoGet.side_effect = fake_fifo_get
+
+    assert client.zero_work_axis("x") == 0
+    assert client.poll_cnc_messages() == ["Zero X complete"]
+    assert client.get_last_cnc_message() == "Zero X complete"
+
+
 def test_set_work_coordinate_runs_g92_single_line_and_saves_ini():
     from src.cnc.cnc_client import CncClient
 
@@ -117,6 +210,7 @@ def test_set_work_coordinate_runs_g92_single_line_and_saves_ini():
     client._dll.CncWaitSingleLine.assert_called_once_with(None, None)
     save_fixtures = client._dll.CncStoreIniFile.call_args.args[0]
     assert save_fixtures.value == 1
+
 
 def test_get_all_axes_homed_reads_cnc_dll_status():
     from src.cnc.cnc_client import CncClient
@@ -146,6 +240,7 @@ def test_home_all_axes_gui_sequence_sends_gui_home_action():
     assert p1.value == 0
     assert p2.value == 0
     client._dll.CncRunSingleLine.assert_not_called()
+
 
 def test_home_all_axes_sequence_runs_home_all_macro():
     from src.cnc.cnc_client import CncClient
@@ -177,6 +272,36 @@ def test_home_all_axes_sequence_returns_gosub_rejection_without_fallback():
     client._dll.CncSendToGUI.assert_not_called()
 
 
+def test_home_all_axes_sequence_captures_fifo_message_on_rejection():
+    import ctypes
+    from cncapi.python.cncstructs import CNC_LOG_MESSAGE
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._last_cnc_message = None
+    client._captured_cnc_messages = []
+    client._dll = MagicMock()
+    client._dll.CncRunSingleLine.return_value = -1
+
+    reads = iter([None, b"No Job loaded", None, None])
+
+    def fake_fifo_get(message_ref):
+        next_message = next(reads, None)
+        if next_message is None:
+            return 1
+        message = ctypes.cast(message_ref, ctypes.POINTER(CNC_LOG_MESSAGE)).contents
+        message.text = next_message
+        return 0
+
+    client._dll.CncLogFifoGet.side_effect = fake_fifo_get
+
+    assert client.home_all_axes_sequence() == -1
+    assert client.poll_cnc_messages() == ["No Job loaded"]
+    assert client.get_last_cnc_message() == "No Job loaded"
+    client._dll.CncWaitSingleLine.assert_not_called()
+    client._dll.CncSendToGUI.assert_not_called()
+
+
 def test_home_all_axes_sequence_waits_for_delayed_fifo_messages():
     import ctypes
     from cncapi.python.cncstructs import CNC_LOG_MESSAGE
@@ -202,8 +327,8 @@ def test_home_all_axes_sequence_waits_for_delayed_fifo_messages():
     client._dll.CncLogFifoGet.side_effect = fake_fifo_get
 
     assert client.home_all_axes_sequence() == 0
+    assert client.poll_cnc_messages() == ["HOME X", "HOME Y", "HOME Z", "Home completed!"]
     assert client.get_last_cnc_message() == "HOME X | HOME Y | HOME Z | Home completed!"
-
 
 
 def test_wait_for_cnc_messages_collects_messages_until_fifo_is_quiet():
@@ -230,6 +355,7 @@ def test_wait_for_cnc_messages_collects_messages_until_fifo_is_quiet():
 
     assert client._wait_for_cnc_messages("test", timeout_seconds=0.5, quiet_seconds=0.05) is True
     assert client.get_last_cnc_message() == "HOME X | HOME Y | HOME Z | Home completed!"
+
 
 def test_pause_job_calls_cnc_pause_job():
     from src.cnc.cnc_client import CncClient
@@ -263,6 +389,35 @@ def test_reset_calls_cnc_reset():
     client = CncClient.__new__(CncClient)
     client._dll = MagicMock()
     client._dll.CncReset.return_value = 0
+    client._dll.CncLogFifoGet.return_value = 1
 
     assert client.reset() == 0
     client._dll.CncReset.assert_called_once_with()
+
+
+def test_reset_captures_delayed_fifo_message():
+    import ctypes
+    from cncapi.python.cncstructs import CNC_LOG_MESSAGE
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._last_cnc_message = None
+    client._captured_cnc_messages = []
+    client._dll = MagicMock()
+    client._dll.CncReset.return_value = 0
+
+    reads = iter([None, b"Reset complete", None, None])
+
+    def fake_fifo_get(message_ref):
+        next_message = next(reads, None)
+        if next_message is None:
+            return 1
+        message = ctypes.cast(message_ref, ctypes.POINTER(CNC_LOG_MESSAGE)).contents
+        message.text = next_message
+        return 0
+
+    client._dll.CncLogFifoGet.side_effect = fake_fifo_get
+
+    assert client.reset() == 0
+    assert client.poll_cnc_messages() == ["Reset complete"]
+    assert client.get_last_cnc_message() == "Reset complete"

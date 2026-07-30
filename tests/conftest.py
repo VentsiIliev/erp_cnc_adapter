@@ -63,6 +63,7 @@ class FakeCncClient:
         self._zero_work_axis_rc = 0
         self._set_work_coordinate_rc = 0
         self._last_cnc_message = None
+        self._pending_cnc_messages = []
         self.clear_cnc_messages_calls = 0
 
     @property
@@ -110,6 +111,15 @@ class FakeCncClient:
     def clear_cnc_messages(self) -> None:
         self.clear_cnc_messages_calls += 1
         self._last_cnc_message = None
+        self._pending_cnc_messages = []
+
+    def poll_cnc_messages(self) -> list[str]:
+        messages = list(self._pending_cnc_messages)
+        self._pending_cnc_messages = []
+        if messages:
+            self._last_cnc_message = " | ".join(messages)
+        return messages
+
     def home_all_axes_gui_sequence(self) -> int:
         self.home_all_axes_gui_calls += 1
         return self._home_all_axes_rc
@@ -266,6 +276,8 @@ def _build_test_app(fake_client: FakeCncClient, manager: ConnectionManager, sett
     job_monitor_mock._job_info = {}
     services.job_monitor = job_monitor_mock
     services.physical_button_service = MagicMock()
+    services.cnc_message_service = MagicMock()
+    services.cnc_message_service.recent_messages.return_value = []
 
     # Add last_loaded_job storage
     services.last_loaded_job = None

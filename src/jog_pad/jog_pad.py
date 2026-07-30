@@ -49,7 +49,7 @@ from src.jog_pad.widgets import (
     StepModeButton,
     ZeroAxisButton,
 )
-from src.jog_pad.workers import BackgroundCommandSender, CoordinatePoller, PauseHoldThread
+from src.jog_pad.workers import BackgroundCommandSender, CncMessagePoller, CoordinatePoller, PauseHoldThread
 
 __all__ = [
     "ACCENT_BLUE",

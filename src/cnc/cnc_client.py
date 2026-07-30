@@ -238,6 +238,10 @@ class CncClient:
         """Discard stale CNC FIFO messages before showing operator commands."""
         self._clear_cnc_messages()
 
+    def poll_cnc_messages(self) -> list[str]:
+        """Drain and return currently available operator-facing CNC FIFO messages."""
+        return self._log_cnc_messages("from background message monitor")
+
     def home_all_axes_gui_sequence(self) -> int:
         """Request the Eding CNC GUI home sequence action."""
         CNC_UIOACTION_HOMESEQ = 37
@@ -249,8 +253,8 @@ class CncClient:
             c_int(0),
         )
         logger.info("CncSendToGUI(CNC_UIOACTION_HOMESEQ, 0, 0) returned %d", result)
-        self._wait_for_cnc_messages("after GUI home sequence command")
         return result
+
     def home_all_axes_sequence(self) -> int:
         """Run the configured Eding CNC home_all macro without fallback."""
         command = "gosub home_all"
@@ -259,12 +263,10 @@ class CncClient:
         result = self._dll.CncRunSingleLine(command.encode("ascii"))
         logger.info("CncRunSingleLine(%r) returned %d", command, result)
         if result != CNC_RC_OK:
-            self._log_cnc_messages(f"after rejected home command {command!r}")
             return result
 
         result = self._dll.CncWaitSingleLine(None, None)
         logger.info("CncWaitSingleLine() for %r returned %d", command, result)
-        self._wait_for_cnc_messages(f"after completed home command {command!r}")
         return result
 
     def _log_home_preflight(self) -> None:
@@ -348,9 +350,9 @@ class CncClient:
                 return captured_any
             time.sleep(0.05)
 
-    def _log_cnc_messages(self, context: str) -> bool:
+    def _log_cnc_messages(self, context: str) -> list[str]:
         """Drain a few CNC server log FIFO messages for diagnostics."""
-        captured = False
+        captured_this_call: list[str] = []
         try:
             for _ in range(10):
                 message = CNC_LOG_MESSAGE()
@@ -364,7 +366,7 @@ class CncClient:
                         captured_messages.append(text)
                     self._captured_cnc_messages = captured_messages
                     self._last_cnc_message = " | ".join(captured_messages)
-                    captured = True
+                    captured_this_call.append(text)
                 function_name = bytes(message.functionName).split(b"\0", 1)[0].decode("ascii", errors="replace")
                 source_info = bytes(message.sourceInfo).split(b"\0", 1)[0].decode("ascii", errors="replace")
                 logger.info(
@@ -379,7 +381,7 @@ class CncClient:
                 )
         except Exception as exc:
             logger.info("CNC log FIFO %s: could not read messages: %s", context, exc)
-        return captured
+        return captured_this_call
 
     def load_job(self, file_name: str) -> int:
         """Load a job into the CNC interpreter.
@@ -489,7 +491,6 @@ class CncClient:
         self._clear_cnc_messages()
         result = self._dll.CncReset()
         logger.info("CncReset() returned %d", result)
-        self._log_cnc_messages("after reset command")
         return result
 
     def start_jog(
@@ -519,7 +520,6 @@ class CncClient:
             continuous,
             result,
         )
-        self._log_cnc_messages(f"after jog command {axis.upper()}{direction:+d}")
         return result
 
     def stop_jog(self, axis: str | None = None) -> int:
@@ -529,7 +529,6 @@ class CncClient:
             axis_index = self._axis_index(axis)
             result = self._dll.CncStopJog(c_int(axis_index))
             logger.info("CncStopJog(axis=%s/%d) returned %d", axis.upper(), axis_index, result)
-            self._log_cnc_messages(f"after stop jog command {axis.upper()}")
             return result
 
         result = CNC_RC_OK
@@ -539,7 +538,6 @@ class CncClient:
             logger.info("CncStopJog(axis=%s/%d) returned %d", axis_name, axis_index, axis_result)
             if axis_result != CNC_RC_OK and result == CNC_RC_OK:
                 result = axis_result
-        self._log_cnc_messages("after stop jog command all axes")
         return result
 
     def move_to(self, axis: str, position: float, velocity_factor: float) -> int:
@@ -561,7 +559,6 @@ class CncClient:
             velocity_factor,
             result,
         )
-        self._log_cnc_messages(f"after move command {axis.upper()}")
         return result
 
     def zero_work_axis(self, axis: str) -> int:
@@ -575,18 +572,15 @@ class CncClient:
         result = self._dll.CncRunSingleLine(command.encode("ascii"))
         logger.info("CncRunSingleLine(%r) returned %d", command, result)
         if result != CNC_RC_OK:
-            self._log_cnc_messages(f"after rejected zero command {axis_name}")
             return result
 
         result = self._dll.CncWaitSingleLine(None, None)
         logger.info("CncWaitSingleLine() returned %d", result)
         if result != CNC_RC_OK:
-            self._log_cnc_messages(f"after failed zero wait {axis_name}")
             return result
 
         result = self._dll.CncStoreIniFile(c_int(1))
         logger.info("CncStoreIniFile(saveFixtures=1) returned %d", result)
-        self._log_cnc_messages(f"after zero command {axis_name}")
         return result
 
     def set_work_coordinate(self, axis: str, value: float) -> int:
@@ -599,18 +593,15 @@ class CncClient:
         result = self._dll.CncRunSingleLine(command.encode("ascii"))
         logger.info("CncRunSingleLine(%r) returned %d", command, result)
         if result != CNC_RC_OK:
-            self._log_cnc_messages(f"after rejected set work coordinate command {axis_name}")
             return result
 
         result = self._dll.CncWaitSingleLine(None, None)
         logger.info("CncWaitSingleLine() returned %d", result)
         if result != CNC_RC_OK:
-            self._log_cnc_messages(f"after failed set work coordinate wait {axis_name}")
             return result
 
         result = self._dll.CncStoreIniFile(c_int(1))
         logger.info("CncStoreIniFile(saveFixtures=1) returned %d", result)
-        self._log_cnc_messages(f"after set work coordinate command {axis_name}")
         return result
 
     # -- private helpers -----------------------------------------------------

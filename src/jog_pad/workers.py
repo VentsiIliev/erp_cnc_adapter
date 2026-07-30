@@ -9,7 +9,7 @@ from PyQt5.QtCore import QObject, QThread, pyqtSignal
 from PyQt5.QtWidgets import QWidget
 
 from .client import AdapterJogClient
-from .config import PHYSICAL_BUTTON_POLL_INTERVAL_MS, POSITION_POLL_INTERVAL_MS
+from .config import MESSAGE_POLL_INTERVAL_MS, PHYSICAL_BUTTON_POLL_INTERVAL_MS, POSITION_POLL_INTERVAL_MS
 
 
 class BackgroundCommandSender(QObject):
@@ -104,6 +104,33 @@ class PhysicalButtonPoller(QThread):
                     self.status_received.emit(status)
                     last_status = status
             self.msleep(PHYSICAL_BUTTON_POLL_INTERVAL_MS)
+
+
+class CncMessagePoller(QThread):
+    messages_received = pyqtSignal(list)
+    error_received = pyqtSignal(str)
+
+    def __init__(self, client: AdapterJogClient, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.client = client
+        self._running = True
+
+    def stop(self) -> None:
+        self._running = False
+
+    def run(self) -> None:
+        last_messages = None
+        while self._running:
+            try:
+                response = self.client.get_recent_cnc_messages(limit=10)
+            except Exception as exc:
+                self.error_received.emit(str(exc))
+            else:
+                messages = response.get("messages", [])
+                if messages != last_messages:
+                    self.messages_received.emit(messages)
+                    last_messages = list(messages)
+            self.msleep(MESSAGE_POLL_INTERVAL_MS)
 
 
 class PauseHoldThread(QThread):
