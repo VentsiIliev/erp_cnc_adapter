@@ -483,7 +483,7 @@ class TestInstallWorkerTaskHandling:
         assert "-LogonType Interactive" in script
         assert "-RunLevel Highest" in script
 
-    def test_start_shortcut_targets_feedback_script_with_logo_icon(self, tmp_path):
+    def test_start_shortcut_targets_hidden_launcher_with_logo_icon(self, tmp_path):
         from src.installer.worker import InstallWorker
 
         worker = InstallWorker(str(tmp_path), "CNC1")
@@ -492,12 +492,13 @@ class TestInstallWorkerTaskHandling:
         assert "START-CNC.lnk" in script
         assert "Join-Path $env:PUBLIC 'Desktop'" in script
         assert "Join-Path $env:USERPROFILE 'Desktop'" in script
-        assert "$shortcut.TargetPath = 'powershell.exe'" in script
-        assert str(tmp_path / "scripts" / "start_cnc_feedback.ps1") in script
-        assert str(tmp_path / "scripts" / "start_cnc_hidden.vbs") not in script
+        assert "$shortcut.TargetPath = 'wscript.exe'" in script
+        assert str(tmp_path / "scripts" / "start_cnc_hidden.vbs") in script
+        assert str(tmp_path / "scripts" / "start_cnc_feedback.ps1") not in script
         assert str(tmp_path / "scripts" / "restart.bat") not in script
         assert str(tmp_path / "resources" / "logo.ico") in script
         assert "$shortcut.TargetPath" in script
+        assert "//B //Nologo" in script
         assert "$shortcut.Arguments" in script
         assert "$shortcut.IconLocation" in script
 

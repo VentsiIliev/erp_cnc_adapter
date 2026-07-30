@@ -227,3 +227,52 @@ def test_wait_until_exe_unlocked_raises_when_file_stays_locked(monkeypatch, tmp_
 
     with pytest.raises(RuntimeError, match="still locked"):
         update_worker._wait_until_exe_unlocked(str(exe_path), timeout_seconds=0.5)
+
+
+def test_repair_start_cnc_shortcut_targets_hidden_launcher(monkeypatch, tmp_path):
+    from src import update_worker
+
+    install_dir = tmp_path / "install"
+    scripts_dir = install_dir / "scripts"
+    resources_dir = install_dir / "resources"
+    scripts_dir.mkdir(parents=True)
+    resources_dir.mkdir()
+    launcher = scripts_dir / "start_cnc_hidden.vbs"
+    launcher.write_text("hidden launcher", encoding="utf-8")
+    (resources_dir / "logo.ico").write_bytes(b"icon")
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+
+        class Result:
+            returncode = 0
+            stdout = r"C:\Users\Public\Desktop\START-CNC.lnk"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+    monkeypatch.setattr(update_worker.subprocess, "run", fake_run)
+
+    assert update_worker._repair_start_cnc_shortcut(str(install_dir)) is True
+
+    args, kwargs = calls[0]
+    script = args[-1]
+    assert args[:4] == ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass"]
+    assert "$shortcut.TargetPath = 'wscript.exe'" in script
+    assert "//B //Nologo" in script
+    assert str(launcher) in script
+    assert "start_cnc_feedback.ps1" not in script
+    assert kwargs["timeout"] == 20
+
+
+def test_repair_start_cnc_shortcut_skips_when_hidden_launcher_missing(monkeypatch, tmp_path):
+    from src import update_worker
+
+    calls = []
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+    monkeypatch.setattr(update_worker.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+
+    assert update_worker._repair_start_cnc_shortcut(str(tmp_path)) is False
+    assert calls == []

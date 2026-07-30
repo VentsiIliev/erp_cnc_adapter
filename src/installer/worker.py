@@ -771,7 +771,7 @@ class InstallWorker(QThread):
         return result.returncode == 0 and not result.stderr
 
     def _build_start_shortcut_script(self) -> str:
-        feedback_path = self.install_path / "scripts" / "start_cnc_feedback.ps1"
+        launcher_path = self.install_path / "scripts" / "start_cnc_hidden.vbs"
         icon_path = self.install_path / "resources" / "logo.ico"
         return (
             "$ErrorActionPreference = 'Stop'\n"
@@ -783,9 +783,9 @@ class InstallWorker(QThread):
             "$shortcutPath = Join-Path $desktop 'START-CNC.lnk'\n"
             "$shell = New-Object -ComObject WScript.Shell\n"
             "$shortcut = $shell.CreateShortcut($shortcutPath)\n"
-            "$shortcut.TargetPath = 'powershell.exe'\n"
-            f"$shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -File \"{self._ps_quote(str(feedback_path))}\"'\n"
-            f"$shortcut.WorkingDirectory = '{self._ps_quote(str(feedback_path.parent))}'\n"
+            "$shortcut.TargetPath = 'wscript.exe'\n"
+            f"$shortcut.Arguments = '//B //Nologo \"{self._ps_quote(str(launcher_path))}\"'\n"
+            f"$shortcut.WorkingDirectory = '{self._ps_quote(str(launcher_path.parent))}'\n"
             f"$shortcut.IconLocation = '{self._ps_quote(str(icon_path))}'\n"
             "$shortcut.Description = 'Start CNC adapter runtime'\n"
             "$shortcut.Save()\n"

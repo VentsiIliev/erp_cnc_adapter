@@ -258,6 +258,57 @@ def _install_zip_payload(package_path: str, install_dir: str, verify_manifest: b
     return manifest
 
 
+def _ps_quote(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def _repair_start_cnc_shortcut(install_dir: str) -> bool:
+    """Point the desktop START-CNC shortcut at the hidden launcher after updates."""
+    launcher_path = Path(install_dir) / "scripts" / "start_cnc_hidden.vbs"
+    icon_path = Path(install_dir) / "resources" / "logo.ico"
+    if os.name != "nt":
+        return False
+    if not launcher_path.exists():
+        logger.warning("START-CNC shortcut repair skipped; hidden launcher is missing: %s", launcher_path)
+        return False
+
+    script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        "$desktopCandidates = @()\n"
+        "if ($env:PUBLIC) { $desktopCandidates += (Join-Path $env:PUBLIC 'Desktop') }\n"
+        "if ($env:USERPROFILE) { $desktopCandidates += (Join-Path $env:USERPROFILE 'Desktop') }\n"
+        "$desktop = $desktopCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1\n"
+        "if (-not $desktop) { throw 'Could not find a desktop folder for shortcut creation.' }\n"
+        "$shortcutPath = Join-Path $desktop 'START-CNC.lnk'\n"
+        "$shell = New-Object -ComObject WScript.Shell\n"
+        "$shortcut = $shell.CreateShortcut($shortcutPath)\n"
+        "$shortcut.TargetPath = 'wscript.exe'\n"
+        f"$shortcut.Arguments = '//B //Nologo \"{_ps_quote(str(launcher_path))}\"'\n"
+        f"$shortcut.WorkingDirectory = '{_ps_quote(str(launcher_path.parent))}'\n"
+        f"$shortcut.IconLocation = '{_ps_quote(str(icon_path))}'\n"
+        "$shortcut.Description = 'Start CNC adapter runtime'\n"
+        "$shortcut.Save()\n"
+        "Write-Output $shortcutPath\n"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except Exception as exc:
+        logger.warning("START-CNC shortcut repair failed to run: %s", exc)
+        return False
+
+    if result.returncode != 0:
+        logger.warning("START-CNC shortcut repair failed: %s", (result.stderr or result.stdout).strip())
+        return False
+
+    logger.info("START-CNC shortcut repaired to hidden launcher: %s", result.stdout.strip())
+    return True
+
+
 def _install_legacy_exe(staged_path: str, exe_path: str, current_version: str) -> str:
     exe_dir = os.path.dirname(exe_path)
     exe_name = os.path.basename(exe_path)
@@ -479,6 +530,7 @@ def main(argv: list[str] | None = None) -> None:
             logger.info("Installing full update package")
             backup_path = _backup_install_dir(install_dir, current_version)
             _install_zip_payload(staged_path, install_dir, verify_manifest=True)
+            _repair_start_cnc_shortcut(install_dir)
             os.remove(staged_path)
         elif package_kind == "restore":
             logger.info("Restoring full install backup package")
