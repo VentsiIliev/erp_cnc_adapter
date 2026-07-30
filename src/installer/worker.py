@@ -1213,13 +1213,24 @@ class InstallWorker(QThread):
                     f"$taskUser = '{ps_quote(self.task_username)}'\n"
                     f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser\n"
                     f"$trigger.Delay = $startupDelay\n"
-                    f"$principal = New-ScheduledTaskPrincipal -UserId $taskUser "
-                    f"-LogonType Interactive -RunLevel Highest\n"
-                    f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
-                    f"-Action $action -Trigger $trigger -Principal $principal "
-                    f"-Settings $settings -Force -ErrorAction Stop | Out-Null\n"
-                    f"if (-not $autoStartAdapter) {{ Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null }}\n"
                 )
+                if self.task_password:
+                    ps_script += (
+                        f"$taskPassword = '{ps_quote(self.task_password)}'\n"
+                        f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
+                        f"-Action $action -Trigger $trigger -Settings $settings "
+                        f"-User $taskUser -Password $taskPassword -RunLevel Highest -Force -ErrorAction Stop | Out-Null\n"
+                        f"if (-not $autoStartAdapter) {{ Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null }}\n"
+                    )
+                else:
+                    ps_script += (
+                        f"$principal = New-ScheduledTaskPrincipal -UserId $taskUser "
+                        f"-LogonType Interactive -RunLevel Highest\n"
+                        f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
+                        f"-Action $action -Trigger $trigger -Principal $principal "
+                        f"-Settings $settings -Force -ErrorAction Stop | Out-Null\n"
+                        f"if (-not $autoStartAdapter) {{ Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null }}\n"
+                    )
             else:
                 task_start_mode = "boot"
                 ps_script += (

@@ -159,9 +159,18 @@ def configure_task_launch_account(
             f"$taskUser = '{_ps_quote(task_username)}'\n"
             "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser\n"
             "$trigger.Delay = $startupDelay\n"
-            "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
-            f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null\n"
         )
+        if task_password:
+            script += (
+                f"$taskPassword = '{_ps_quote(task_password)}'\n"
+                f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $action -Trigger $trigger -Settings $settings "
+                "-User $taskUser -Password $taskPassword -RunLevel Highest -Force | Out-Null\n"
+            )
+        else:
+            script += (
+                "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+                f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null\n"
+            )
     else:
         script += (
             "$trigger = New-ScheduledTaskTrigger -AtStartup\n"
@@ -185,10 +194,17 @@ def configure_task_launch_account(
     )
 
     if task_username:
+        script += "  if ($taskPassword) {\n"
         script += (
-            "  $watchdogPrincipal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
-            f"  Register-ScheduledTask -TaskName '{WATCHDOG_TASK_NAME}' -Action $watchdogAction -Trigger $watchdogTrigger -Principal $watchdogPrincipal -Settings $watchdogSettings -Force | Out-Null\n"
+            f"    Register-ScheduledTask -TaskName '{WATCHDOG_TASK_NAME}' -Action $watchdogAction -Trigger $watchdogTrigger -Settings $watchdogSettings "
+            "-User $taskUser -Password $taskPassword -RunLevel Highest -Force | Out-Null\n"
         )
+        script += "  } else {\n"
+        script += (
+            "    $watchdogPrincipal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+            f"    Register-ScheduledTask -TaskName '{WATCHDOG_TASK_NAME}' -Action $watchdogAction -Trigger $watchdogTrigger -Principal $watchdogPrincipal -Settings $watchdogSettings -Force | Out-Null\n"
+        )
+        script += "  }\n"
     else:
         script += (
             "  $watchdogPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest\n"
@@ -225,7 +241,7 @@ def configure_task_launch_account(
     return {
         "task_username": task_username.strip(),
         "run_as_windows_user": bool(task_username.strip()),
-        "task_password_configured": False,
+        "task_password_configured": bool(task_username.strip() and task_password),
         "auto_start_adapter_on_logon": auto_start_enabled,
         "adapter_startup_delay_seconds": max(0, int(startup_delay_seconds)),
     }

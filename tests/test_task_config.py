@@ -116,3 +116,32 @@ def test_configure_task_launch_account_writes_logon_trigger_delay(tmp_path):
     assert "$watchdogLauncherPath" in script_text
     assert "New-ScheduledTaskAction -Execute 'wscript.exe'" in script_text
     assert "watchdog_hidden.vbs" in script_text
+
+
+def test_configure_task_launch_account_uses_stored_password_when_provided(tmp_path):
+    exe_path = tmp_path / "erp-cnc-adapter.exe"
+    exe_path.write_text("", encoding="utf-8")
+    script_contents = []
+
+    def fake_run(command, **kwargs):
+        script_contents.append(task_config.Path(command[-1]).read_text(encoding="utf-8"))
+        return _completed()
+
+    with patch("src.core.task_config._resolve_install_dir", return_value=tmp_path), \
+         patch("src.core.task_config._resolve_exe_path", return_value=exe_path), \
+         patch("src.core.task_config.subprocess.run", side_effect=fake_run):
+        result = configure_task_launch_account(
+            task_username=r"DOMAIN\adapter",
+            task_password="secret",
+            auto_start_enabled=True,
+            startup_delay_seconds=90,
+        )
+
+    assert result["task_password_configured"] is True
+    script_text = script_contents[0]
+    assert "$taskPassword = 'secret'" in script_text
+    assert "Register-ScheduledTask -TaskName 'ERPCNCAdapter'" in script_text
+    assert "-User $taskUser -Password $taskPassword -RunLevel Highest" in script_text
+    adapter_register_line = script_text.split("Register-ScheduledTask -TaskName 'ERPCNCAdapter'", 1)[1].split("\n", 1)[0]
+    assert "-Principal $principal" not in adapter_register_line
+    assert "Register-ScheduledTask -TaskName 'ERPCNCAdapterWatchdog'" in script_text

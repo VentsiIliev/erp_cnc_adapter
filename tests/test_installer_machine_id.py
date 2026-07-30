@@ -551,6 +551,21 @@ class TestInstallWorkerTaskHandling:
         assert "-Password" not in script
         assert "secret" not in script
 
+
+    def test_installer_uses_stored_password_for_main_adapter_task_when_provided(self, tmp_path):
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "src"
+            / "installer"
+            / "worker.py"
+        ).read_text(encoding="utf-8")
+
+        assert "if self.task_password:" in source
+        assert "$taskPassword = '" in source
+        assert "-User $taskUser -Password $taskPassword -RunLevel Highest" in source
+        assert "-LogonType Interactive -RunLevel Highest" in source
     def test_interactive_logon_task_can_be_created_disabled(self, tmp_path):
         from src.installer.worker import InstallWorker
 

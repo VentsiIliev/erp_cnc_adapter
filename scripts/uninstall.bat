@@ -59,7 +59,7 @@ for %%T in (ERPCNCAdapterStatusIndicator ERPCNCAdapterEdingHandoff ERPCNCAdapter
 echo.
 echo Step 3: Stopping adapter, Eding GUI, CNC Server, and script launchers...
 if exist "%INSTALL_DIR%\scripts\status_indicator.ps1" (
-    powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$target = Join-Path '%INSTALL_DIR%' 'scripts\status_indicator.ps1'; Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($target, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+    powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$target = Join-Path '%INSTALL_DIR%' 'scripts\status_indicator.ps1'; $currentPid = $PID; Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $currentPid -and ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and $_.CommandLine -and $_.CommandLine.IndexOf($target, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 )
 for %%P in (erp-cnc-adapter.exe cnc4.03.exe cnc.exe CncServer.exe wscript.exe) do (
     tasklist /FI "IMAGENAME eq %%P" 2>nul | find /I "%%P" >nul 2>&1
