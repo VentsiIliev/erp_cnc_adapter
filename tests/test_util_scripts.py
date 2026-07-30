@@ -140,6 +140,11 @@ class TestBuildScript:
         text = _read_script(self.SCRIPT)
         assert "erp-cnc-jog-pad" not in text
 
+    def test_copies_start_cnc_splash_script(self):
+        """The START-CNC splash must be shipped in full update packages."""
+        text = _read_script(self.SCRIPT)
+        assert "scripts\\start_cnc_splash.ps1" in text
+
 
 # ===========================================================================
 # build_installer.bat
