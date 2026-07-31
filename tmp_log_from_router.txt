@@ -1,141 +1,93 @@
-PS C:\Windows\system32> Get-ScheduledTask -TaskName ERPCNCAdapter | Format-List *
->>   (Get-ScheduledTask -TaskName ERPCNCAdapter).Principal
->>   (Get-ScheduledTask -TaskName ERPCNCAdapter).Actions
->>   (Get-ScheduledTask -TaskName ERPCNCAdapter).Triggers
->>   (Get-ScheduledTask -TaskName ERPCNCAdapter).Settings
->>
+PS C:\Users\CNC1> Get-WmiObject Win32_Process -Filter "name='erp-cnc-adapter.exe'" |
+>>       ForEach-Object {
+>>           $owner = $_.GetOwner()
+>>           $parent = Get-WmiObject Win32_Process -Filter "ProcessId=$($_.ParentProcessId)"
+>>           [PSCustomObject]@{
+>>               ProcessId = $_.ProcessId
+>>               ParentProcessId = $_.ParentProcessId
+>>               ParentName = $parent.Name
+>>               SessionId = $_.SessionId
+>>               Owner = "$($owner.Domain)\$($owner.User)"
+>>               ExecutablePath = $_.ExecutablePath
+>>               CommandLine = $_.CommandLine
+>>               ParentCommandLine = $parent.CommandLine
+>>           }
+>>       } | Format-List
 
 
-State                 : Ready
-Actions               : {MSFT_TaskExecAction}
-Author                :
-Date                  :
-Description           :
-Documentation         :
-Principal             : MSFT_TaskPrincipal2
-SecurityDescriptor    :
-Settings              : MSFT_TaskSettings3
-Source                :
-TaskName              : ERPCNCAdapter
-TaskPath              : \
-Triggers              : {MSFT_TaskLogonTrigger}
-URI                   : \ERPCNCAdapter
-Version               :
-PSComputerName        :
-CimClass              : Root/Microsoft/Windows/TaskScheduler:MSFT_ScheduledTask
-CimInstanceProperties : {Actions, Author, Date, Description...}
-CimSystemProperties   : Microsoft.Management.Infrastructure.CimSystemProperties
+ProcessId         : 3660
+ParentProcessId   : 1224
+ParentName        : svchost.exe
+SessionId         : 1
+Owner             : DESKTOP-GV1NV5N\CNC1
+ExecutablePath    :
+CommandLine       :
+ParentCommandLine :
+
+ProcessId         : 4340
+ParentProcessId   : 3660
+ParentName        : erp-cnc-adapter.exe
+SessionId         : 1
+Owner             : DESKTOP-GV1NV5N\CNC1
+ExecutablePath    :
+CommandLine       :
+ParentCommandLine :
 
 
 
+PS C:\Users\CNC1>  Get-ScheduledTask | Where-Object { $_.TaskName -like "*ERPCNC*" } |
+>>       ForEach-Object {
+>>           [PSCustomObject]@{
+>>               TaskName = $_.TaskName
+>>               State = $_.State
+>>               Execute = ($_.Actions | Select-Object -First 1).Execute
+>>               Arguments = ($_.Actions | Select-Object -First 1).Arguments
+>>               WorkingDirectory = ($_.Actions | Select-Object -First 1).WorkingDirectory
+>>           }
+>>       } | Format-List
 
 
-DisplayName         :
-GroupId             :
-Id                  : Author
-LogonType           : Interactive
-RunLevel            : Highest
-UserId              : CNC1
-ProcessTokenSidType : Default
-RequiredPrivilege   :
-PSComputerName      :
-
-Id               :
-Arguments        : "C:\Program Files (x86)\ERP-CNC Adapter\scripts\launch_adapter_hidden.vbs"
-Execute          : wscript.exe
+TaskName         : ERPCNCAdapter
+State            : Running
+Execute          : C:\Program Files (x86)\ERP-CNC Adapter\erp-cnc-adapter.exe
+Arguments        :
 WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter
-PSComputerName   :
 
-Enabled            : True
-EndBoundary        :
-ExecutionTimeLimit :
-Id                 :
-Repetition         : MSFT_TaskRepetitionPattern
-StartBoundary      :
-Delay              : PT1M30S
-UserId             : DESKTOP-GV1NV5N\CNC1
-PSComputerName     :
+TaskName         : ERPCNCAdapterEdingHandoff
+State            : Ready
+Execute          : powershell.exe
+Arguments        : -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Program Files (x86)\ERP-CNC Adapter
+                   \scripts\start_eding_handoff.ps1"
+WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter\scripts
 
-AllowDemandStart                : True
-AllowHardTerminate              : True
-Compatibility                   : Win7
-DeleteExpiredTaskAfter          :
-DisallowStartIfOnBatteries      : False
-Enabled                         : True
-ExecutionTimeLimit              : PT72H
-Hidden                          : False
-IdleSettings                    : MSFT_TaskIdleSettings
-MultipleInstances               : IgnoreNew
-NetworkSettings                 : MSFT_TaskNetworkSettings
-Priority                        : 7
-RestartCount                    : 3
-RestartInterval                 : PT1M
-RunOnlyIfIdle                   : False
-RunOnlyIfNetworkAvailable       : False
-StartWhenAvailable              : False
-StopIfGoingOnBatteries          : False
-WakeToRun                       : False
-DisallowStartOnRemoteAppSession : False
-UseUnifiedSchedulingEngine      : True
-MaintenanceSettings             :
-volatile                        : False
-PSComputerName                  :
+TaskName         : ERPCNCAdapterManualStart
+State            : Ready
+Execute          : wscript.exe
+Arguments        : "C:\Program Files (x86)\ERP-CNC Adapter\scripts\run_start_cnc_hidden.vbs"
+WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter\scripts
+
+TaskName         : ERPCNCAdapterReadyMessage
+State            : Ready
+Execute          : powershell.exe
+Arguments        : -NoProfile -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationFramework; [System.Windo
+                   ws.MessageBox]::Show('Machine CNC4 is connected and ready.`nAdapter API: 192.168.2.89:8002', 'ERP-CN
+                   C Adapter ready', 'OK', 'Information') | Out-Null"
+WorkingDirectory :
+
+TaskName         : ERPCNCAdapterStatusIndicator
+State            : Ready
+Execute          : wscript.exe
+Arguments        : //B //Nologo "C:\Program Files (x86)\ERP-CNC Adapter\scripts\status_indicator_hidden.vbs"
+WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter\scripts
+
+TaskName         : ERPCNCAdapterWatchdog
+State            : Ready
+Execute          : wscript.exe
+Arguments        : "C:\Program Files (x86)\ERP-CNC Adapter\scripts\watchdog_hidden.vbs"
+WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter\scripts
 
 
 
-PS C:\Windows\system32>   Get-ScheduledTaskInfo -TaskName ERPCNCAdapter
->>   Get-ScheduledTaskInfo -TaskName ERPCNCAdapterWatchdog
->>   Get-ScheduledTaskInfo -TaskName ERPCNCAdapterStatusIndicator
-
-
-LastRunTime        : 31.7.2026 ã. 11:32:32
-LastTaskResult     : 0
-NextRunTime        :
-NumberOfMissedRuns : 0
-TaskName           : ERPCNCAdapter
-TaskPath           :
-PSComputerName     :
-
-LastRunTime        : 31.7.2026 ã. 11:40:40
-LastTaskResult     : 0
-NextRunTime        : 31.7.2026 ã. 11:42:42
-NumberOfMissedRuns : 0
-TaskName           : ERPCNCAdapterWatchdog
-TaskPath           :
-PSComputerName     :
-
-LastRunTime        : 31.7.2026 ã. 11:30:30
-LastTaskResult     : 0
-NextRunTime        :
-NumberOfMissedRuns : 0
-TaskName           : ERPCNCAdapterStatusIndicator
-TaskPath           :
-PSComputerName     :
-
-
-
-PS C:\Windows\system32>  Get-WinEvent -LogName Microsoft-Windows-TaskScheduler/Operational |
->>       Where-Object { $_.Message -like "*ERPCNCAdapter*" } |
->>       Select-Object TimeCreated, Id, LevelDisplayName, Message |
->>       Format-List
-Get-WinEvent : No events were found that match the specified selection criteria.
-At line:1 char:2
-+  Get-WinEvent -LogName Microsoft-Windows-TaskScheduler/Operational |
-+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : ObjectNotFound: (:) [Get-WinEvent], Exception
-    + FullyQualifiedErrorId : NoMatchingEventsFound,Microsoft.PowerShell.Commands.GetWinEventCommand
-
-PS C:\Windows\system32>  Get-WinEvent -LogName Microsoft-Windows-TaskScheduler/Operational -MaxEvents 200 |
->>       Where-Object { $_.Message -like "*ERPCNCAdapter*" } |
->>       Select-Object TimeCreated, Id, LevelDisplayName, Message |
->>       Format-List
-Get-WinEvent : No events were found that match the specified selection criteria.
-At line:1 char:2
-+  Get-WinEvent -LogName Microsoft-Windows-TaskScheduler/Operational -M ...
-+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : ObjectNotFound: (:) [Get-WinEvent], Exception
-    + FullyQualifiedErrorId : NoMatchingEventsFound,Microsoft.PowerShell.Commands.GetWinEventCommand
-
-PS C:\Windows\system32>
+PS C:\Users\CNC1>
 
 

@@ -9,6 +9,31 @@ pytestmark = pytest.mark.asyncio
 
 class TestJobLoad:
 
+
+    @patch('src.api.job_load._run_diag_command')
+    @patch('src.api.job_load.glob.glob')
+    @patch('src.api.job_load.os.listdir')
+    @patch('src.api.job_load.os.path.isdir')
+    async def test_debug_job_path_reports_adapter_filesystem_context(
+        self, mock_isdir, mock_listdir, mock_glob, mock_run_diag, client
+    ):
+        mock_isdir.side_effect = lambda path: path.endswith("Mills") or path.endswith("123456789012")
+        mock_listdir.return_value = ["Setup_7.nc"]
+        mock_glob.side_effect = [[r"\\server\Production\CNC\Mills\123456789012\Setup_7.nc"], []]
+        mock_run_diag.return_value = {"returnCode": 0, "stdout": "True", "stderr": ""}
+
+        resp = await client.get("/api/debug/job-path/123456789012/7")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["paths"]["jobDir"].endswith(r"123456789012")
+        assert body["pythonFilesystem"]["jobDirIsDir"] is True
+        assert body["pythonFilesystem"]["globNc"] == [r"\\server\Production\CNC\Mills\123456789012\Setup_7.nc"]
+        assert body["pythonFilesystem"]["listdir"] == ["Setup_7.nc"]
+        assert "powershellTestPath" in body["subprocess"]
+        assert "cmdDir" in body["subprocess"]
+        assert body["process"]["pid"] > 0
+
     @patch('src.api.schemas.job.glob.glob')
     async def test_load_success(self, mock_glob, client, fake_client):
         fake_client._load_job_rc = 0

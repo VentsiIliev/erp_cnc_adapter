@@ -1,5 +1,10 @@
+import ctypes
+import getpass
+import glob
 import json
 import logging
+import os
+import subprocess
 import re
 
 from fastapi import APIRouter, Depends, Request, Path
@@ -44,6 +49,99 @@ class BackslashFixRoute(APIRoute):
 router = APIRouter(route_class=BackslashFixRoute)
 
 
+def _run_diag_command(command: list[str], timeout: float = 5.0) -> dict[str, object]:
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return {
+            "returnCode": completed.returncode,
+            "stdout": completed.stdout.strip(),
+            "stderr": completed.stderr.strip(),
+        }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+def _current_session_id() -> int | None:
+    if os.name != "nt":
+        return None
+    session_id = ctypes.c_uint()
+    ok = ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(session_id))
+    return int(session_id.value) if ok else None
+
+
+def _is_elevated() -> bool | None:
+    if os.name != "nt":
+        return None
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return None
+
+
+
+
+@router.get("/api/debug/job-path/{job_number}/{step}")
+async def debug_job_path(
+    job_number: str = Path(..., min_length=12, max_length=12, pattern=r'^\d{12}$'),
+    step: str = Path(..., min_length=1, max_length=3, pattern=r'^\d+$'),
+    settings: Settings = Depends(get_settings),
+):
+    """Report adapter-process filesystem diagnostics for a CNC job path."""
+    load_request = LoadJobRequest(job_number=job_number, step=step, base_dir=settings.base_dir)
+    job_dir = load_request.job_dir
+    pattern_nc = os.path.join(job_dir, f"Setup_{step}*.nc")
+    pattern_cnc = os.path.join(job_dir, f"Setup_{step}*.cnc")
+
+    try:
+        listdir_result = os.listdir(job_dir)
+        listdir_error = None
+    except Exception as exc:
+        listdir_result = []
+        listdir_error = f"{type(exc).__name__}: {exc}"
+
+    diagnostics = {
+        "process": {
+            "pid": os.getpid(),
+            "parentPid": os.getppid(),
+            "sessionId": _current_session_id(),
+            "user": getpass.getuser(),
+            "envUserDomain": os.environ.get("USERDOMAIN"),
+            "envUsername": os.environ.get("USERNAME"),
+            "cwd": os.getcwd(),
+            "executable": os.environ.get("_MEIPASS") or "",
+            "elevated": _is_elevated(),
+        },
+        "paths": {
+            "baseDir": settings.base_dir,
+            "jobDir": job_dir,
+            "patternNc": pattern_nc,
+            "patternCnc": pattern_cnc,
+        },
+        "pythonFilesystem": {
+            "baseDirIsDir": os.path.isdir(settings.base_dir),
+            "jobDirIsDir": os.path.isdir(job_dir),
+            "globNc": glob.glob(pattern_nc),
+            "globCnc": glob.glob(pattern_cnc),
+            "listdir": listdir_result[:50],
+            "listdirError": listdir_error,
+        },
+        "subprocess": {
+            "powershellTestPath": _run_diag_command([
+                "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-Command", f"Test-Path -LiteralPath '{job_dir.replace(chr(39), chr(39) + chr(39))}'",
+            ]),
+            "cmdDir": _run_diag_command(["cmd.exe", "/c", "dir", job_dir]),
+            "netUse": _run_diag_command(["cmd.exe", "/c", "net", "use"]),
+            "cmdkey": _run_diag_command(["cmdkey.exe", "/list:192.168.2.11"]),
+        },
+    }
+    logger.info("Job path diagnostic: %s", diagnostics)
+    return diagnostics
 
 
 @router.get("/api/cnc/job/load/{job_number}/{step}/{qty}", response_model=LoadJobResponse)
