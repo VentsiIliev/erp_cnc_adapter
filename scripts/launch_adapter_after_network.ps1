@@ -9,6 +9,7 @@ $startupLock = Join-Path $logDir 'adapter-startup.lock'
 $defaultBaseDir = '\\192.168.2.11\Production\CNC\Mills'
 $timeoutSeconds = 300
 $pollSeconds = 2
+$diagnosticLogSeconds = 15
 
 function Write-StartupLog($message) {
     try {
@@ -34,17 +35,79 @@ function Get-ConfiguredBaseDir {
     return $baseDir
 }
 
-function Test-JobShareReady($path) {
-    if ([string]::IsNullOrWhiteSpace($path)) { return $true }
-    if (-not $path.StartsWith('\\')) { return $true }
+function Get-UncHost($path) {
+    if ([string]::IsNullOrWhiteSpace($path)) { return '' }
+    if (-not $path.StartsWith('\\')) { return '' }
+    $trimmed = $path.TrimStart('\')
+    return ($trimmed -split '\\')[0]
+}
+
+function Test-TcpPort($hostName, $port, $timeoutMs) {
+    if ([string]::IsNullOrWhiteSpace($hostName)) { return 'not_applicable' }
+    $client = $null
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $async = $client.BeginConnect($hostName, [int]$port, $null, $null)
+        if (-not $async.AsyncWaitHandle.WaitOne([int]$timeoutMs, $false)) {
+            return 'timeout'
+        }
+        $client.EndConnect($async)
+        return 'open'
+    } catch {
+        return ('failed: {0}' -f $_.Exception.Message)
+    } finally {
+        if ($client) { $client.Close() }
+    }
+}
+
+function Get-JobShareProbe($path) {
+    if ([string]::IsNullOrWhiteSpace($path)) {
+        return @{ Ready = $true; Message = 'no path configured' }
+    }
+    if (-not $path.StartsWith('\\')) {
+        return @{ Ready = $true; Message = 'local path; network preflight not required' }
+    }
+
+    $hostName = Get-UncHost $path
+    $tcp445 = Test-TcpPort $hostName 445 1000
 
     try {
-        if (-not (Test-Path -LiteralPath $path)) { return $false }
-        Get-ChildItem -LiteralPath $path -ErrorAction Stop | Select-Object -First 1 | Out-Null
-        return $true
+        $exists = Test-Path -LiteralPath $path -ErrorAction Stop
     } catch {
-        return $false
+        return @{ Ready = $false; Message = ('host={0} tcp445={1} Test-Path exception: {2}' -f $hostName, $tcp445, $_.Exception.Message) }
     }
+
+    if (-not $exists) {
+        return @{ Ready = $false; Message = ('host={0} tcp445={1} Test-Path returned false' -f $hostName, $tcp445) }
+    }
+
+    try {
+        Get-ChildItem -LiteralPath $path -ErrorAction Stop | Select-Object -First 1 | Out-Null
+        return @{ Ready = $true; Message = ('host={0} tcp445={1} directory enumeration OK' -f $hostName, $tcp445) }
+    } catch {
+        return @{ Ready = $false; Message = ('host={0} tcp445={1} Get-ChildItem exception: {2}' -f $hostName, $tcp445, $_.Exception.Message) }
+    }
+}
+
+function Write-StartupContext($baseDir) {
+    try {
+        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    } catch {
+        $identity = ('unknown: {0}' -f $_.Exception.Message)
+    }
+
+    try {
+        $sessionId = (Get-Process -Id $PID -ErrorAction Stop).SessionId
+    } catch {
+        $sessionId = 'unknown'
+    }
+
+    Write-StartupLog ('Startup preflight context: pid={0} user={1} session={2} install_dir={3} base_dir={4}' -f $PID, $identity, $sessionId, $installDir, $baseDir)
+}
+
+function Test-JobShareReady($path) {
+    $probe = Get-JobShareProbe $path
+    return [bool]$probe.Ready
 }
 
 function Test-AdapterProcessRunning {
@@ -104,20 +167,30 @@ try {
     }
 
     $baseDir = Get-ConfiguredBaseDir
+    Write-StartupContext $baseDir
     if ($baseDir -and $baseDir.StartsWith('\\')) {
         Write-StartupLog ('Waiting for resolved CNC job share: {0}' -f $baseDir)
         $start = Get-Date
+        $lastDiagnostic = (Get-Date).AddSeconds(-1 * $diagnosticLogSeconds)
         while (((Get-Date) - $start).TotalSeconds -lt $timeoutSeconds) {
-            if (Test-JobShareReady $baseDir) {
+            $probe = Get-JobShareProbe $baseDir
+            if ($probe.Ready) {
                 $elapsed = [int]((Get-Date) - $start).TotalSeconds
-                Write-StartupLog ('CNC job share is ready after {0}s: {1}' -f $elapsed, $baseDir)
+                Write-StartupLog ('CNC job share is ready after {0}s: {1}; {2}' -f $elapsed, $baseDir, $probe.Message)
                 break
+            }
+
+            if (((Get-Date) - $lastDiagnostic).TotalSeconds -ge $diagnosticLogSeconds) {
+                $elapsed = [int]((Get-Date) - $start).TotalSeconds
+                Write-StartupLog ('Still waiting for CNC job share after {0}s: {1}; {2}' -f $elapsed, $baseDir, $probe.Message)
+                $lastDiagnostic = Get-Date
             }
             Start-Sleep -Seconds $pollSeconds
         }
 
-        if (-not (Test-JobShareReady $baseDir)) {
-            Write-StartupLog ('ERROR: CNC job share was not ready within {0}s; adapter was not started: {1}' -f $timeoutSeconds, $baseDir)
+        $finalProbe = Get-JobShareProbe $baseDir
+        if (-not $finalProbe.Ready) {
+            Write-StartupLog ('ERROR: CNC job share was not ready within {0}s; adapter was not started: {1}; {2}' -f $timeoutSeconds, $baseDir, $finalProbe.Message)
             exit 2
         }
     }

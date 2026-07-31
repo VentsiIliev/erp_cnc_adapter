@@ -172,6 +172,10 @@ class TestBuildScript:
         assert "duplicate startup request ignored" in text
         assert "Test-AdapterProcessRunning" in text
         assert "Remove-Item -LiteralPath $startupLock" in text
+        assert "Startup preflight context" in text
+        assert "Still waiting for CNC job share" in text
+        assert "Test-TcpPort $hostName 445 1000" in text
+        assert "Get-JobShareProbe" in text
 
 
     def test_watchdog_respects_adapter_startup_preflight_lock(self):
