@@ -53,6 +53,13 @@ class InstallWorker(QThread):
     def _ps_quote(value: str) -> str:
         return value.replace("'", "''")
 
+    def _require_task_username(self) -> str:
+        if not self.task_username:
+            raise RuntimeError(
+                "Windows task user is required; refusing to register ERP-CNC Adapter tasks as SYSTEM."
+            )
+        return self.task_username
+
     @staticmethod
     def _log_timed(installation_log, label: str, started_at: float) -> None:
         elapsed_ms = (time.perf_counter() - started_at) * 1000
@@ -302,6 +309,7 @@ class InstallWorker(QThread):
         return launcher_path
 
     def _build_passwordless_watchdog_task_script(self, watchdog_path: Path) -> str:
+        task_user = self._require_task_username()
         watchdog_path = Path(watchdog_path)
         launcher_path = self._write_watchdog_hidden_launcher(watchdog_path)
         return (
@@ -309,7 +317,7 @@ class InstallWorker(QThread):
             "Unregister-ScheduledTask -TaskName 'ERPCNCAdapterWatchdog' -Confirm:$false -ErrorAction SilentlyContinue\n"
             f"$watchdogLauncherPath = '{self._ps_quote(str(launcher_path))}'\n"
             f"$workDir = '{self._ps_quote(str(watchdog_path.parent))}'\n"
-            f"$taskUser = '{self._ps_quote(self.task_username)}'\n"
+            f"$taskUser = '{self._ps_quote(task_user)}'\n"
             "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $watchdogLauncherPath + '\"') -WorkingDirectory $workDir\n"
             "$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) "
             "-RepetitionInterval (New-TimeSpan -Minutes 2) -RepetitionDuration (New-TimeSpan -Days 3650)\n"
@@ -338,9 +346,10 @@ class InstallWorker(QThread):
             os.unlink(ps_file.name)
 
     def _create_watchdog_task(self, watchdog_path: Path, installation_log) -> subprocess.CompletedProcess:
+        task_user = self._require_task_username()
         launcher_path = self._write_watchdog_hidden_launcher(Path(watchdog_path), installation_log)
-        if self.task_username and not self.task_password:
-            installation_log.write(f"Watchdog Run As: {self.task_username} (interactive, no stored password)\n")
+        if not self.task_password:
+            installation_log.write(f"Watchdog Run As: {task_user} (interactive, no stored password)\n")
             return self._create_passwordless_watchdog_task(watchdog_path)
 
         command = [
@@ -352,12 +361,8 @@ class InstallWorker(QThread):
             "/RL", "HIGHEST",
             "/F",
         ]
-        if self.task_username:
-            command.extend(["/RU", self.task_username, "/RP", self.task_password])
-            installation_log.write(f"Watchdog Run As: {self.task_username}\n")
-        else:
-            command.extend(["/RU", "SYSTEM"])
-            installation_log.write("Watchdog Run As: SYSTEM\n")
+        command.extend(["/RU", task_user, "/RP", self.task_password])
+        installation_log.write(f"Watchdog Run As: {task_user}\n")
 
         return subprocess.run(
             command,
@@ -387,11 +392,9 @@ class InstallWorker(QThread):
         return launcher_path
 
     def _build_status_indicator_task_script(self) -> str:
+        task_user = self._require_task_username()
         launcher_path = self._write_status_indicator_hidden_launcher()
-        if self.task_username:
-            user_line = f"$taskUser = '{self._ps_quote(self.task_username)}'\n"
-        else:
-            user_line = "$taskUser = ('{0}\\{1}' -f $env:USERDOMAIN, $env:USERNAME)\n"
+        user_line = f"$taskUser = '{self._ps_quote(task_user)}'\n"
         return (
             "$ErrorActionPreference = 'Stop'\n"
             f"Unregister-ScheduledTask -TaskName '{self.STATUS_INDICATOR_TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue\n"
@@ -733,6 +736,7 @@ class InstallWorker(QThread):
         return script_path
 
     def _build_manual_start_task_script(self) -> str:
+        task_user = self._require_task_username()
         launcher_path = self.install_path / "scripts" / "run_start_cnc_hidden.vbs"
         script = (
             "$ErrorActionPreference = 'Stop'\n"
@@ -742,13 +746,10 @@ class InstallWorker(QThread):
             "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $launcherPath + '\"') -WorkingDirectory $workDir\n"
             "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
         )
-        if self.task_username:
-            script += (
-                f"$taskUser = '{self._ps_quote(self.task_username)}'\n"
-                "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
-            )
-        else:
-            script += "$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest\n"
+        script += (
+            f"$taskUser = '{self._ps_quote(task_user)}'\n"
+            "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+        )
         script += (
             f"Register-ScheduledTask -TaskName '{self.MANUAL_START_TASK_NAME}' "
             "-Action $action -Principal $principal -Settings $settings -Force | Out-Null\n"
@@ -781,6 +782,7 @@ class InstallWorker(QThread):
         return result.returncode == 0 and not result.stderr
 
     def _build_eding_handoff_task_script(self) -> str:
+        task_user = self._require_task_username()
         script_path = self.install_path / "scripts" / "start_eding_handoff.ps1"
         script = (
             "$ErrorActionPreference = 'Stop'\n"
@@ -792,13 +794,10 @@ class InstallWorker(QThread):
             "-WorkingDirectory $workDir\n"
             "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
         )
-        if self.task_username:
-            script += (
-                f"$taskUser = '{self._ps_quote(self.task_username)}'\n"
-                "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
-            )
-        else:
-            script += "$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest\n"
+        script += (
+            f"$taskUser = '{self._ps_quote(task_user)}'\n"
+            "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+        )
         script += (
             f"Register-ScheduledTask -TaskName '{self.EDING_HANDOFF_TASK_NAME}' "
             "-Action $action -Principal $principal -Settings $settings -Force | Out-Null\n"
@@ -946,6 +945,8 @@ class InstallWorker(QThread):
         return {name: bool(steps.get(name, {}).get("ok")) for name in names}
 
     def _build_interactive_logon_task_script(self, launcher_path: Path) -> str:
+        task_user = self._require_task_username()
+
         def ps_quote(value: str) -> str:
             return value.replace("'", "''")
 
@@ -959,9 +960,9 @@ class InstallWorker(QThread):
             f"-Execute 'wscript.exe' "
             f"-Argument '\"{ps_quote(str(launcher_path))}\"' "
             f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
-            f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User '{ps_quote(self.task_username)}'\n"
+            f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User '{ps_quote(task_user)}'\n"
             f"$trigger.Delay = '{startup_delay}'\n"
-            f"$principal = New-ScheduledTaskPrincipal -UserId '{ps_quote(self.task_username)}' "
+            f"$principal = New-ScheduledTaskPrincipal -UserId '{ps_quote(task_user)}' "
             f"-LogonType Interactive -RunLevel Highest\n"
             f"$settings = New-ScheduledTaskSettingsSet "
             f"-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
@@ -1018,7 +1019,7 @@ class InstallWorker(QThread):
         """Log non-secret credential diagnostics for scheduled task failures."""
         password = self.task_password or ""
         installation_log.write("Credential diagnostics:\n")
-        installation_log.write(f"  username: {self.task_username or 'SYSTEM'}\n")
+        installation_log.write(f"  username: {self.task_username or 'NOT CONFIGURED'}\n")
         installation_log.write(f"  username_length: {len(self.task_username)}\n")
         installation_log.write(f"  password_length: {len(password)}\n")
         installation_log.write(f"  password_blank: {not bool(password)}\n")
@@ -1087,12 +1088,9 @@ class InstallWorker(QThread):
             )
             self.log_message.emit(f"\u2713 Machine ID set to: {self.machine_number}")
             installation_log.write(f"Machine ID: {self.machine_number}\n")
-            if self.task_username:
-                self.log_message.emit(f"Task account: {self.task_username}")
-                installation_log.write(f"Task account: {self.task_username}\n")
-            else:
-                self.log_message.emit("Task account: SYSTEM")
-                installation_log.write("Task account: SYSTEM\n")
+            task_user = self._require_task_username()
+            self.log_message.emit(f"Task account: {task_user}")
+            installation_log.write(f"Task account: {task_user}\n")
             installation_log.write(
                 f"Adapter startup delay: {config_data['adapter_startup_delay_seconds']}s\n"
             )
@@ -1187,7 +1185,9 @@ class InstallWorker(QThread):
                 time.sleep(2)
                 installation_log.write("Old service removed\n")
 
-            # Create scheduled task to run at startup (runs as console app, not service)
+            task_user = self._require_task_username()
+
+            # Create scheduled task to run at logon (runs as console app, not service)
             self.log_message.emit(f"Creating startup task for: {exe_path}")
             installation_log.write(f"\nCreating Startup Task...\n")
             installation_log.write(f"Task Name: ERPCNCAdapter\n")
@@ -1199,7 +1199,7 @@ class InstallWorker(QThread):
                 capture_output=True, startupinfo=self._startupinfo(),
             )
 
-            # Create task that runs at system startup (with working directory)
+            # Create task that runs at user logon (with working directory)
             # Write PowerShell script to temp file to avoid command-line quoting
             # issues with paths containing spaces
             def ps_quote(value: str) -> str:
@@ -1218,37 +1218,24 @@ class InstallWorker(QThread):
                 f"-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
                 f"-RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\n"
             )
-            if self.task_username:
-                task_start_mode = "logon"
+            task_start_mode = "logon"
+            ps_script += (
+                f"$taskUser = '{ps_quote(task_user)}'\n"
+                f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser\n"
+                f"$trigger.Delay = $startupDelay\n"
+            )
+            if self.task_password:
                 ps_script += (
-                    f"$taskUser = '{ps_quote(self.task_username)}'\n"
-                    f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser\n"
-                    f"$trigger.Delay = $startupDelay\n"
+                    f"$taskPassword = '{ps_quote(self.task_password)}'\n"
+                    f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
+                    f"-Action $action -Trigger $trigger -Settings $settings "
+                    f"-User $taskUser -Password $taskPassword -RunLevel Highest -Force -ErrorAction Stop | Out-Null\n"
+                    f"if (-not $autoStartAdapter) {{ Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null }}\n"
                 )
-                if self.task_password:
-                    ps_script += (
-                        f"$taskPassword = '{ps_quote(self.task_password)}'\n"
-                        f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
-                        f"-Action $action -Trigger $trigger -Settings $settings "
-                        f"-User $taskUser -Password $taskPassword -RunLevel Highest -Force -ErrorAction Stop | Out-Null\n"
-                        f"if (-not $autoStartAdapter) {{ Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null }}\n"
-                    )
-                else:
-                    ps_script += (
-                        f"$principal = New-ScheduledTaskPrincipal -UserId $taskUser "
-                        f"-LogonType Interactive -RunLevel Highest\n"
-                        f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
-                        f"-Action $action -Trigger $trigger -Principal $principal "
-                        f"-Settings $settings -Force -ErrorAction Stop | Out-Null\n"
-                        f"if (-not $autoStartAdapter) {{ Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null }}\n"
-                    )
             else:
-                task_start_mode = "boot"
                 ps_script += (
-                    f"$trigger = New-ScheduledTaskTrigger -AtStartup\n"
-                    f"$trigger.Delay = $startupDelay\n"
-                    f"$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' "
-                    f"-LogonType ServiceAccount -RunLevel Highest\n"
+                    f"$principal = New-ScheduledTaskPrincipal -UserId $taskUser "
+                    f"-LogonType Interactive -RunLevel Highest\n"
                     f"Register-ScheduledTask -TaskName 'ERPCNCAdapter' "
                     f"-Action $action -Trigger $trigger -Principal $principal "
                     f"-Settings $settings -Force -ErrorAction Stop | Out-Null\n"
@@ -1279,24 +1266,20 @@ class InstallWorker(QThread):
             if msg:
                 installation_log.write("ERROR: Task creation failed!\n")
                 self._write_task_credential_diagnostics(installation_log)
-                if self.task_username:
+                installation_log.write(
+                    "Trying interactive logon fallback task without storing a password.\n"
+                )
+                self.log_message.emit(
+                    "Startup task with password failed; trying logon-only task..."
+                )
+                if self._create_interactive_logon_task(launcher_path, installation_log):
+                    task_start_mode = "logon"
                     installation_log.write(
-                        "Trying interactive logon fallback task without storing a password.\n"
+                        "Interactive logon task created; app starts when that user logs on.\n"
                     )
                     self.log_message.emit(
-                        "Startup task with password failed; trying logon-only task..."
+                        "\u2713 Logon-only startup task created for selected user"
                     )
-                    if self._create_interactive_logon_task(launcher_path, installation_log):
-                        task_start_mode = "logon"
-                        installation_log.write(
-                            "Interactive logon task created; app starts when that user logs on.\n"
-                        )
-                        self.log_message.emit(
-                            "\u2713 Logon-only startup task created for selected user"
-                        )
-                    else:
-                        installation_log.flush()
-                        raise RuntimeError(f"Startup task creation failed: {msg}\n\nCheck installation.log for details")
                 else:
                     installation_log.flush()
                     raise RuntimeError(f"Startup task creation failed: {msg}\n\nCheck installation.log for details")
@@ -1316,10 +1299,7 @@ class InstallWorker(QThread):
 
             self.log_message.emit("\u2713 Startup task created successfully")
             installation_log.write("\u2713 Startup task created successfully\n")
-            if task_start_mode == "logon":
-                installation_log.write(f"Application will start when {self.task_username} logs on\n")
-            else:
-                installation_log.write("Application will start automatically on boot\n")
+            installation_log.write(f"Application will start when {task_user} logs on\n")
             installation_log.flush()
             self.progress_value.emit(50)
 
@@ -1392,10 +1372,8 @@ class InstallWorker(QThread):
             installation_log.write("\nSTEP 3: Starting Application\n")
             installation_log.write("-" * 70 + "\n")
 
-            deferred_start_message = "next boot"
-            if task_start_mode == "logon":
-                deferred_start_message = f"when {self.task_username} logs on"
-            # Start through the scheduled task so SYSTEM/user account selection is respected.
+            deferred_start_message = f"when {task_user} logs on"
+            # Start through the scheduled task so the configured user account is respected.
             if self.auto_start_adapter_on_logon:
                 installation_log.write("Starting scheduled task: ERPCNCAdapter\n")
                 try:

@@ -89,6 +89,13 @@ def test_startup_delay_duration_helpers_round_trip_common_values():
         assert _parse_iso8601_duration_seconds(duration) == seconds
 
 
+def test_configure_task_launch_account_requires_task_username():
+    import pytest
+
+    with pytest.raises(RuntimeError, match="Windows task user is required"):
+        configure_task_launch_account(task_username="")
+
+
 def test_configure_task_launch_account_writes_logon_trigger_delay(tmp_path):
     exe_path = tmp_path / "erp-cnc-adapter.exe"
     exe_path.write_text("", encoding="utf-8")
@@ -123,6 +130,9 @@ def test_configure_task_launch_account_writes_logon_trigger_delay(tmp_path):
     assert "New-ScheduledTaskAction -Execute $exePath" not in script_text
     assert "$watchdogLauncherPath" in script_text
     assert "watchdog_hidden.vbs" in script_text
+    assert "ServiceAccount" not in script_text
+    assert "New-ScheduledTaskTrigger -AtStartup" not in script_text
+    assert "UserId 'SYSTEM'" not in script_text
 
 
 def test_configure_task_launch_account_uses_stored_password_when_provided(tmp_path):

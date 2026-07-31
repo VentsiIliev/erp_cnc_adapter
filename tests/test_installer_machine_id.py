@@ -251,22 +251,28 @@ class TestInstallWorkerTaskHandling:
         assert ["taskkill", "/F", "/T", "/IM", "erp-cnc-adapter.exe"] in commands
 
     @patch("src.installer.worker.subprocess.run")
-    def test_watchdog_defaults_to_system(self, mock_run, tmp_path):
+    def test_watchdog_requires_configured_task_account(self, mock_run, tmp_path):
         from src.installer.worker import InstallWorker
         import io
+        import pytest
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         worker = InstallWorker(str(tmp_path))
-        worker._create_watchdog_task(tmp_path / "watchdog.bat", io.StringIO())
+        with pytest.raises(RuntimeError, match="Windows task user is required"):
+            worker._create_watchdog_task(tmp_path / "watchdog.bat", io.StringIO())
 
-        launcher = tmp_path / "watchdog_hidden.vbs"
-        assert launcher.exists()
-        assert "cmd.exe /c" in launcher.read_text(encoding="utf-8")
-        command = mock_run.call_args.args[0]
-        assert command[command.index("/TR") + 1].startswith('"wscript.exe"')
-        assert "/RU" in command
-        assert command[command.index("/RU") + 1] == "SYSTEM"
-        assert "/RP" not in command
+        mock_run.assert_not_called()
+
+    def test_operator_task_builders_require_configured_task_account(self, tmp_path):
+        from src.installer.worker import InstallWorker
+        import pytest
+
+        worker = InstallWorker(str(tmp_path))
+        with pytest.raises(RuntimeError, match="Windows task user is required"):
+            worker._build_manual_start_task_script()
+        with pytest.raises(RuntimeError, match="Windows task user is required"):
+            worker._build_eding_handoff_task_script()
+        with pytest.raises(RuntimeError, match="Windows task user is required"):
+            worker._build_status_indicator_task_script()
 
     @patch("src.installer.worker.subprocess.run")
     def test_watchdog_uses_configured_task_account(self, mock_run, tmp_path):

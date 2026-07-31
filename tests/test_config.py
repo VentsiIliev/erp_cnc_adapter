@@ -184,13 +184,14 @@ class TestConfigAPI:
 
     @pytest.mark.asyncio
     async def test_post_config_updates_cnc_startup_options(self, client, settings):
+        settings.task_username = r"DOMAIN\adapter"
         with patch("src.api.config_api.update_persisted_config") as mock_persist, \
              patch("src.api.config_api.set_adapter_autostart_enabled") as mock_autostart, \
              patch("src.api.config_api.configure_task_launch_account") as mock_task_update:
             mock_persist.return_value = True
             mock_task_update.return_value = {
-                "run_as_windows_user": False,
-                "task_username": "",
+                "run_as_windows_user": True,
+                "task_username": r"DOMAIN\adapter",
                 "task_password_configured": False,
                 "auto_start_adapter_on_logon": False,
                 "adapter_startup_delay_seconds": 120,
@@ -215,7 +216,7 @@ class TestConfigAPI:
         assert settings.cnc_startup_ready_timeout == 90
         mock_autostart.assert_called_once_with(False)
         mock_task_update.assert_called_once_with(
-            task_username="",
+            task_username=r"DOMAIN\adapter",
             task_password="",
             auto_start_enabled=False,
             startup_delay_seconds=120,

@@ -5,6 +5,7 @@ $exePath = Join-Path $installDir 'erp-cnc-adapter.exe'
 $configPath = Join-Path $installDir 'config.json'
 $logDir = Join-Path $installDir 'logs'
 $logPath = Join-Path $logDir 'adapter-startup.log'
+$defaultBaseDir = '\\192.168.2.11\Production\CNC\Mills'
 $timeoutSeconds = 300
 $pollSeconds = 2
 
@@ -19,14 +20,17 @@ function Write-StartupLog($message) {
 }
 
 function Get-ConfiguredBaseDir {
-    if (-not (Test-Path -LiteralPath $configPath)) { return $null }
+    $baseDir = $defaultBaseDir
+    if (-not (Test-Path -LiteralPath $configPath)) { return $baseDir }
     try {
         $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-        if ($config.base_dir) { return [string]$config.base_dir }
+        if ($config.base_dir -and -not [string]::IsNullOrWhiteSpace([string]$config.base_dir)) {
+            $baseDir = [string]$config.base_dir
+        }
     } catch {
         Write-StartupLog ('Could not read config.json for network preflight: {0}' -f $_.Exception.Message)
     }
-    return $null
+    return $baseDir
 }
 
 function Test-JobShareReady($path) {
@@ -44,7 +48,7 @@ function Test-JobShareReady($path) {
 
 $baseDir = Get-ConfiguredBaseDir
 if ($baseDir -and $baseDir.StartsWith('\\')) {
-    Write-StartupLog ('Waiting for configured CNC job share: {0}' -f $baseDir)
+    Write-StartupLog ('Waiting for resolved CNC job share: {0}' -f $baseDir)
     $start = Get-Date
     while (((Get-Date) - $start).TotalSeconds -lt $timeoutSeconds) {
         if (Test-JobShareReady $baseDir) {

@@ -157,6 +157,18 @@ class TestBuildScript:
         assert "scripts\\launch_adapter_after_network.ps1" in text
         assert "scripts\\ (9 files)" in text
 
+    def test_network_preflight_uses_configured_base_dir_with_default_fallback(self):
+        """Preflight must wait on the same base_dir the adapter will use."""
+        text = (PROJECT_ROOT / "scripts" / "launch_adapter_after_network.ps1").read_text(
+            encoding="utf-8", errors="replace"
+        )
+        assert "$defaultBaseDir = '\\\\192.168.2.11\\Production\\CNC\\Mills'" in text
+        assert "$baseDir = $defaultBaseDir" in text
+        assert "if ($config.base_dir" in text
+        assert "$baseDir = [string]$config.base_dir" in text
+        assert "Waiting for resolved CNC job share" in text
+
+
     def test_restart_script_serializes_manual_start_and_waits_for_preflight(self):
         """Manual START-CNC fallback must not return before the network preflight starts the adapter."""
         text = (PROJECT_ROOT / "scripts" / "restart.bat").read_text(encoding="utf-8", errors="replace")

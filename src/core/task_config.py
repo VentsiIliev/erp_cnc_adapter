@@ -135,7 +135,13 @@ def configure_task_launch_account(
     auto_start_enabled: bool = True,
     startup_delay_seconds: int = DEFAULT_STARTUP_DELAY_SECONDS,
 ) -> dict[str, object]:
-    """Re-register startup tasks to run as SYSTEM or a specific Windows account."""
+    """Re-register startup tasks to run as a configured interactive Windows account."""
+    task_username = task_username.strip()
+    if not task_username:
+        raise RuntimeError(
+            "Windows task user is required; refusing to register ERP-CNC Adapter tasks as SYSTEM."
+        )
+
     install_dir = _resolve_install_dir()
     exe_path = _resolve_exe_path(install_dir)
     launcher_path = install_dir / "scripts" / "launch_adapter_hidden.vbs"
@@ -169,30 +175,19 @@ def configure_task_launch_account(
         "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $launcherPath + '\"') -WorkingDirectory $installDir\n"
         f"$startupDelay = '{_seconds_to_iso8601_duration(startup_delay_seconds)}'\n"
         "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\n"
+        f"$taskUser = '{_ps_quote(task_username)}'\n"
+        "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser\n"
+        "$trigger.Delay = $startupDelay\n"
     )
-
-    if task_username:
+    if task_password:
         script += (
-            f"$taskUser = '{_ps_quote(task_username)}'\n"
-            "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser\n"
-            "$trigger.Delay = $startupDelay\n"
+            f"$taskPassword = '{_ps_quote(task_password)}'\n"
+            f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $action -Trigger $trigger -Settings $settings "
+            "-User $taskUser -Password $taskPassword -RunLevel Highest -Force | Out-Null\n"
         )
-        if task_password:
-            script += (
-                f"$taskPassword = '{_ps_quote(task_password)}'\n"
-                f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $action -Trigger $trigger -Settings $settings "
-                "-User $taskUser -Password $taskPassword -RunLevel Highest -Force | Out-Null\n"
-            )
-        else:
-            script += (
-                "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
-                f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null\n"
-            )
     else:
         script += (
-            "$trigger = New-ScheduledTaskTrigger -AtStartup\n"
-            "$trigger.Delay = $startupDelay\n"
-            "$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest\n"
+            "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
             f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null\n"
         )
 
@@ -208,27 +203,15 @@ def configure_task_launch_account(
         "  $watchdogAction = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $watchdogLauncherPath + '\"') -WorkingDirectory $installDir\n"
         "  $watchdogTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 2) -RepetitionDuration (New-TimeSpan -Days 3650)\n"
         "  $watchdogSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
+        "  if ($taskPassword) {\n"
+        f"    Register-ScheduledTask -TaskName '{WATCHDOG_TASK_NAME}' -Action $watchdogAction -Trigger $watchdogTrigger -Settings $watchdogSettings "
+        "-User $taskUser -Password $taskPassword -RunLevel Highest -Force | Out-Null\n"
+        "  } else {\n"
+        "    $watchdogPrincipal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
+        f"    Register-ScheduledTask -TaskName '{WATCHDOG_TASK_NAME}' -Action $watchdogAction -Trigger $watchdogTrigger -Principal $watchdogPrincipal -Settings $watchdogSettings -Force | Out-Null\n"
+        "  }\n"
+        "}\n"
     )
-
-    if task_username:
-        script += "  if ($taskPassword) {\n"
-        script += (
-            f"    Register-ScheduledTask -TaskName '{WATCHDOG_TASK_NAME}' -Action $watchdogAction -Trigger $watchdogTrigger -Settings $watchdogSettings "
-            "-User $taskUser -Password $taskPassword -RunLevel Highest -Force | Out-Null\n"
-        )
-        script += "  } else {\n"
-        script += (
-            "    $watchdogPrincipal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
-            f"    Register-ScheduledTask -TaskName '{WATCHDOG_TASK_NAME}' -Action $watchdogAction -Trigger $watchdogTrigger -Principal $watchdogPrincipal -Settings $watchdogSettings -Force | Out-Null\n"
-        )
-        script += "  }\n"
-    else:
-        script += (
-            "  $watchdogPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest\n"
-            f"  Register-ScheduledTask -TaskName '{WATCHDOG_TASK_NAME}' -Action $watchdogAction -Trigger $watchdogTrigger -Principal $watchdogPrincipal -Settings $watchdogSettings -Force | Out-Null\n"
-        )
-
-    script += "}\n"
     if not auto_start_enabled:
         script += (
             f"Disable-ScheduledTask -TaskName '{TASK_NAME}' | Out-Null\n"
@@ -256,9 +239,9 @@ def configure_task_launch_account(
         raise RuntimeError((result.stderr or result.stdout).strip() or "Failed to update scheduled tasks.")
 
     return {
-        "task_username": task_username.strip(),
-        "run_as_windows_user": bool(task_username.strip()),
-        "task_password_configured": bool(task_username.strip() and task_password),
+        "task_username": task_username,
+        "run_as_windows_user": True,
+        "task_password_configured": bool(task_password),
         "auto_start_adapter_on_logon": auto_start_enabled,
         "adapter_startup_delay_seconds": max(0, int(startup_delay_seconds)),
     }
