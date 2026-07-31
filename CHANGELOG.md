@@ -57,6 +57,10 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.3.7 - 2026-07-31
+
+- Changed:
+
 ## v1.3.6 - 2026-07-31
 
 - updated the preflight to establish the SMB session inside the preflight process itself:
@@ -169,6 +173,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 

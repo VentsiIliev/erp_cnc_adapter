@@ -166,7 +166,7 @@ def configure_task_launch_account(
         "    ('preflight = \"' + $preflightPath.Replace('\"', '\"\"') + '\"'),\n"
         "    ('adapter = \"' + $exePath.Replace('\"', '\"\"') + '\"'),\n"
         "    'If fso.FileExists(preflight) Then',\n"
-        "    '  shell.Run \"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"\"\" & preflight & \"\"\"\", 0, False',\n"
+        "    '  shell.Run \"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"\"\" & preflight & \"\"\"\", 1, False',\n"
         "    'Else',\n"
         "    '  shell.Run \"\"\"\" & adapter & \"\"\"\", 0, False',\n"
         "    'End If'\n"

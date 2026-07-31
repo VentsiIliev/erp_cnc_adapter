@@ -198,7 +198,7 @@ class TestBuildScript:
         assert "START-CNC is already running; ignoring duplicate request" in text
         assert "launch_adapter_after_network.ps1" in text
         assert "starting adapter through network preflight launcher" in text
-        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"!PREFLIGHT_SCRIPT!\"" in text
+        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"!PREFLIGHT_SCRIPT!\"" in text
         assert "Network preflight launcher exit code" in text
         assert "wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"" in text
         assert text.index("launch_adapter_after_network.ps1") < text.index("wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"")

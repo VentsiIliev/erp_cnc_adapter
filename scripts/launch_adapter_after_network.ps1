@@ -230,7 +230,7 @@ try {
 
     try {
         Write-StartupLog ('Starting adapter: {0}' -f $exePath)
-        Start-Process -FilePath $exePath -WorkingDirectory $installDir -WindowStyle Hidden
+        Start-Process -FilePath $exePath -WorkingDirectory $installDir
         exit 0
     } catch {
         Write-StartupLog ('ERROR: Failed to start adapter: {0}' -f $_.Exception.Message)

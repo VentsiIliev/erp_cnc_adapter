@@ -436,7 +436,7 @@ class InstallWorker(QThread):
             f"preflight = \"{vbs_quote(str(preflight_path))}\"\n"
             f"adapter = \"{vbs_quote(str(exe_path))}\"\n"
             "If fso.FileExists(preflight) Then\n"
-            "  shell.Run \"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"\"\" & preflight & \"\"\"\", 0, False\n"
+            "  shell.Run \"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"\"\" & preflight & \"\"\"\", 1, False\n"
             "Else\n"
             "  shell.Run \"\"\"\" & adapter & \"\"\"\", 0, False\n"
             "End If\n",

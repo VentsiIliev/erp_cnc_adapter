@@ -124,7 +124,7 @@ def test_configure_task_launch_account_writes_logon_trigger_delay(tmp_path):
     assert "launch_adapter_hidden.vbs" in script_text
     assert "launch_adapter_after_network.ps1" in script_text
     assert "Scripting.FileSystemObject" in script_text
-    assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File" in script_text
+    assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File" in script_text
     assert "New-ScheduledTaskAction -Execute 'wscript.exe'" in script_text
     assert "-Argument ('//B //Nologo \"' + $launcherPath + '\"')" in script_text
     assert "New-ScheduledTaskAction -Execute $exePath" not in script_text

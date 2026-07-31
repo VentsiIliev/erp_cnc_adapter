@@ -77,7 +77,7 @@ if not "!TASK_EXIT!"=="0" (
     set "HIDDEN_LAUNCHER=!INSTALL_DIR!\scripts\launch_adapter_hidden.vbs"
     if exist "!PREFLIGHT_SCRIPT!" (
         call :log "Scheduled task is disabled or unavailable; starting adapter through network preflight launcher..."
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "!PREFLIGHT_SCRIPT!" >> "!LOG_FILE!" 2>&1
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "!PREFLIGHT_SCRIPT!" >> "!LOG_FILE!" 2>&1
         set "PREFLIGHT_EXIT=!errorlevel!"
         call :log "Network preflight launcher exit code: !PREFLIGHT_EXIT!"
         if not "!PREFLIGHT_EXIT!"=="0" (

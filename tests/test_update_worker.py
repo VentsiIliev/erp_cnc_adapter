@@ -247,9 +247,9 @@ def test_repair_adapter_hidden_launcher_targets_network_preflight(monkeypatch, t
     assert "WScript.Shell" in text
     assert "Scripting.FileSystemObject" in text
     assert "launch_adapter_after_network.ps1" in text
-    assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File" in text
+    assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File" in text
     assert "erp-cnc-adapter.exe" in text
-    assert ", 0, False" in text
+    assert ", 1, False" in text
 
 
 def test_repair_adapter_hidden_launcher_skips_when_exe_missing(monkeypatch, tmp_path):
