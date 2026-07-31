@@ -150,59 +150,20 @@ class TestBuildScript:
         text = _read_script(self.SCRIPT)
         assert "scripts\\status_indicator.ps1" in text
 
-
-    def test_copies_network_preflight_launcher_script(self):
-        """The adapter task preflight must be shipped in full update packages."""
+    def test_build_script_does_not_ship_startup_preflight(self):
+        """Startup must not be blocked by the CNC job share preflight."""
         text = _read_script(self.SCRIPT)
-        assert "scripts\\launch_adapter_after_network.ps1" in text
-        assert "scripts\\ (9 files)" in text
+        assert "scripts\\launch_adapter_after_network.ps1" not in text
+        assert "scripts\\ (8 files)" in text
 
-    def test_network_preflight_uses_configured_base_dir_with_default_fallback(self):
-        """Preflight must wait on the same base_dir the adapter will use."""
-        text = (PROJECT_ROOT / "scripts" / "launch_adapter_after_network.ps1").read_text(
-            encoding="utf-8", errors="replace"
-        )
-        assert "$defaultBaseDir = '\\\\192.168.2.11\\Production\\CNC\\Mills'" in text
-        assert "$baseDir = $defaultBaseDir" in text
-        assert "if ($config.base_dir" in text
-        assert "$baseDir = [string]$config.base_dir" in text
-        assert "Waiting for resolved CNC job share" in text
-        assert "adapter-startup.lock" in text
-        assert "New-StartupLock" in text
-        assert "duplicate startup request ignored" in text
-        assert "Test-AdapterProcessRunning" in text
-        assert "Remove-Item -LiteralPath $startupLock" in text
-        assert "Startup preflight context" in text
-        assert "Still waiting for CNC job share" in text
-        assert "Test-TcpPort $hostName 445 1000" in text
-        assert "Get-JobShareProbe" in text
-        assert "Get-UncShareRoot" in text
-        assert "Connect-UncShare" in text
-        assert "net use $shareRoot /persistent:no" in text
-        assert "Ensuring SMB session for CNC job share" in text
-        assert "Retrying SMB session for CNC job share" in text
-
-
-    def test_watchdog_respects_adapter_startup_preflight_lock(self):
-        """Watchdog must not queue duplicate starts while network preflight is already waiting."""
-        text = (PROJECT_ROOT / "scripts" / "watchdog.bat").read_text(encoding="utf-8", errors="replace")
-        assert "adapter-startup.lock" in text
-        assert "if exist \"%STARTUP_LOCK%\"" in text
-        assert text.index("if exist \"%STARTUP_LOCK%\"") < text.index("schtasks /Run /TN ERPCNCAdapter")
-
-
-    def test_restart_script_serializes_manual_start_and_waits_for_preflight(self):
-        """Manual START-CNC fallback must not return before the network preflight starts the adapter."""
+    def test_restart_script_falls_back_without_network_preflight(self):
+        """Manual START-CNC fallback should not run the removed network preflight."""
         text = (PROJECT_ROOT / "scripts" / "restart.bat").read_text(encoding="utf-8", errors="replace")
         assert "start-cnc.lock" in text
         assert "START-CNC is already running; ignoring duplicate request" in text
-        assert "launch_adapter_after_network.ps1" in text
-        assert "starting adapter through network preflight launcher" in text
-        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"!PREFLIGHT_SCRIPT!\"" in text
-        assert "Network preflight launcher exit code" in text
+        assert "launch_adapter_after_network.ps1" not in text
+        assert "network preflight" not in text.lower()
         assert "wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"" in text
-        assert text.index("launch_adapter_after_network.ps1") < text.index("wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"")
-
 # ===========================================================================
 # build_installer.bat
 # ===========================================================================

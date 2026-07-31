@@ -73,19 +73,8 @@ set "TASK_EXIT=!errorlevel!"
 call :log "schtasks /Run ERPCNCAdapter exit code: !TASK_EXIT!"
 if not "!TASK_EXIT!"=="0" (
     set "ADAPTER_EXE=!INSTALL_DIR!\erp-cnc-adapter.exe"
-    set "PREFLIGHT_SCRIPT=!INSTALL_DIR!\scripts\launch_adapter_after_network.ps1"
     set "HIDDEN_LAUNCHER=!INSTALL_DIR!\scripts\launch_adapter_hidden.vbs"
-    if exist "!PREFLIGHT_SCRIPT!" (
-        call :log "Scheduled task is disabled or unavailable; starting adapter through network preflight launcher..."
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "!PREFLIGHT_SCRIPT!" >> "!LOG_FILE!" 2>&1
-        set "PREFLIGHT_EXIT=!errorlevel!"
-        call :log "Network preflight launcher exit code: !PREFLIGHT_EXIT!"
-        if not "!PREFLIGHT_EXIT!"=="0" (
-            call :log "ERROR: Network preflight launcher failed."
-            set "FINISH_CODE=1"
-            goto :finish
-        )
-    ) else if exist "!HIDDEN_LAUNCHER!" (
+    if exist "!HIDDEN_LAUNCHER!" (
         call :log "Scheduled task is disabled or unavailable; starting adapter through hidden launcher..."
         wscript.exe //B //Nologo "!HIDDEN_LAUNCHER!" >> "!LOG_FILE!" 2>&1
         call :log "Hidden launcher exit code: !errorlevel!"

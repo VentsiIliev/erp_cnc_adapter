@@ -263,10 +263,9 @@ def _ps_quote(value: str) -> str:
 
 
 def _repair_adapter_hidden_launcher(install_dir: str) -> bool:
-    """Point the adapter scheduled-task launcher at the network preflight script."""
+    """Point the adapter scheduled-task launcher directly at the adapter executable."""
     install_path = Path(install_dir)
     exe_path = install_path / "erp-cnc-adapter.exe"
-    script_path = install_path / "scripts" / "launch_adapter_after_network.ps1"
     launcher_path = install_path / "scripts" / "launch_adapter_hidden.vbs"
     if os.name != "nt":
         return False
@@ -279,15 +278,8 @@ def _repair_adapter_hidden_launcher(install_dir: str) -> bool:
 
     launcher_text = (
         'Set shell = CreateObject("WScript.Shell")\n'
-        'Set fso = CreateObject("Scripting.FileSystemObject")\n'
         f'shell.CurrentDirectory = "{vbs_quote(str(install_path))}"\n'
-        f'preflight = "{vbs_quote(str(script_path))}"\n'
-        f'adapter = "{vbs_quote(str(exe_path))}"\n'
-        'If fso.FileExists(preflight) Then\n'
-        '  shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File """ & preflight & """", 1, False\n'
-        'Else\n'
-        '  shell.Run """" & adapter & """", 0, False\n'
-        'End If\n'
+        f'shell.Run """{vbs_quote(str(exe_path))}""", 0, False\n'
     )
     try:
         launcher_path.parent.mkdir(parents=True, exist_ok=True)
@@ -296,7 +288,7 @@ def _repair_adapter_hidden_launcher(install_dir: str) -> bool:
         logger.warning("Adapter hidden launcher repair failed: %s", exc)
         return False
 
-    logger.info("Adapter hidden launcher repaired to use network preflight: %s", launcher_path)
+    logger.info("Adapter hidden launcher repaired to start adapter directly: %s", launcher_path)
     return True
 
 def _repair_start_cnc_shortcut(install_dir: str) -> bool:

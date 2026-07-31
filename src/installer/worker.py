@@ -428,18 +428,10 @@ class InstallWorker(QThread):
         def vbs_quote(value: str) -> str:
             return value.replace('"', '""')
 
-        preflight_path = launcher_path.parent / "launch_adapter_after_network.ps1"
         launcher_path.write_text(
             "Set shell = CreateObject(\"WScript.Shell\")\n"
-            "Set fso = CreateObject(\"Scripting.FileSystemObject\")\n"
             f"shell.CurrentDirectory = \"{vbs_quote(str(self.install_path))}\"\n"
-            f"preflight = \"{vbs_quote(str(preflight_path))}\"\n"
-            f"adapter = \"{vbs_quote(str(exe_path))}\"\n"
-            "If fso.FileExists(preflight) Then\n"
-            "  shell.Run \"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"\"\" & preflight & \"\"\"\", 1, False\n"
-            "Else\n"
-            "  shell.Run \"\"\"\" & adapter & \"\"\"\", 0, False\n"
-            "End If\n",
+            f"shell.Run \"\"\"{vbs_quote(str(exe_path))}\"\"\", 0, False\n",
             encoding="utf-8",
         )
         if installation_log:

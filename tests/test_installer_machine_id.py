@@ -326,7 +326,7 @@ class TestInstallWorkerTaskHandling:
         assert ", 0, False" in text
         assert "watchdog.bat" in text
 
-    def test_hidden_launcher_runs_network_preflight_visibly_for_diagnostics(self, tmp_path):
+    def test_hidden_launcher_runs_adapter_directly_without_console(self, tmp_path):
         from src.installer.worker import InstallWorker
 
         worker = InstallWorker(str(tmp_path), "CNC1")
@@ -335,12 +335,10 @@ class TestInstallWorkerTaskHandling:
 
         assert launcher.name == "launch_adapter_hidden.vbs"
         assert "WScript.Shell" in text
-        assert "Scripting.FileSystemObject" in text
-        assert "launch_adapter_after_network.ps1" in text
-        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File" in text
-        assert ", 1, False" in text
         assert "erp-cnc-adapter.exe" in text
-
+        assert "launch_adapter_after_network.ps1" not in text
+        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File" not in text
+        assert ", 0, False" in text
     def test_start_cnc_hidden_launcher_runs_restart_without_console(self, tmp_path):
         from src.installer.worker import InstallWorker
 

@@ -80,7 +80,6 @@ copy "scripts\uninstall.bat" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\update_adapter.py" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\status.bat" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\restart.bat" "%DIST_FOLDER%\scripts\" >nul
-copy "scripts\launch_adapter_after_network.ps1" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\start_cnc_splash.ps1" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\status_indicator.ps1" "%DIST_FOLDER%\scripts\" >nul
 copy "scripts\watchdog.bat" "%DIST_FOLDER%\scripts\" >nul
@@ -152,7 +151,7 @@ echo Distribution: %DIST_FOLDER%\
 echo.
 echo Contents:
 echo   [v] erp-cnc-adapter.exe
-echo   [v] scripts\ (9 files)
+echo   [v] scripts\ (8 files)
 echo   [v] logs\ (empty directory)
 echo   [v] VERSION.txt
 echo   [v] README.txt
