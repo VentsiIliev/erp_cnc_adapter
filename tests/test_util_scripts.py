@@ -167,6 +167,19 @@ class TestBuildScript:
         assert "if ($config.base_dir" in text
         assert "$baseDir = [string]$config.base_dir" in text
         assert "Waiting for resolved CNC job share" in text
+        assert "adapter-startup.lock" in text
+        assert "New-StartupLock" in text
+        assert "duplicate startup request ignored" in text
+        assert "Test-AdapterProcessRunning" in text
+        assert "Remove-Item -LiteralPath $startupLock" in text
+
+
+    def test_watchdog_respects_adapter_startup_preflight_lock(self):
+        """Watchdog must not queue duplicate starts while network preflight is already waiting."""
+        text = (PROJECT_ROOT / "scripts" / "watchdog.bat").read_text(encoding="utf-8", errors="replace")
+        assert "adapter-startup.lock" in text
+        assert "if exist \"%STARTUP_LOCK%\"" in text
+        assert text.index("if exist \"%STARTUP_LOCK%\"") < text.index("schtasks /Run /TN ERPCNCAdapter")
 
 
     def test_restart_script_serializes_manual_start_and_waits_for_preflight(self):
@@ -263,3 +276,4 @@ def test_pyinstaller_spec_disables_upx_for_faster_startup_on_cnc_pcs():
 
     assert "upx=False" in spec
     assert "upx=True" not in spec
+
