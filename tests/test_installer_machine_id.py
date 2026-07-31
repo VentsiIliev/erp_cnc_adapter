@@ -550,12 +550,14 @@ class TestInstallWorkerTaskHandling:
         from src.installer.worker import InstallWorker
 
         worker = InstallWorker(str(tmp_path), "CNC1", r"DESKTOP-EMJIESP\CNC5", "secret")
-        script = worker._build_interactive_logon_task_script(tmp_path / "launch_adapter_hidden.vbs")
+        script = worker._build_interactive_logon_task_script(tmp_path / "erp-cnc-adapter.exe")
 
         assert "New-ScheduledTaskTrigger -AtLogOn" in script
         assert "$trigger.Delay = 'PT90S'" in script
-        assert "-Execute 'wscript.exe'" in script
-        assert "launch_adapter_hidden.vbs" in script
+        assert "-Execute '" in script
+        assert "erp-cnc-adapter.exe" in script
+        assert "wscript.exe" not in script
+        assert "launch_adapter_hidden.vbs" not in script
         assert "-LogonType Interactive" in script
         assert r"DESKTOP-EMJIESP\CNC5" in script
         assert "-Password" not in script
@@ -580,9 +582,11 @@ class TestInstallWorkerTaskHandling:
         from src.installer.worker import InstallWorker
 
         worker = InstallWorker(str(tmp_path), "CNC1", r"DESKTOP-EMJIESP\CNC5", "", False)
-        script = worker._build_interactive_logon_task_script(tmp_path / "launch_adapter_hidden.vbs")
+        script = worker._build_interactive_logon_task_script(tmp_path / "erp-cnc-adapter.exe")
 
         assert "Disable-ScheduledTask -TaskName 'ERPCNCAdapter'" in script
+        assert "erp-cnc-adapter.exe" in script
+        assert "launch_adapter_hidden.vbs" not in script
 
     def test_installer_migrates_regressed_15_second_startup_delay(self, tmp_path):
         from pathlib import Path

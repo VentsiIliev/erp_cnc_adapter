@@ -249,6 +249,40 @@ def test_repair_adapter_hidden_launcher_targets_adapter_directly(monkeypatch, tm
     assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File" not in text
     assert ", 0, False" in text
 
+def test_repair_adapter_scheduled_task_action_points_task_to_exe(monkeypatch, tmp_path):
+    from src import update_worker
+
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    exe_path = install_dir / "erp-cnc-adapter.exe"
+    exe_path.write_bytes(b"exe")
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return Result()
+
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+    monkeypatch.setattr(update_worker.subprocess, "run", fake_run)
+
+    assert update_worker._repair_adapter_scheduled_task_action(str(install_dir)) is True
+
+    args, kwargs = calls[0]
+    script = args[-1]
+    assert args[:4] == ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass"]
+    assert "Get-ScheduledTask -TaskName 'ERPCNCAdapter'" in script
+    assert "New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $workDir" in script
+    assert "Set-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action" in script
+    assert str(exe_path) in script
+    assert "wscript.exe" not in script
+    assert kwargs["timeout"] == 30
+
+
 def test_repair_adapter_hidden_launcher_skips_when_exe_missing(monkeypatch, tmp_path):
     from src import update_worker
 

@@ -936,7 +936,7 @@ class InstallWorker(QThread):
         installation_log.flush()
         return {name: bool(steps.get(name, {}).get("ok")) for name in names}
 
-    def _build_interactive_logon_task_script(self, launcher_path: Path) -> str:
+    def _build_interactive_logon_task_script(self, exe_path: Path) -> str:
         task_user = self._require_task_username()
 
         def ps_quote(value: str) -> str:
@@ -949,8 +949,7 @@ class InstallWorker(QThread):
         return (
             "$ErrorActionPreference = 'Stop'\n"
             f"$action = New-ScheduledTaskAction "
-            f"-Execute 'wscript.exe' "
-            f"-Argument '\"{ps_quote(str(launcher_path))}\"' "
+            f"-Execute '{ps_quote(str(exe_path))}' "
             f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
             f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User '{ps_quote(task_user)}'\n"
             f"$trigger.Delay = '{startup_delay}'\n"
@@ -966,9 +965,9 @@ class InstallWorker(QThread):
         )
 
 
-    def _create_interactive_logon_task(self, launcher_path: Path, installation_log) -> bool:
+    def _create_interactive_logon_task(self, exe_path: Path, installation_log) -> bool:
         """Fallback for passwordless local users: run when that user logs on."""
-        ps_script = self._build_interactive_logon_task_script(launcher_path)
+        ps_script = self._build_interactive_logon_task_script(exe_path)
         ps_file = tempfile.NamedTemporaryFile(
             mode="w", suffix=".ps1", delete=False, encoding="utf-8",
         )
@@ -1197,12 +1196,10 @@ class InstallWorker(QThread):
             def ps_quote(value: str) -> str:
                 return value.replace("'", "''")
 
-            launcher_path = self._write_hidden_launcher(exe_path, installation_log)
             ps_script = (
                 "$ErrorActionPreference = 'Stop'\n"
                 f"$action = New-ScheduledTaskAction "
-                f"-Execute 'wscript.exe' "
-                f"-Argument '\"{ps_quote(str(launcher_path))}\"' "
+                f"-Execute '{ps_quote(str(exe_path))}' "
                 f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
                 f"$startupDelay = 'PT{int(config_data['adapter_startup_delay_seconds'])}S'\n"
                 f"$autoStartAdapter = ${str(self.auto_start_adapter_on_logon).lower()}\n"
@@ -1264,7 +1261,7 @@ class InstallWorker(QThread):
                 self.log_message.emit(
                     "Startup task with password failed; trying logon-only task..."
                 )
-                if self._create_interactive_logon_task(launcher_path, installation_log):
+                if self._create_interactive_logon_task(exe_path, installation_log):
                     task_start_mode = "logon"
                     installation_log.write(
                         "Interactive logon task created; app starts when that user logs on.\n"

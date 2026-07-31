@@ -263,7 +263,7 @@ def _ps_quote(value: str) -> str:
 
 
 def _repair_adapter_hidden_launcher(install_dir: str) -> bool:
-    """Point the adapter scheduled-task launcher directly at the adapter executable."""
+    """Repair the legacy adapter VBS launcher for installs that still reference it."""
     install_path = Path(install_dir)
     exe_path = install_path / "erp-cnc-adapter.exe"
     launcher_path = install_path / "scripts" / "launch_adapter_hidden.vbs"
@@ -289,6 +289,42 @@ def _repair_adapter_hidden_launcher(install_dir: str) -> bool:
         return False
 
     logger.info("Adapter hidden launcher repaired to start adapter directly: %s", launcher_path)
+    return True
+
+def _repair_adapter_scheduled_task_action(install_dir: str) -> bool:
+    """Point the main adapter scheduled task directly at erp-cnc-adapter.exe."""
+    install_path = Path(install_dir)
+    exe_path = install_path / "erp-cnc-adapter.exe"
+    if os.name != "nt":
+        return False
+    if not exe_path.exists():
+        logger.warning("Adapter scheduled task repair skipped; adapter EXE is missing: %s", exe_path)
+        return False
+
+    script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        "Get-ScheduledTask -TaskName 'ERPCNCAdapter' -ErrorAction Stop | Out-Null\n"
+        f"$exePath = '{_ps_quote(str(exe_path))}'\n"
+        f"$workDir = '{_ps_quote(str(install_path))}'\n"
+        "$action = New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $workDir\n"
+        "Set-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action | Out-Null\n"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except Exception as exc:
+        logger.warning("Adapter scheduled task repair failed to run: %s", exc)
+        return False
+
+    if result.returncode != 0:
+        logger.warning("Adapter scheduled task repair failed: %s", (result.stderr or result.stdout).strip())
+        return False
+
+    logger.info("Adapter scheduled task repaired to launch EXE directly: %s", exe_path)
     return True
 
 def _repair_start_cnc_shortcut(install_dir: str) -> bool:
@@ -650,6 +686,7 @@ def main(argv: list[str] | None = None) -> None:
             backup_path = _backup_install_dir(install_dir, current_version)
             _install_zip_payload(staged_path, install_dir, verify_manifest=True)
             _repair_adapter_hidden_launcher(install_dir)
+            _repair_adapter_scheduled_task_action(install_dir)
             _repair_start_cnc_shortcut(install_dir)
             _stop_status_indicator_processes(install_dir)
             _repair_status_indicator_task(install_dir)

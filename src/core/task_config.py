@@ -144,7 +144,6 @@ def configure_task_launch_account(
 
     install_dir = _resolve_install_dir()
     exe_path = _resolve_exe_path(install_dir)
-    launcher_path = install_dir / "scripts" / "launch_adapter_hidden.vbs"
     watchdog_path = install_dir / "scripts" / "watchdog.bat"
     watchdog_launcher_path = install_dir / "scripts" / "watchdog_hidden.vbs"
 
@@ -154,16 +153,9 @@ def configure_task_launch_account(
         "schtasks /Delete /TN 'ERPCNCAdapterWatchdog' /F *> $null\n"
         f"$installDir = '{_ps_quote(str(install_dir))}'\n"
         f"$exePath = '{_ps_quote(str(exe_path))}'\n"
-        f"$launcherPath = '{_ps_quote(str(launcher_path))}'\n"
         f"$watchdogPath = '{_ps_quote(str(watchdog_path))}'\n"
         f"$watchdogLauncherPath = '{_ps_quote(str(watchdog_launcher_path))}'\n"
-        "$adapterVbs = @(\n"
-        "    'Set shell = CreateObject(\"WScript.Shell\")',\n"
-        "    ('shell.CurrentDirectory = \"' + $installDir.Replace('\"', '\"\"') + '\"'),\n"
-        "    ('shell.Run \"\"\"\"' + $exePath.Replace('\"', '\"\"') + '\"\"\"\", 0, False')\n"
-        ")\n"
-        "Set-Content -LiteralPath $launcherPath -Value $adapterVbs -Encoding UTF8\n"
-        "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $launcherPath + '\"') -WorkingDirectory $installDir\n"
+        "$action = New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $installDir\n"
         f"$startupDelay = '{_seconds_to_iso8601_duration(startup_delay_seconds)}'\n"
         "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\n"
         f"$taskUser = '{_ps_quote(task_username)}'\n"

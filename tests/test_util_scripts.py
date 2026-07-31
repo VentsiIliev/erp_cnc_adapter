@@ -163,7 +163,9 @@ class TestBuildScript:
         assert "START-CNC is already running; ignoring duplicate request" in text
         assert "launch_adapter_after_network.ps1" not in text
         assert "network preflight" not in text.lower()
-        assert "wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"" in text
+        assert "launch_adapter_hidden.vbs" not in text
+        assert "wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"" not in text
+        assert "starting adapter directly" in text.lower()
 # ===========================================================================
 # build_installer.bat
 # ===========================================================================

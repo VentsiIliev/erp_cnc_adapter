@@ -120,12 +120,11 @@ def test_configure_task_launch_account_writes_logon_trigger_delay(tmp_path):
     assert "$startupDelay = 'PT1M30S'" in script_text
     assert "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser" in script_text
     assert "$trigger.Delay = $startupDelay" in script_text
-    assert "$launcherPath" in script_text
-    assert "launch_adapter_hidden.vbs" in script_text
-    assert "New-ScheduledTaskAction -Execute 'wscript.exe'" in script_text
-    assert "-Argument ('//B //Nologo \"' + $launcherPath + '\"')" in script_text
+    assert "$launcherPath" not in script_text
+    assert "launch_adapter_hidden.vbs" not in script_text
+    assert "New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $installDir" in script_text
+    assert "-Argument ('//B //Nologo \"' + $launcherPath + '\"')" not in script_text
     assert "shell.Run" in script_text
-    assert "New-ScheduledTaskAction -Execute $exePath" not in script_text
     assert "$watchdogLauncherPath" in script_text
     assert "watchdog_hidden.vbs" in script_text
     assert "ServiceAccount" not in script_text

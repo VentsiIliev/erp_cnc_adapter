@@ -73,12 +73,7 @@ set "TASK_EXIT=!errorlevel!"
 call :log "schtasks /Run ERPCNCAdapter exit code: !TASK_EXIT!"
 if not "!TASK_EXIT!"=="0" (
     set "ADAPTER_EXE=!INSTALL_DIR!\erp-cnc-adapter.exe"
-    set "HIDDEN_LAUNCHER=!INSTALL_DIR!\scripts\launch_adapter_hidden.vbs"
-    if exist "!HIDDEN_LAUNCHER!" (
-        call :log "Scheduled task is disabled or unavailable; starting adapter through hidden launcher..."
-        wscript.exe //B //Nologo "!HIDDEN_LAUNCHER!" >> "!LOG_FILE!" 2>&1
-        call :log "Hidden launcher exit code: !errorlevel!"
-    ) else if exist "!ADAPTER_EXE!" (
+    if exist "!ADAPTER_EXE!" (
         call :log "Scheduled task is disabled or unavailable; starting adapter directly..."
         start "" /B /D "!INSTALL_DIR!" "!ADAPTER_EXE!" >> "!LOG_FILE!" 2>&1
         call :log "Direct adapter start command exit code: !errorlevel!"
