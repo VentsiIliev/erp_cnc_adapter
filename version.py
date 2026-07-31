@@ -2,8 +2,9 @@
 ERP-CNC Adapter Version Information
 """
 
-VERSION = "1.3.1"
-BUILD_DATE = "2026-07-30"
+VERSION = "1.3.2"
+BUILD_DATE = "2026-07-31"
+
 
 
 

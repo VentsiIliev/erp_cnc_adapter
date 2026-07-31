@@ -157,6 +157,18 @@ class TestBuildScript:
         assert "scripts\\launch_adapter_after_network.ps1" in text
         assert "scripts\\ (9 files)" in text
 
+    def test_restart_script_serializes_manual_start_and_waits_for_preflight(self):
+        """Manual START-CNC fallback must not return before the network preflight starts the adapter."""
+        text = (PROJECT_ROOT / "scripts" / "restart.bat").read_text(encoding="utf-8", errors="replace")
+        assert "start-cnc.lock" in text
+        assert "START-CNC is already running; ignoring duplicate request" in text
+        assert "launch_adapter_after_network.ps1" in text
+        assert "starting adapter through network preflight launcher" in text
+        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"!PREFLIGHT_SCRIPT!\"" in text
+        assert "Network preflight launcher exit code" in text
+        assert "wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"" in text
+        assert text.index("launch_adapter_after_network.ps1") < text.index("wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"")
+
 # ===========================================================================
 # build_installer.bat
 # ===========================================================================

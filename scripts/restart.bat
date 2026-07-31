@@ -14,6 +14,13 @@ if not "%ERPCNC_MANUAL_TASK%"=="1" (
     exit /b 1
 )
 
+set "START_LOCK=!LOG_DIR!\start-cnc.lock"
+mkdir "!START_LOCK!" >nul 2>&1
+if errorlevel 1 (
+    echo [%date% %time%] START-CNC is already running; ignoring duplicate request. >> "!LOG_FILE!"
+    exit /b 0
+)
+
 echo [%date% %time%] Restarting ERP-CNC Adapter... > "!LOG_FILE!"
 call :log "Restart context: install_dir=!INSTALL_DIR! manual_task=%ERPCNC_MANUAL_TASK% username=%USERNAME% computer=%COMPUTERNAME%"
 call :log "Restart context: PATH=%PATH%"
@@ -49,7 +56,8 @@ if "!AUTO_GUI!"=="1" (
     call :log "Eding GUI handoff exit code: !GUI_EXIT!"
     if not "!GUI_EXIT!"=="0" (
         call :log "ERROR: Eding GUI startup failed."
-        exit /b 1
+        set "FINISH_CODE=1"
+        goto :finish
     )
     call :log "Waiting 15 seconds for Eding GUI startup..."
     timeout /t 15 >nul
@@ -65,8 +73,19 @@ set "TASK_EXIT=!errorlevel!"
 call :log "schtasks /Run ERPCNCAdapter exit code: !TASK_EXIT!"
 if not "!TASK_EXIT!"=="0" (
     set "ADAPTER_EXE=!INSTALL_DIR!\erp-cnc-adapter.exe"
+    set "PREFLIGHT_SCRIPT=!INSTALL_DIR!\scripts\launch_adapter_after_network.ps1"
     set "HIDDEN_LAUNCHER=!INSTALL_DIR!\scripts\launch_adapter_hidden.vbs"
-    if exist "!HIDDEN_LAUNCHER!" (
+    if exist "!PREFLIGHT_SCRIPT!" (
+        call :log "Scheduled task is disabled or unavailable; starting adapter through network preflight launcher..."
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "!PREFLIGHT_SCRIPT!" >> "!LOG_FILE!" 2>&1
+        set "PREFLIGHT_EXIT=!errorlevel!"
+        call :log "Network preflight launcher exit code: !PREFLIGHT_EXIT!"
+        if not "!PREFLIGHT_EXIT!"=="0" (
+            call :log "ERROR: Network preflight launcher failed."
+            set "FINISH_CODE=1"
+            goto :finish
+        )
+    ) else if exist "!HIDDEN_LAUNCHER!" (
         call :log "Scheduled task is disabled or unavailable; starting adapter through hidden launcher..."
         wscript.exe //B //Nologo "!HIDDEN_LAUNCHER!" >> "!LOG_FILE!" 2>&1
         call :log "Hidden launcher exit code: !errorlevel!"
@@ -76,12 +95,19 @@ if not "!TASK_EXIT!"=="0" (
         call :log "Direct adapter start command exit code: !errorlevel!"
     ) else (
         call :log "ERROR: Could not find !ADAPTER_EXE!."
-        exit /b 1
+        set "FINISH_CODE=1"
+        goto :finish
     )
 )
 
 call :log "Adapter restart requested."
-exit /b 0
+set "FINISH_CODE=0"
+goto :finish
+
+:finish
+if not defined FINISH_CODE set "FINISH_CODE=0"
+if defined START_LOCK rmdir "!START_LOCK!" >nul 2>&1
+exit /b !FINISH_CODE!
 
 :log
 echo [%date% %time%] %~1 >> "!LOG_FILE!"

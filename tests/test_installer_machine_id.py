@@ -400,6 +400,10 @@ class TestInstallWorkerTaskHandling:
         assert "ERPCNCAdapterEdingHandoff" in script
         assert "ERPCNCAdapterStatusIndicator" in script
         assert "START-CNC.lnk" in script
+        assert "$taskUser = 'DOMAIN\\adapter'" in script
+        assert script.count("-LogonType Interactive -RunLevel Highest") >= 3
+        assert "-Password" not in script
+        assert "-User $taskUser -Password" not in script
 
     @patch("src.installer.worker.subprocess.run")
     def test_combined_operator_setup_uses_one_powershell_process(self, mock_run, tmp_path):
