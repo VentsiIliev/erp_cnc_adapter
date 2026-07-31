@@ -176,6 +176,11 @@ class TestBuildScript:
         assert "Still waiting for CNC job share" in text
         assert "Test-TcpPort $hostName 445 1000" in text
         assert "Get-JobShareProbe" in text
+        assert "Get-UncShareRoot" in text
+        assert "Connect-UncShare" in text
+        assert "net use $shareRoot /persistent:no" in text
+        assert "Ensuring SMB session for CNC job share" in text
+        assert "Retrying SMB session for CNC job share" in text
 
 
     def test_watchdog_respects_adapter_startup_preflight_lock(self):

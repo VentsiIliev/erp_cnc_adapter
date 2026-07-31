@@ -41,6 +41,27 @@ function Get-UncHost($path) {
     $trimmed = $path.TrimStart('\')
     return ($trimmed -split '\\')[0]
 }
+function Get-UncShareRoot($path) {
+    if ([string]::IsNullOrWhiteSpace($path)) { return '' }
+    if (-not $path.StartsWith('\\')) { return '' }
+    $parts = $path.TrimStart('\') -split '\\'
+    if ($parts.Count -lt 2) { return '' }
+    return ('\\{0}\{1}' -f $parts[0], $parts[1])
+}
+
+function Connect-UncShare($path) {
+    $shareRoot = Get-UncShareRoot $path
+    if ([string]::IsNullOrWhiteSpace($shareRoot)) { return 'not_applicable' }
+
+    try {
+        $output = & cmd.exe /c net use $shareRoot /persistent:no 2>&1
+        $message = (($output | Out-String).Trim() -replace "\r?\n", ' | ')
+        if ([string]::IsNullOrWhiteSpace($message)) { $message = 'no output' }
+        return ('net use {0} exit={1}: {2}' -f $shareRoot, $LASTEXITCODE, $message)
+    } catch {
+        return ('net use {0} exception: {1}' -f $shareRoot, $_.Exception.Message)
+    }
+}
 
 function Test-TcpPort($hostName, $port, $timeoutMs) {
     if ([string]::IsNullOrWhiteSpace($hostName)) { return 'not_applicable' }
@@ -169,6 +190,7 @@ try {
     $baseDir = Get-ConfiguredBaseDir
     Write-StartupContext $baseDir
     if ($baseDir -and $baseDir.StartsWith('\\')) {
+        Write-StartupLog ('Ensuring SMB session for CNC job share: {0}' -f (Connect-UncShare $baseDir))
         Write-StartupLog ('Waiting for resolved CNC job share: {0}' -f $baseDir)
         $start = Get-Date
         $lastDiagnostic = (Get-Date).AddSeconds(-1 * $diagnosticLogSeconds)
@@ -183,6 +205,7 @@ try {
             if (((Get-Date) - $lastDiagnostic).TotalSeconds -ge $diagnosticLogSeconds) {
                 $elapsed = [int]((Get-Date) - $start).TotalSeconds
                 Write-StartupLog ('Still waiting for CNC job share after {0}s: {1}; {2}' -f $elapsed, $baseDir, $probe.Message)
+                Write-StartupLog ('Retrying SMB session for CNC job share: {0}' -f (Connect-UncShare $baseDir))
                 $lastDiagnostic = Get-Date
             }
             Start-Sleep -Seconds $pollSeconds
