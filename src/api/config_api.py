@@ -24,6 +24,8 @@ class ConfigUpdate(BaseModel):
     ini_path: str | None = Field(None, min_length=1, max_length=500, description="Path to cnc.ini")
     job_done_report_url: str | None = Field(None, min_length=1, max_length=500, description="URL to report job completion")
     base_dir: str | None = Field(None, min_length=1, max_length=500, description="Base directory for job files")
+    cnc_share_username: str | None = Field(None, min_length=1, max_length=200, description="Username for authenticating the CNC job file share")
+    cnc_share_password: str | None = Field(None, min_length=1, max_length=500, description="Password for authenticating the CNC job file share")
     run_as_windows_user: bool | None = Field(None, description="Run scheduled startup tasks under a Windows user instead of SYSTEM")
     task_username: str | None = Field(None, min_length=1, max_length=200, description=r"Windows account in DOMAIN\username or .\username form")
     task_password: str | None = Field(None, min_length=1, max_length=500, description="Windows password for the scheduled task account")
@@ -49,6 +51,8 @@ class ConfigResponse(BaseModel):
     machine_number: str
     job_done_report_url: str
     base_dir: str
+    cnc_share_username: str
+    cnc_share_password_configured: bool
     run_as_windows_user: bool
     task_username: str
     task_password_configured: bool
@@ -115,6 +119,8 @@ async def get_config(request: Request):
             machine_number=settings.machine_number,
             job_done_report_url=settings.job_done_report_url,
             base_dir=settings.base_dir,
+            cnc_share_username=str(persisted_config.get("cnc_share_username", settings.cnc_share_username) or ""),
+            cnc_share_password_configured=bool(persisted_config.get("cnc_share_password", settings.cnc_share_password)),
             run_as_windows_user=bool(launch_settings["run_as_windows_user"]),
             task_username=str(launch_settings["task_username"]),
             task_password_configured=bool(launch_settings["task_password_configured"]),
@@ -208,6 +214,17 @@ async def update_config(request: Request, config: ConfigUpdate):
             settings.base_dir = config.base_dir
             changes.append(f"base_dir: '{old_value}' -> '{config.base_dir}'")
             logger.info("Updated base_dir: %s -> %s", old_value, config.base_dir)
+
+        if config.cnc_share_username is not None:
+            old_value = settings.cnc_share_username
+            settings.cnc_share_username = config.cnc_share_username
+            changes.append("cnc_share_username: updated")
+            logger.info("Updated cnc_share_username: %s -> %s", old_value, config.cnc_share_username)
+
+        if config.cnc_share_password is not None:
+            settings.cnc_share_password = config.cnc_share_password
+            changes.append("cnc_share_password: updated")
+            logger.info("Updated cnc_share_password: configured")
 
         # Update CNC retry interval
         if config.port is not None:
@@ -388,6 +405,10 @@ async def update_config(request: Request, config: ConfigUpdate):
             persist_dict["job_done_report_url"] = config.job_done_report_url
         if config.base_dir is not None:
             persist_dict["base_dir"] = config.base_dir
+        if config.cnc_share_username is not None:
+            persist_dict["cnc_share_username"] = config.cnc_share_username
+        if config.cnc_share_password is not None:
+            persist_dict["cnc_share_password"] = config.cnc_share_password
         if task_config_changed:
             persist_dict["task_username"] = settings.task_username
         if config.port is not None:

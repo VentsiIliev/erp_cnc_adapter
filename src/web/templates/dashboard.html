@@ -900,6 +900,16 @@
                             <div class="helper">Current: <span id="currentBaseDir">Loading...</span></div>
                         </div>
                         <div class="field">
+                            <label for="cncShareUsername">CNC Share Username</label>
+                            <input type="text" id="cncShareUsername" name="cnc_share_username" placeholder="Share username">
+                            <div class="helper">Current: <span id="currentCncShareUsername">Not configured</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="cncSharePassword">CNC Share Password</label>
+                            <input type="password" id="cncSharePassword" name="cnc_share_password" placeholder="Enter password to set or change">
+                            <div class="helper">Current: <span id="currentCncSharePasswordStatus">Not configured</span></div>
+                        </div>
+                        <div class="field">
                             <label for="dllPath">CNC DLL Path</label>
                             <input type="text" id="dllPath" name="dll_path" placeholder="C:\CNC4.03\cncapi.dll">
                             <div class="helper">Current: <span id="currentDllPath">Loading...</span></div>
@@ -1329,6 +1339,8 @@
             document.getElementById("currentMachine").textContent = body.machine_number;
             document.getElementById("currentReportUrl").textContent = body.job_done_report_url;
             document.getElementById("currentBaseDir").textContent = body.base_dir;
+            document.getElementById("currentCncShareUsername").textContent = body.cnc_share_username || "Not configured";
+            document.getElementById("currentCncSharePasswordStatus").textContent = body.cnc_share_password_configured ? "Password configured" : "Not configured";
             document.getElementById("currentDllPath").textContent = body.dll_path;
             document.getElementById("currentIniPath").textContent = body.ini_path;
             document.getElementById("currentLaunchMode").textContent = body.run_as_windows_user
@@ -1363,7 +1375,7 @@
         }
 
         function resetConfigForm() {
-            ["machineNumber", "reportUrlInput", "baseDir", "dllPath", "iniPath", "taskUsername", "taskPassword", "adapterStartupDelay", "retryInterval", "healthInterval", "startupReadyTimeout", "pollInterval", "jogPadPauseHoldInterval", "adapterPort", "updateUsername", "updatePassword"].forEach((id) => {
+            ["machineNumber", "reportUrlInput", "baseDir", "cncShareUsername", "cncSharePassword", "dllPath", "iniPath", "taskUsername", "taskPassword", "adapterStartupDelay", "retryInterval", "healthInterval", "startupReadyTimeout", "pollInterval", "jogPadPauseHoldInterval", "adapterPort", "updateUsername", "updatePassword"].forEach((id) => {
                 document.getElementById(id).value = "";
             });
         }
@@ -1462,6 +1474,8 @@
             const machineNumber = document.getElementById("machineNumber").value.trim();
             const reportUrl = document.getElementById("reportUrlInput").value.trim();
             const baseDir = document.getElementById("baseDir").value.trim();
+            const cncShareUsername = document.getElementById("cncShareUsername").value.trim();
+            const cncSharePassword = document.getElementById("cncSharePassword").value;
             const dllPath = document.getElementById("dllPath").value.trim();
             const iniPath = document.getElementById("iniPath").value.trim();
             const runAsWindowsUser = document.getElementById("runAsUserToggle").checked;
@@ -1486,6 +1500,8 @@
             if (iniPath) payload.ini_path = iniPath;
             if (reportUrl) payload.job_done_report_url = reportUrl;
             if (baseDir) payload.base_dir = baseDir;
+            if (cncShareUsername) payload.cnc_share_username = cncShareUsername;
+            if (cncSharePassword) payload.cnc_share_password = cncSharePassword;
             if (state.config && Boolean(state.config.run_as_windows_user) !== runAsWindowsUser) {
                 payload.run_as_windows_user = runAsWindowsUser;
             }

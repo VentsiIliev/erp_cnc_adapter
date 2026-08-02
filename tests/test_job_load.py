@@ -402,3 +402,51 @@ class TestJobLoad:
         assert body["status"] == 0
         assert "jog pad launch failed" in body["message"].lower()
         assert "no desktop" in body["message"]
+
+    @patch('src.api.job_load.ensure_unc_share_authenticated')
+    @patch('src.api.schemas.job.glob.glob')
+    async def test_load_authenticates_configured_cnc_share_before_file_lookup(
+        self, mock_glob, mock_auth, client, fake_client, settings
+    ):
+        from src.core.network_share import ShareAuthResult
+
+        settings.cnc_share_username = "CNC"
+        settings.cnc_share_password = "configured-password"
+        fake_client._load_job_rc = 0
+        mock_auth.return_value = ShareAuthResult(True, True, r"\\192.168.2.11\Production", "ok", 0)
+        mock_glob.return_value = [r"\\192.168.2.11\Production\CNC\Mills\123456789012\Setup_10.nc"]
+
+        resp = await client.get("/api/cnc/job/load/123456789012/10/1")
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == 0
+        mock_auth.assert_called_once_with(settings.base_dir, "CNC", "configured-password")
+        assert mock_glob.call_count == 2
+
+    @patch('src.api.job_load.ensure_unc_share_authenticated')
+    @patch('src.api.schemas.job.glob.glob')
+    async def test_load_returns_error_when_configured_cnc_share_auth_fails(
+        self, mock_glob, mock_auth, client, fake_client, settings
+    ):
+        from src.core.network_share import ShareAuthResult
+
+        settings.cnc_share_username = "CNC"
+        settings.cnc_share_password = "configured-password"
+        mock_auth.return_value = ShareAuthResult(
+            True,
+            False,
+            r"\\192.168.2.11\Production",
+            "The user name or password is incorrect.",
+            2,
+        )
+
+        resp = await client.get("/api/cnc/job/load/123456789012/10/1")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == 20
+        assert "share authentication failed" in body["message"].lower()
+        assert body["fileName"] == ""
+        mock_glob.assert_not_called()
+        assert fake_client.loaded_jobs == []
+

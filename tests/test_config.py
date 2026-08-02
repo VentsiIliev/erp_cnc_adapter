@@ -53,6 +53,8 @@ class TestSettings:
             "physical_button_poll_interval_ms": 125,
             "port": 8010,
             "task_username": r"DOMAIN\adapter",
+            "cnc_share_username": "CNC",
+            "cnc_share_password": "share-secret",
             "auto_start_adapter_on_logon": False,
             "adapter_startup_delay_seconds": 120,
         }))
@@ -69,6 +71,8 @@ class TestSettings:
         assert s.physical_button_poll_interval_ms == 125
         assert s.port == 8010
         assert s.task_username == r"DOMAIN\adapter"
+        assert s.cnc_share_username == "CNC"
+        assert s.cnc_share_password == "share-secret"
         assert s.auto_start_adapter_on_logon is False
         assert s.adapter_startup_delay_seconds == 120
 
@@ -79,7 +83,7 @@ class TestConfigAPI:
     async def test_get_config_includes_timing(self, client):
         """GET /api/config returns timing fields."""
         with patch("src.api.config_api.get_task_launch_settings") as mock_task, \
-             patch("src.api.config_api.get_persisted_config", return_value={"update_username": "svn-user", "update_password": "secret"}), \
+             patch("src.api.config_api.get_persisted_config", return_value={"update_username": "svn-user", "update_password": "secret", "cnc_share_username": "CNC", "cnc_share_password": "share-secret"}), \
              patch("src.api.config_api.get_machine_ip", return_value="192.168.2.55"):
             mock_task.return_value = {
                 "run_as_windows_user": True,
@@ -103,6 +107,8 @@ class TestConfigAPI:
         assert data["auto_start_adapter_on_logon"] is False
         assert data["adapter_startup_delay_seconds"] == 120
         assert data["local_ip"] == "192.168.2.55"
+        assert data["cnc_share_username"] == "CNC"
+        assert data["cnc_share_password_configured"] is True
         assert data["update_username"] == "svn-user"
         assert data["update_password_configured"] is True
 
@@ -163,6 +169,26 @@ class TestConfigAPI:
         persist_call = mock_persist.call_args[0][0]
         assert persist_call["update_username"] == "IlV"
         assert persist_call["update_password"] == "Nekazvam1991"
+
+    @pytest.mark.asyncio
+    async def test_post_config_updates_cnc_share_credentials(self, client, settings):
+        with patch("src.api.config_api.update_persisted_config") as mock_persist:
+            mock_persist.return_value = True
+            resp = await client.post("/api/config", json={
+                "cnc_share_username": "CNC",
+                "cnc_share_password": "share-secret",
+            })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert "cnc_share_username: updated" in data["changes"]
+        assert "cnc_share_password: updated" in data["changes"]
+        assert settings.cnc_share_username == "CNC"
+        assert settings.cnc_share_password == "share-secret"
+        persist_call = mock_persist.call_args[0][0]
+        assert persist_call["cnc_share_username"] == "CNC"
+        assert persist_call["cnc_share_password"] == "share-secret"
 
     @pytest.mark.asyncio
     async def test_post_config_updates_dll_and_ini_paths(self, client, settings):

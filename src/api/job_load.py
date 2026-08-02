@@ -12,6 +12,7 @@ from fastapi.routing import APIRoute
 
 from src.core.app_state import get_cnc_client, get_settings
 from src.core.config import Settings
+from src.core.network_share import ensure_unc_share_authenticated
 from .schemas.job import LoadJobRequest, LoadJobResponse
 from src.cnc.cnc_client_protocol import CncClientProtocol
 from src.cnc.error_translator import translate_error, format_error
@@ -47,6 +48,29 @@ class BackslashFixRoute(APIRoute):
 
 
 router = APIRouter(route_class=BackslashFixRoute)
+
+
+def _ensure_job_share_ready(settings: Settings):
+    username = getattr(settings, "cnc_share_username", "") or ""
+    password = getattr(settings, "cnc_share_password", "") or ""
+    if not username and not password:
+        return None
+
+    result = ensure_unc_share_authenticated(settings.base_dir, username, password)
+    if result.ok:
+        logger.info(
+            "CNC job share authentication ready: share=%s attempted=%s",
+            result.share,
+            result.attempted,
+        )
+    else:
+        logger.error(
+            "CNC job share authentication failed: share=%s code=%s message=%s",
+            result.share,
+            result.return_code,
+            result.message,
+        )
+    return result
 
 
 def _run_diag_command(command: list[str], timeout: float = 5.0) -> dict[str, object]:
@@ -212,6 +236,13 @@ async def load_job(
             logger.debug("Could not check state before load: %s", state_exc)
 
         # Find the .nc file matching Setup_{step}*.nc pattern
+        share_auth = _ensure_job_share_ready(settings)
+        if share_auth is not None and not share_auth.ok:
+            result = 20  # CNC_RC_ERR_FILEOPEN
+            message = f"CNC job share authentication failed for {share_auth.share}: {share_auth.message}"
+            logger.error(message)
+            return LoadJobResponse.model_construct(status=result, message=message, fileName="")
+
         file_path = load_request.find_nc_file()
         logger.debug("Found NC file: %s", file_path)
 

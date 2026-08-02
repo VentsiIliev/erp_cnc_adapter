@@ -29,6 +29,8 @@ class Settings:
     job_done_report_url: str = "https://pl.skycode.com/actions/cnc_job_done.php"  # Production URL (HTTPS)
     dev_mode: bool = False
     base_dir: str = r"\\192.168.2.11\Production\CNC\Mills"  # Base directory for job files
+    cnc_share_username: str = ""
+    cnc_share_password: str = ""
     # base_dir: str=r"C:\Users\Notebook 1\Desktop\mills_test_folder" # For testing
 
     def __post_init__(self):
@@ -62,6 +64,14 @@ class Settings:
                 if "base_dir" in user_config:
                     self.base_dir = user_config["base_dir"]
                     logger.info("Loaded persisted base_dir: %s", self.base_dir)
+
+                if "cnc_share_username" in user_config:
+                    self.cnc_share_username = user_config["cnc_share_username"]
+                    logger.info("Loaded persisted cnc_share_username: %s", self.cnc_share_username)
+
+                if "cnc_share_password" in user_config:
+                    self.cnc_share_password = user_config["cnc_share_password"]
+                    logger.info("Loaded persisted cnc_share_password: configured")
 
                 if "cnc_retry_interval" in user_config:
                     self.cnc_retry_interval = user_config["cnc_retry_interval"]

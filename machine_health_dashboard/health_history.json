@@ -40,7 +40,7 @@
       "started_at": "2026-07-24 12:45:16",
       "start_status": "offline",
       "last_status": "offline",
-      "last_error": "HTTP Error 503: Service Unavailable"
+      "last_error": "<urlopen error timed out>"
     }
   },
   "events": [

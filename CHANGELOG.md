@@ -57,6 +57,12 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.4.2 - 2026-08-02
+
+- Added explicit CNC job share credentials so load job can authenticate the configured UNC share without relying on Windows Credential Manager readiness after boot.
+- Added dashboard Configuration fields for CNC Share Username and CNC Share Password with masked password status.
+- Authenticated the configured \\server\share before job file lookup and return a clear load failure if share authentication fails.
+
 ## v1.4.1 - 2026-08-02
 
 - latest
@@ -193,6 +199,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 

@@ -96,6 +96,23 @@ def test_config_form_can_edit_jog_pad_pause_hold_interval():
     assert '"jogPadPauseHoldInterval"' in dashboard
 
 
+def test_config_form_can_edit_cnc_share_credentials():
+    dashboard = _dashboard_html()
+
+    assert 'label for="cncShareUsername"' in dashboard
+    assert 'id="cncShareUsername"' in dashboard
+    assert 'id="currentCncShareUsername"' in dashboard
+    assert 'label for="cncSharePassword"' in dashboard
+    assert 'id="cncSharePassword"' in dashboard
+    assert 'id="currentCncSharePasswordStatus"' in dashboard
+    assert 'const cncShareUsername = document.getElementById("cncShareUsername").value.trim();' in dashboard
+    assert 'const cncSharePassword = document.getElementById("cncSharePassword").value;' in dashboard
+    assert 'payload.cnc_share_username = cncShareUsername;' in dashboard
+    assert 'payload.cnc_share_password = cncSharePassword;' in dashboard
+    assert '"cncShareUsername"' in dashboard
+    assert '"cncSharePassword"' in dashboard
+
+
 def test_config_form_can_edit_svn_update_credentials():
     dashboard = _dashboard_html()
 
