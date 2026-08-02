@@ -242,14 +242,18 @@ def test_repair_adapter_hidden_launcher_targets_adapter_directly(monkeypatch, tm
     assert update_worker._repair_adapter_hidden_launcher(str(install_dir)) is True
 
     launcher = scripts_dir / "launch_adapter_hidden.vbs"
-    text = launcher.read_text(encoding="utf-8")
+    assert not launcher.read_bytes().startswith(b"\xef\xbb\xbf")
+    text = launcher.read_text(encoding="ascii")
     assert "WScript.Shell" in text
     assert "erp-cnc-adapter.exe" in text
+    assert "start_cnc_splash.ps1" in text
+    assert "suppress_adapter_launch_splash.flag" in text
+    assert "DeleteFile suppressPath" in text
     assert "launch_adapter_after_network.ps1" not in text
-    assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File" not in text
+    assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File" in text
     assert ", 0, False" in text
 
-def test_repair_adapter_scheduled_task_action_points_task_to_exe(monkeypatch, tmp_path):
+def test_repair_adapter_scheduled_task_action_points_task_to_hidden_launcher(monkeypatch, tmp_path):
     from src import update_worker
 
     install_dir = tmp_path / "install"
@@ -276,10 +280,10 @@ def test_repair_adapter_scheduled_task_action_points_task_to_exe(monkeypatch, tm
     script = args[-1]
     assert args[:4] == ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass"]
     assert "Get-ScheduledTask -TaskName 'ERPCNCAdapter'" in script
-    assert "New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $workDir" in script
+    assert "New-ScheduledTaskAction -Execute 'wscript.exe'" in script
+    assert "//B //Nologo" in script
     assert "Set-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action" in script
-    assert str(exe_path) in script
-    assert "wscript.exe" not in script
+    assert str(install_dir / "scripts" / "launch_adapter_hidden.vbs") in script
     assert kwargs["timeout"] == 30
 
 
@@ -290,6 +294,26 @@ def test_repair_adapter_hidden_launcher_skips_when_exe_missing(monkeypatch, tmp_
 
     assert update_worker._repair_adapter_hidden_launcher(str(tmp_path)) is False
     assert not (tmp_path / "scripts" / "launch_adapter_hidden.vbs").exists()
+
+
+def test_repair_watchdog_hidden_launcher_rewrites_ascii_vbs(monkeypatch, tmp_path):
+    from src import update_worker
+
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    watchdog = scripts_dir / "watchdog.bat"
+    watchdog.write_text("@echo off\n", encoding="utf-8")
+    launcher = scripts_dir / "watchdog_hidden.vbs"
+    launcher.write_bytes(b"\xef\xbb\xbfcorrupt")
+
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+
+    assert update_worker._repair_watchdog_hidden_launcher(str(tmp_path)) is True
+    assert not launcher.read_bytes().startswith(b"\xef\xbb\xbf")
+    text = launcher.read_text(encoding="ascii")
+    assert "WScript.Shell" in text
+    assert "cmd.exe /c" in text
+    assert "watchdog.bat" in text
 
 def test_repair_start_cnc_shortcut_targets_hidden_launcher(monkeypatch, tmp_path):
     from src import update_worker

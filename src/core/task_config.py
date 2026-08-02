@@ -144,8 +144,10 @@ def configure_task_launch_account(
 
     install_dir = _resolve_install_dir()
     exe_path = _resolve_exe_path(install_dir)
-    watchdog_path = install_dir / "scripts" / "watchdog.bat"
-    watchdog_launcher_path = install_dir / "scripts" / "watchdog_hidden.vbs"
+    scripts_dir = install_dir / "scripts"
+    adapter_launcher_path = scripts_dir / "launch_adapter_hidden.vbs"
+    watchdog_path = scripts_dir / "watchdog.bat"
+    watchdog_launcher_path = scripts_dir / "watchdog_hidden.vbs"
 
     script = (
         "$ErrorActionPreference = 'Stop'\n"
@@ -153,9 +155,28 @@ def configure_task_launch_account(
         "schtasks /Delete /TN 'ERPCNCAdapterWatchdog' /F *> $null\n"
         f"$installDir = '{_ps_quote(str(install_dir))}'\n"
         f"$exePath = '{_ps_quote(str(exe_path))}'\n"
+        f"$adapterLauncherPath = '{_ps_quote(str(adapter_launcher_path))}'\n"
         f"$watchdogPath = '{_ps_quote(str(watchdog_path))}'\n"
         f"$watchdogLauncherPath = '{_ps_quote(str(watchdog_launcher_path))}'\n"
-        "$action = New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $installDir\n"
+        "New-Item -ItemType Directory -Force -Path (Split-Path -Parent $adapterLauncherPath) | Out-Null\n"
+        "$adapterVbs = @(\n"
+        "  'Set shell = CreateObject(\"WScript.Shell\")',\n"
+        "  'Set fso = CreateObject(\"Scripting.FileSystemObject\")',\n"
+        "  ('shell.CurrentDirectory = \"' + $installDir.Replace('\"', '\"\"') + '\"'),\n"
+        "  'suppressPath = shell.CurrentDirectory & \"\\logs\\suppress_adapter_launch_splash.flag\"',\n"
+        "  'splashPath = shell.CurrentDirectory & \"\\scripts\\start_cnc_splash.ps1\"',\n"
+        "  'showSplash = True',\n"
+        "  'If fso.FileExists(suppressPath) Then',\n"
+        "  '  fso.DeleteFile suppressPath, True',\n"
+        "  '  showSplash = False',\n"
+        "  'End If',\n"
+        "  'If showSplash And fso.FileExists(splashPath) Then',\n"
+        "  '  shell.Run \"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"\"\" & splashPath & \"\"\"\", 0, False',\n"
+        "  'End If',\n"
+        "  ('shell.Run \"\"\"' + $exePath.Replace('\"', '\"\"') + '\"\"\", 0, False')\n"
+        ")\n"
+        "Set-Content -LiteralPath $adapterLauncherPath -Value $adapterVbs -Encoding ASCII\n"
+        "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $adapterLauncherPath + '\"') -WorkingDirectory $installDir\n"
         f"$startupDelay = '{_seconds_to_iso8601_duration(startup_delay_seconds)}'\n"
         "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\n"
         f"$taskUser = '{_ps_quote(task_username)}'\n"
@@ -182,8 +203,8 @@ def configure_task_launch_account(
         "    ('shell.CurrentDirectory = \"' + $watchdogDir.Replace('\"', '\"\"') + '\"'),\n"
         "    ('shell.Run \"cmd.exe /c \"\"' + $watchdogPath.Replace('\"', '\"\"') + '\"\"\", 0, False')\n"
         "  )\n"
-        "  Set-Content -LiteralPath $watchdogLauncherPath -Value $watchdogVbs -Encoding UTF8\n"
-        "  $watchdogAction = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $watchdogLauncherPath + '\"') -WorkingDirectory $installDir\n"
+        "  Set-Content -LiteralPath $watchdogLauncherPath -Value $watchdogVbs -Encoding ASCII\n"
+        "  $watchdogAction = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $watchdogLauncherPath + '\"') -WorkingDirectory $installDir\n"
         "  $watchdogTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 2) -RepetitionDuration (New-TimeSpan -Days 3650)\n"
         "  $watchdogSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
         "  if ($taskPassword) {\n"
@@ -244,8 +265,21 @@ def set_adapter_autostart_enabled(enabled: bool) -> None:
             raise RuntimeError((result.stderr or result.stdout).strip() or "Failed to update adapter startup task.")
 
 
-def restart_scheduled_adapter_task() -> None:
+def _write_adapter_launch_splash_suppress_flag(install_dir: Path) -> None:
+    flag_path = install_dir / "logs" / "suppress_adapter_launch_splash.flag"
+    try:
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        flag_path.write_text("1\n", encoding="ascii")
+    except OSError as exc:
+        logger.warning("Could not write adapter launcher splash suppress flag: %s", exc)
+
+
+def restart_scheduled_adapter_task(suppress_splash: bool = False) -> None:
     """Ask Windows Task Scheduler to run the adapter task, falling back to a direct launch."""
+    install_dir = _resolve_install_dir()
+    if suppress_splash:
+        _write_adapter_launch_splash_suppress_flag(install_dir)
+
     result = subprocess.run(
         ["schtasks", "/Run", "/TN", TASK_NAME],
         capture_output=True,
@@ -255,8 +289,17 @@ def restart_scheduled_adapter_task() -> None:
     if result.returncode == 0:
         return
 
-    install_dir = _resolve_install_dir()
     exe_path = _resolve_exe_path(install_dir)
+    launcher_path = install_dir / "scripts" / "launch_adapter_hidden.vbs"
+    if launcher_path.exists():
+        subprocess.Popen(
+            ["wscript.exe", "//B", "//Nologo", str(launcher_path)],
+            cwd=str(install_dir),
+            close_fds=True,
+            startupinfo=_startupinfo(),
+        )
+        return
+
     subprocess.Popen(
         [str(exe_path)],
         cwd=str(install_dir),
@@ -272,7 +315,7 @@ def request_adapter_recovery_restart() -> None:
     logger.warning("Recovery restart requested: install_dir=%s restart_script=%s", install_dir, restart_script)
     if not restart_script.exists():
         logger.warning("Recovery restart script missing; falling back to scheduled adapter task restart")
-        restart_scheduled_adapter_task()
+        restart_scheduled_adapter_task(suppress_splash=True)
         return
 
     env = os.environ.copy()

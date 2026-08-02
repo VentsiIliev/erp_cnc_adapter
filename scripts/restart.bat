@@ -67,16 +67,24 @@ if "!AUTO_GUI!"=="1" (
     call :log "Wrote manual_start_defer_gui.flag"
 )
 
+set "SUPPRESS_LAUNCH_SPLASH=!LOG_DIR!\suppress_adapter_launch_splash.flag"
+echo 1 > "!SUPPRESS_LAUNCH_SPLASH!"
+call :log "Wrote one-shot adapter launcher splash suppress flag."
 call :log "Starting adapter via scheduled task ERPCNCAdapter..."
 schtasks /Run /TN ERPCNCAdapter >> "!LOG_FILE!" 2>&1
 set "TASK_EXIT=!errorlevel!"
 call :log "schtasks /Run ERPCNCAdapter exit code: !TASK_EXIT!"
 if not "!TASK_EXIT!"=="0" (
+    set "HIDDEN_LAUNCHER=!INSTALL_DIR!\scripts\launch_adapter_hidden.vbs"
     set "ADAPTER_EXE=!INSTALL_DIR!\erp-cnc-adapter.exe"
-    if exist "!ADAPTER_EXE!" (
-        call :log "Scheduled task is disabled or unavailable; starting adapter directly..."
-        start "" /B /D "!INSTALL_DIR!" "!ADAPTER_EXE!" >> "!LOG_FILE!" 2>&1
-        call :log "Direct adapter start command exit code: !errorlevel!"
+    if exist "!HIDDEN_LAUNCHER!" (
+        call :log "Scheduled task is disabled or unavailable; starting adapter through hidden launcher..."
+        wscript.exe //B //Nologo "!HIDDEN_LAUNCHER!" >> "!LOG_FILE!" 2>&1
+        call :log "Hidden adapter launcher exit code: !errorlevel!"
+    ) else if exist "!ADAPTER_EXE!" (
+        call :log "Scheduled task is disabled or unavailable; hidden launcher missing, starting adapter directly hidden..."
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -FilePath '!ADAPTER_EXE!' -WorkingDirectory '!INSTALL_DIR!' -WindowStyle Hidden" >> "!LOG_FILE!" 2>&1
+        call :log "Hidden direct adapter start command exit code: !errorlevel!"
     ) else (
         call :log "ERROR: Could not find !ADAPTER_EXE!."
         set "FINISH_CODE=1"

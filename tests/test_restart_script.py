@@ -40,9 +40,11 @@ def test_restart_script_falls_back_to_direct_adapter_launch():
     assert 'set "TASK_EXIT=!errorlevel!"' in text
     assert 'if not "!TASK_EXIT!"=="0"' in text
     assert 'set "ADAPTER_EXE=!INSTALL_DIR!\\erp-cnc-adapter.exe"' in text
-    assert 'set "HIDDEN_LAUNCHER=!INSTALL_DIR!\\scripts\\launch_adapter_hidden.vbs"' not in text
-    assert 'wscript.exe //B //Nologo "!HIDDEN_LAUNCHER!"' not in text
-    assert 'start "" /B /D "!INSTALL_DIR!" "!ADAPTER_EXE!"' in text
+    assert 'set "HIDDEN_LAUNCHER=!INSTALL_DIR!\\scripts\\launch_adapter_hidden.vbs"' in text
+    assert 'wscript.exe //B //Nologo "!HIDDEN_LAUNCHER!"' in text
+    assert 'Start-Process -FilePath ' in text
+    assert 'suppress_adapter_launch_splash.flag' in text
+    assert 'Wrote one-shot adapter launcher splash suppress flag' in text
     assert "%ADAPTER_EXE%" not in text
     assert "pause" not in text.lower()
 

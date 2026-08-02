@@ -14,6 +14,8 @@ if exist "%INSTALL_DIR%\.update-lock" (
 
 tasklist /FI "IMAGENAME eq erp-cnc-adapter.exe" 2>nul | find /I "erp-cnc-adapter.exe" >nul 2>&1
 if %errorlevel% neq 0 (
-    REM Process is not running - restart via scheduled task
+    REM Process is not running - restart via scheduled task without showing operator splash.
+    if not exist "%INSTALL_DIR%\logs" mkdir "%INSTALL_DIR%\logs" >nul 2>&1
+    echo 1 > "%INSTALL_DIR%\logs\suppress_adapter_launch_splash.flag"
     schtasks /Run /TN ERPCNCAdapter >nul 2>&1
 )

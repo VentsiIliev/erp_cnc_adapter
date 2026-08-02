@@ -76,18 +76,22 @@ def start_adapter(service_name: str, install_type: str, exe_path: str = "") -> b
         if result.returncode == 0:
             return True
         logger.warning("stderr: %s", result.stderr.strip())
-        logger.warning("Scheduled task start failed; falling back to direct launch")
+        logger.warning("Scheduled task start failed; falling back to hidden launcher/direct launch")
 
     if not exe_path or not os.path.exists(exe_path):
         logger.error("EXE path not available or missing: %s", exe_path)
         return False
 
     exe_dir = os.path.dirname(exe_path)
+    launcher_path = os.path.join(exe_dir, "scripts", "launch_adapter_hidden.vbs")
+    launch_command = [exe_path]
+    if os.path.exists(launcher_path):
+        launch_command = ["wscript.exe", "//B", "//Nologo", launcher_path]
     try:
         create_new_process_group = 0x00000200
         detached_process = 0x00000008
         subprocess.Popen(
-            [exe_path],
+            launch_command,
             cwd=exe_dir,
             creationflags=create_new_process_group | detached_process,
             close_fds=True,
@@ -278,12 +282,23 @@ def _repair_adapter_hidden_launcher(install_dir: str) -> bool:
 
     launcher_text = (
         'Set shell = CreateObject("WScript.Shell")\n'
+        'Set fso = CreateObject("Scripting.FileSystemObject")\n'
         f'shell.CurrentDirectory = "{vbs_quote(str(install_path))}"\n'
+        'suppressPath = shell.CurrentDirectory & "\\logs\\suppress_adapter_launch_splash.flag"\n'
+        'splashPath = shell.CurrentDirectory & "\\scripts\\start_cnc_splash.ps1"\n'
+        'showSplash = True\n'
+        'If fso.FileExists(suppressPath) Then\n'
+        '  fso.DeleteFile suppressPath, True\n'
+        '  showSplash = False\n'
+        'End If\n'
+        'If showSplash And fso.FileExists(splashPath) Then\n'
+        '  shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & splashPath & """", 0, False\n'
+        'End If\n'
         f'shell.Run """{vbs_quote(str(exe_path))}""", 0, False\n'
     )
     try:
         launcher_path.parent.mkdir(parents=True, exist_ok=True)
-        launcher_path.write_text(launcher_text, encoding="utf-8")
+        launcher_path.write_text(launcher_text, encoding="ascii")
     except Exception as exc:
         logger.warning("Adapter hidden launcher repair failed: %s", exc)
         return False
@@ -291,22 +306,55 @@ def _repair_adapter_hidden_launcher(install_dir: str) -> bool:
     logger.info("Adapter hidden launcher repaired to start adapter directly: %s", launcher_path)
     return True
 
+
+def _repair_watchdog_hidden_launcher(install_dir: str) -> bool:
+    """Repair watchdog VBS launcher using ASCII so WScript can parse it."""
+    install_path = Path(install_dir)
+    watchdog_path = install_path / "scripts" / "watchdog.bat"
+    launcher_path = install_path / "scripts" / "watchdog_hidden.vbs"
+    if os.name != "nt":
+        return False
+    if not watchdog_path.exists():
+        logger.warning("Watchdog hidden launcher repair skipped; watchdog script is missing: %s", watchdog_path)
+        return False
+
+    def vbs_quote(value: str) -> str:
+        return value.replace('"', '""')
+
+    launcher_text = (
+        'Set shell = CreateObject("WScript.Shell")\n'
+        f'shell.CurrentDirectory = "{vbs_quote(str(watchdog_path.parent))}"\n'
+        f'shell.Run "cmd.exe /c ""{vbs_quote(str(watchdog_path))}""", 0, False\n'
+    )
+    try:
+        launcher_path.write_text(launcher_text, encoding="ascii")
+    except Exception as exc:
+        logger.warning("Watchdog hidden launcher repair failed: %s", exc)
+        return False
+
+    logger.info("Watchdog hidden launcher repaired: %s", launcher_path)
+    return True
+
 def _repair_adapter_scheduled_task_action(install_dir: str) -> bool:
-    """Point the main adapter scheduled task directly at erp-cnc-adapter.exe."""
+    """Point the main adapter scheduled task at the hidden adapter launcher."""
     install_path = Path(install_dir)
     exe_path = install_path / "erp-cnc-adapter.exe"
+    launcher_path = install_path / "scripts" / "launch_adapter_hidden.vbs"
     if os.name != "nt":
         return False
     if not exe_path.exists():
         logger.warning("Adapter scheduled task repair skipped; adapter EXE is missing: %s", exe_path)
         return False
+    if not launcher_path.exists() and not _repair_adapter_hidden_launcher(install_dir):
+        logger.warning("Adapter scheduled task repair skipped; hidden launcher is missing: %s", launcher_path)
+        return False
 
     script = (
         "$ErrorActionPreference = 'Stop'\n"
         "Get-ScheduledTask -TaskName 'ERPCNCAdapter' -ErrorAction Stop | Out-Null\n"
-        f"$exePath = '{_ps_quote(str(exe_path))}'\n"
+        f"$launcherPath = '{_ps_quote(str(launcher_path))}'\n"
         f"$workDir = '{_ps_quote(str(install_path))}'\n"
-        "$action = New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $workDir\n"
+        "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $launcherPath + '\"') -WorkingDirectory $workDir\n"
         "Set-ScheduledTask -TaskName 'ERPCNCAdapter' -Action $action | Out-Null\n"
     )
     try:
@@ -324,7 +372,7 @@ def _repair_adapter_scheduled_task_action(install_dir: str) -> bool:
         logger.warning("Adapter scheduled task repair failed: %s", (result.stderr or result.stdout).strip())
         return False
 
-    logger.info("Adapter scheduled task repaired to launch EXE directly: %s", exe_path)
+    logger.info("Adapter scheduled task repaired to hidden launcher: %s", launcher_path)
     return True
 
 def _repair_start_cnc_shortcut(install_dir: str) -> bool:
@@ -390,7 +438,7 @@ def _repair_status_indicator_task(install_dir: str) -> bool:
         f'shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ""{str(script_path).replace(chr(34), chr(34) + chr(34))}""", 0, False\n'
     )
     try:
-        launcher_path.write_text(launcher_text, encoding="utf-8")
+        launcher_path.write_text(launcher_text, encoding="ascii")
     except Exception as exc:
         logger.warning("Status indicator launcher repair failed: %s", exc)
         return False
@@ -687,6 +735,7 @@ def main(argv: list[str] | None = None) -> None:
             _install_zip_payload(staged_path, install_dir, verify_manifest=True)
             _repair_adapter_hidden_launcher(install_dir)
             _repair_adapter_scheduled_task_action(install_dir)
+            _repair_watchdog_hidden_launcher(install_dir)
             _repair_start_cnc_shortcut(install_dir)
             _stop_status_indicator_processes(install_dir)
             _repair_status_indicator_task(install_dir)

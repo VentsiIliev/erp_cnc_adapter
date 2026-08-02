@@ -35,6 +35,17 @@ def test_set_adapter_autostart_enabled_raises_when_main_task_update_fails():
             set_adapter_autostart_enabled(True)
 
 
+def test_restart_scheduled_adapter_task_can_suppress_launcher_splash(tmp_path):
+    with patch("src.core.task_config.subprocess.run", return_value=_completed(returncode=0)) as mock_run, \
+         patch("src.core.task_config._resolve_install_dir", return_value=tmp_path), \
+         patch("src.core.task_config.subprocess.Popen") as mock_popen:
+        restart_scheduled_adapter_task(suppress_splash=True)
+
+    assert (tmp_path / "logs" / "suppress_adapter_launch_splash.flag").read_text(encoding="ascii") == "1\n"
+    mock_run.assert_called_once()
+    mock_popen.assert_not_called()
+
+
 def test_restart_scheduled_adapter_task_falls_back_to_direct_launch_when_task_disabled(tmp_path):
     exe_path = tmp_path / "erp-cnc-adapter.exe"
     exe_path.write_text("", encoding="utf-8")
@@ -81,7 +92,7 @@ def test_request_adapter_recovery_restart_falls_back_to_main_task_when_restart_s
         request_adapter_recovery_restart()
 
     mock_popen.assert_not_called()
-    mock_restart_task.assert_called_once_with()
+    mock_restart_task.assert_called_once_with(suppress_splash=True)
 
 def test_startup_delay_duration_helpers_round_trip_common_values():
     for seconds, duration in ((0, "PT0S"), (45, "PT45S"), (90, "PT1M30S"), (3661, "PT1H1M1S")):
@@ -120,13 +131,18 @@ def test_configure_task_launch_account_writes_logon_trigger_delay(tmp_path):
     assert "$startupDelay = 'PT1M30S'" in script_text
     assert "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser" in script_text
     assert "$trigger.Delay = $startupDelay" in script_text
-    assert "$launcherPath" not in script_text
-    assert "launch_adapter_hidden.vbs" not in script_text
-    assert "New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $installDir" in script_text
-    assert "-Argument ('//B //Nologo \"' + $launcherPath + '\"')" not in script_text
+    assert "$adapterLauncherPath" in script_text
+    assert "launch_adapter_hidden.vbs" in script_text
+    assert "Set-Content -LiteralPath $adapterLauncherPath -Value $adapterVbs -Encoding ASCII" in script_text
+    assert "start_cnc_splash.ps1" in script_text
+    assert "suppress_adapter_launch_splash.flag" in script_text
+    assert "DeleteFile suppressPath" in script_text
+    assert "New-ScheduledTaskAction -Execute 'wscript.exe'" in script_text
+    assert "-Argument ('//B //Nologo \"' + $adapterLauncherPath + '\"')" in script_text
     assert "shell.Run" in script_text
     assert "$watchdogLauncherPath" in script_text
     assert "watchdog_hidden.vbs" in script_text
+    assert "Set-Content -LiteralPath $watchdogLauncherPath -Value $watchdogVbs -Encoding ASCII" in script_text
     assert "ServiceAccount" not in script_text
     assert "New-ScheduledTaskTrigger -AtStartup" not in script_text
     assert "UserId 'SYSTEM'" not in script_text

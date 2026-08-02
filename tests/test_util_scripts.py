@@ -156,6 +156,13 @@ class TestBuildScript:
         assert "scripts\\launch_adapter_after_network.ps1" not in text
         assert "scripts\\ (8 files)" in text
 
+    def test_watchdog_restart_suppresses_adapter_launch_splash(self):
+        text = (PROJECT_ROOT / "scripts" / "watchdog.bat").read_text(encoding="utf-8", errors="replace")
+
+        assert "suppress_adapter_launch_splash.flag" in text
+        assert "schtasks /Run /TN ERPCNCAdapter" in text
+        assert text.index("suppress_adapter_launch_splash.flag") < text.index("schtasks /Run /TN ERPCNCAdapter")
+
     def test_restart_script_falls_back_without_network_preflight(self):
         """Manual START-CNC fallback should not run the removed network preflight."""
         text = (PROJECT_ROOT / "scripts" / "restart.bat").read_text(encoding="utf-8", errors="replace")
@@ -163,9 +170,10 @@ class TestBuildScript:
         assert "START-CNC is already running; ignoring duplicate request" in text
         assert "launch_adapter_after_network.ps1" not in text
         assert "network preflight" not in text.lower()
-        assert "launch_adapter_hidden.vbs" not in text
-        assert "wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"" not in text
-        assert "starting adapter directly" in text.lower()
+        assert "launch_adapter_hidden.vbs" in text
+        assert "wscript.exe //B //Nologo \"!HIDDEN_LAUNCHER!\"" in text
+        assert "starting adapter through hidden launcher" in text.lower()
+        assert "suppress_adapter_launch_splash.flag" in text
 # ===========================================================================
 # build_installer.bat
 # ===========================================================================

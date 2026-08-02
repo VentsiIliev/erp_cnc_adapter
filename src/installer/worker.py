@@ -303,7 +303,7 @@ class InstallWorker(QThread):
             f'shell.CurrentDirectory = "{vbs_quote(str(watchdog_path.parent))}"',
             f'shell.Run "cmd.exe /c ""{vbs_quote(str(watchdog_path))}""", 0, False',
         ]
-        launcher_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        launcher_path.write_text("\n".join(lines) + "\n", encoding="ascii")
         if installation_log:
             installation_log.write(f"Hidden watchdog launcher: {launcher_path}\n")
         return launcher_path
@@ -318,7 +318,7 @@ class InstallWorker(QThread):
             f"$watchdogLauncherPath = '{self._ps_quote(str(launcher_path))}'\n"
             f"$workDir = '{self._ps_quote(str(watchdog_path.parent))}'\n"
             f"$taskUser = '{self._ps_quote(task_user)}'\n"
-            "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $watchdogLauncherPath + '\"') -WorkingDirectory $workDir\n"
+            "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $watchdogLauncherPath + '\"') -WorkingDirectory $workDir\n"
             "$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) "
             "-RepetitionInterval (New-TimeSpan -Minutes 2) -RepetitionDuration (New-TimeSpan -Days 3650)\n"
             "$principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Highest\n"
@@ -385,7 +385,7 @@ class InstallWorker(QThread):
             "Set shell = CreateObject(\"WScript.Shell\")\n"
             f"shell.CurrentDirectory = \"{vbs_quote(str(scripts_dir))}\"\n"
             f"shell.Run \"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"\"{vbs_quote(str(script_path))}\"\"\", 0, False\n",
-            encoding="utf-8",
+            encoding="ascii",
         )
         if installation_log:
             installation_log.write(f"Hidden status indicator launcher: {launcher_path}\n")
@@ -428,15 +428,27 @@ class InstallWorker(QThread):
         def vbs_quote(value: str) -> str:
             return value.replace('"', '""')
 
-        launcher_path.write_text(
-            "Set shell = CreateObject(\"WScript.Shell\")\n"
-            f"shell.CurrentDirectory = \"{vbs_quote(str(self.install_path))}\"\n"
-            f"shell.Run \"\"\"{vbs_quote(str(exe_path))}\"\"\", 0, False\n",
-            encoding="utf-8",
-        )
+        lines = [
+            'Set shell = CreateObject("WScript.Shell")',
+            'Set fso = CreateObject("Scripting.FileSystemObject")',
+            f'shell.CurrentDirectory = "{vbs_quote(str(self.install_path))}"',
+            'suppressPath = shell.CurrentDirectory & "\\logs\\suppress_adapter_launch_splash.flag"',
+            'splashPath = shell.CurrentDirectory & "\\scripts\\start_cnc_splash.ps1"',
+            'showSplash = True',
+            'If fso.FileExists(suppressPath) Then',
+            '  fso.DeleteFile suppressPath, True',
+            '  showSplash = False',
+            'End If',
+            'If showSplash And fso.FileExists(splashPath) Then',
+            '  shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & splashPath & """", 0, False',
+            'End If',
+            f'shell.Run """{vbs_quote(str(exe_path))}""", 0, False',
+        ]
+        launcher_path.write_text("\n".join(lines) + "\n", encoding="ascii")
         if installation_log:
             installation_log.write(f"Hidden launcher: {launcher_path}\n")
         return launcher_path
+
     def _write_start_cnc_hidden_launcher(self, installation_log=None) -> Path:
         """Create a hidden launcher for the manual START-CNC shortcut."""
         restart_path = self.install_path / "scripts" / "restart.bat"
@@ -456,7 +468,7 @@ class InstallWorker(QThread):
             "If exitCode <> 0 Then\n"
             f"  MsgBox \"START-CNC failed. Check: {vbs_quote(str(log_path))}\", 16, \"START-CNC\"\n"
             "End If\n",
-            encoding="utf-8",
+            encoding="ascii",
         )
         shortcut_launcher_path.write_text(
             "Set shell = CreateObject(\"WScript.Shell\")\n"
@@ -464,7 +476,7 @@ class InstallWorker(QThread):
             "If exitCode <> 0 Then\n"
             f"  MsgBox \"Could not start START-CNC task. Reinstall or run as administrator once. Check: {vbs_quote(str(log_path))}\", 16, \"START-CNC\"\n"
             "End If\n",
-            encoding="utf-8",
+            encoding="ascii",
         )
         if installation_log:
             installation_log.write(f"Hidden START-CNC task launcher: {task_launcher_path}\n")
@@ -735,7 +747,7 @@ class InstallWorker(QThread):
             f"Unregister-ScheduledTask -TaskName '{self.MANUAL_START_TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue\n"
             f"$launcherPath = '{self._ps_quote(str(launcher_path))}'\n"
             f"$workDir = '{self._ps_quote(str(launcher_path.parent))}'\n"
-            "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $launcherPath + '\"') -WorkingDirectory $workDir\n"
+            "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $launcherPath + '\"') -WorkingDirectory $workDir\n"
             "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries\n"
         )
         script += (
@@ -946,10 +958,11 @@ class InstallWorker(QThread):
         disable_task = ""
         if not self.auto_start_adapter_on_logon:
             disable_task = "Disable-ScheduledTask -TaskName 'ERPCNCAdapter' | Out-Null\n"
+        launcher_path = self._write_hidden_launcher(exe_path)
         return (
             "$ErrorActionPreference = 'Stop'\n"
-            f"$action = New-ScheduledTaskAction "
-            f"-Execute '{ps_quote(str(exe_path))}' "
+            f"$launcherPath = '{ps_quote(str(launcher_path))}'\n"
+            "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $launcherPath + '\"') "
             f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
             f"$trigger = New-ScheduledTaskTrigger -AtLogOn -User '{ps_quote(task_user)}'\n"
             f"$trigger.Delay = '{startup_delay}'\n"
@@ -1182,6 +1195,7 @@ class InstallWorker(QThread):
             self.log_message.emit(f"Creating startup task for: {exe_path}")
             installation_log.write(f"\nCreating Startup Task...\n")
             installation_log.write(f"Task Name: ERPCNCAdapter\n")
+            launcher_path = self._write_hidden_launcher(exe_path, installation_log)
             installation_log.write(f"Executable: {exe_path}\n")
 
             # Delete existing task if any
@@ -1198,8 +1212,8 @@ class InstallWorker(QThread):
 
             ps_script = (
                 "$ErrorActionPreference = 'Stop'\n"
-                f"$action = New-ScheduledTaskAction "
-                f"-Execute '{ps_quote(str(exe_path))}' "
+                f"$launcherPath = '{ps_quote(str(launcher_path))}'\n"
+                "$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('//B //Nologo \"' + $launcherPath + '\"') "
                 f"-WorkingDirectory '{ps_quote(str(self.install_path))}'\n"
                 f"$startupDelay = 'PT{int(config_data['adapter_startup_delay_seconds'])}S'\n"
                 f"$autoStartAdapter = ${str(self.auto_start_adapter_on_logon).lower()}\n"

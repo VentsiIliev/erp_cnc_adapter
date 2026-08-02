@@ -318,7 +318,8 @@ class TestInstallWorkerTaskHandling:
 
         worker = InstallWorker(str(tmp_path), "CNC1")
         launcher = worker._write_watchdog_hidden_launcher(tmp_path / "watchdog.bat")
-        text = launcher.read_text(encoding="utf-8")
+        assert not launcher.read_bytes().startswith(b"\xef\xbb\xbf")
+        text = launcher.read_text(encoding="ascii")
 
         assert launcher.name == "watchdog_hidden.vbs"
         assert "WScript.Shell" in text
@@ -331,13 +332,17 @@ class TestInstallWorkerTaskHandling:
 
         worker = InstallWorker(str(tmp_path), "CNC1")
         launcher = worker._write_hidden_launcher(tmp_path / "erp-cnc-adapter.exe")
-        text = launcher.read_text(encoding="utf-8")
+        assert not launcher.read_bytes().startswith(b"\xef\xbb\xbf")
+        text = launcher.read_text(encoding="ascii")
 
         assert launcher.name == "launch_adapter_hidden.vbs"
         assert "WScript.Shell" in text
         assert "erp-cnc-adapter.exe" in text
+        assert "start_cnc_splash.ps1" in text
+        assert "suppress_adapter_launch_splash.flag" in text
+        assert "DeleteFile suppressPath" in text
         assert "launch_adapter_after_network.ps1" not in text
-        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File" not in text
+        assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File" in text
         assert ", 0, False" in text
     def test_start_cnc_hidden_launcher_runs_restart_without_console(self, tmp_path):
         from src.installer.worker import InstallWorker
@@ -367,7 +372,8 @@ class TestInstallWorkerTaskHandling:
 
         worker = InstallWorker(str(tmp_path), "CNC1")
         launcher = worker._write_status_indicator_hidden_launcher()
-        text = launcher.read_text(encoding="utf-8")
+        assert not launcher.read_bytes().startswith(b"\xef\xbb\xbf")
+        text = launcher.read_text(encoding="ascii")
 
         assert launcher.name == "status_indicator_hidden.vbs"
         assert "WScript.Shell" in text
@@ -554,10 +560,10 @@ class TestInstallWorkerTaskHandling:
 
         assert "New-ScheduledTaskTrigger -AtLogOn" in script
         assert "$trigger.Delay = 'PT90S'" in script
-        assert "-Execute '" in script
-        assert "erp-cnc-adapter.exe" in script
-        assert "wscript.exe" not in script
-        assert "launch_adapter_hidden.vbs" not in script
+        assert "-Execute 'wscript.exe'" in script
+        assert "//B //Nologo" in script
+        assert "erp-cnc-adapter.exe" not in script
+        assert "launch_adapter_hidden.vbs" in script
         assert "-LogonType Interactive" in script
         assert r"DESKTOP-EMJIESP\CNC5" in script
         assert "-Password" not in script
@@ -585,8 +591,9 @@ class TestInstallWorkerTaskHandling:
         script = worker._build_interactive_logon_task_script(tmp_path / "erp-cnc-adapter.exe")
 
         assert "Disable-ScheduledTask -TaskName 'ERPCNCAdapter'" in script
-        assert "erp-cnc-adapter.exe" in script
-        assert "launch_adapter_hidden.vbs" not in script
+        assert "wscript.exe" in script
+        assert "//B //Nologo" in script
+        assert "launch_adapter_hidden.vbs" in script
 
     def test_installer_migrates_regressed_15_second_startup_delay(self, tmp_path):
         from pathlib import Path

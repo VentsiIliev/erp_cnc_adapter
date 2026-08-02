@@ -1,93 +1,15 @@
-PS C:\Users\CNC1> Get-WmiObject Win32_Process -Filter "name='erp-cnc-adapter.exe'" |
->>       ForEach-Object {
->>           $owner = $_.GetOwner()
->>           $parent = Get-WmiObject Win32_Process -Filter "ProcessId=$($_.ParentProcessId)"
->>           [PSCustomObject]@{
->>               ProcessId = $_.ProcessId
->>               ParentProcessId = $_.ParentProcessId
->>               ParentName = $parent.Name
->>               SessionId = $_.SessionId
->>               Owner = "$($owner.Domain)\$($owner.User)"
->>               ExecutablePath = $_.ExecutablePath
->>               CommandLine = $_.CommandLine
->>               ParentCommandLine = $parent.CommandLine
->>           }
->>       } | Format-List
+ cmdkey /list:192.168.2.11
 
+Invoke-RestMethod "http://127.0.0.1:8002/api/debug/job-path/000000000000/0" |
+  ConvertTo-Json -Depth 8
 
-ProcessId         : 3660
-ParentProcessId   : 1224
-ParentName        : svchost.exe
-SessionId         : 1
-Owner             : DESKTOP-GV1NV5N\CNC1
-ExecutablePath    :
-CommandLine       :
-ParentCommandLine :
-
-ProcessId         : 4340
-ParentProcessId   : 3660
-ParentName        : erp-cnc-adapter.exe
-SessionId         : 1
-Owner             : DESKTOP-GV1NV5N\CNC1
-ExecutablePath    :
-CommandLine       :
-ParentCommandLine :
-
-
-
-PS C:\Users\CNC1>  Get-ScheduledTask | Where-Object { $_.TaskName -like "*ERPCNC*" } |
->>       ForEach-Object {
->>           [PSCustomObject]@{
->>               TaskName = $_.TaskName
->>               State = $_.State
->>               Execute = ($_.Actions | Select-Object -First 1).Execute
->>               Arguments = ($_.Actions | Select-Object -First 1).Arguments
->>               WorkingDirectory = ($_.Actions | Select-Object -First 1).WorkingDirectory
->>           }
->>       } | Format-List
-
-
-TaskName         : ERPCNCAdapter
-State            : Running
-Execute          : C:\Program Files (x86)\ERP-CNC Adapter\erp-cnc-adapter.exe
-Arguments        :
-WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter
-
-TaskName         : ERPCNCAdapterEdingHandoff
-State            : Ready
-Execute          : powershell.exe
-Arguments        : -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Program Files (x86)\ERP-CNC Adapter
-                   \scripts\start_eding_handoff.ps1"
-WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter\scripts
-
-TaskName         : ERPCNCAdapterManualStart
-State            : Ready
-Execute          : wscript.exe
-Arguments        : "C:\Program Files (x86)\ERP-CNC Adapter\scripts\run_start_cnc_hidden.vbs"
-WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter\scripts
-
-TaskName         : ERPCNCAdapterReadyMessage
-State            : Ready
-Execute          : powershell.exe
-Arguments        : -NoProfile -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationFramework; [System.Windo
-                   ws.MessageBox]::Show('Machine CNC4 is connected and ready.`nAdapter API: 192.168.2.89:8002', 'ERP-CN
-                   C Adapter ready', 'OK', 'Information') | Out-Null"
-WorkingDirectory :
-
-TaskName         : ERPCNCAdapterStatusIndicator
-State            : Ready
-Execute          : wscript.exe
-Arguments        : //B //Nologo "C:\Program Files (x86)\ERP-CNC Adapter\scripts\status_indicator_hidden.vbs"
-WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter\scripts
-
-TaskName         : ERPCNCAdapterWatchdog
-State            : Ready
-Execute          : wscript.exe
-Arguments        : "C:\Program Files (x86)\ERP-CNC Adapter\scripts\watchdog_hidden.vbs"
-WorkingDirectory : C:\Program Files (x86)\ERP-CNC Adapter\scripts
-
-
-
-PS C:\Users\CNC1>
-
-
+В тази група членуват операторите на машини с компютър. Всички рутери ползват
+потребител CNC с парола Eding402
+- CNC1 – рутер с ЦПУ с адрес 83;
+- CNC2 – рутер с ЦПУ с адрес 84;
+- CNC3 – рутер с ЦПУ с адрес 88;
+- CNC4 – рутер с ЦПУ с адрес 89;
+- CNC5 – рутер с ЦПУ с адрес 86;
+- CNC6 – рутер с ЦПУ с адрес 87;
+- CNC7 – рутер с ЦПУ с адрес 85;
+- CNC8 – рутер с ЦПУ с адрес 82;
