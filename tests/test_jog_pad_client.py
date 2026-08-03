@@ -319,6 +319,18 @@ def test_start_continuous_jog_posts_adapter_payload(monkeypatch):
     }
 
 
+def test_continuous_jog_start_is_delayed_until_button_remains_pressed():
+    text = jog_pad_source()
+
+    assert "CONTINUOUS_JOG_START_DELAY_MS = 80" in text
+    assert "self._continuous_jog_token += 1" in text
+    assert "QTimer.singleShot(" in text
+    assert "self._start_continuous_jog_if_still_pressed(axis, direction, speed_percent, token)" in text
+    assert "def _start_continuous_jog_if_still_pressed" in text
+    assert "if self._active_axis != axis:" in text
+    assert "if token != self._continuous_jog_token:" in text
+
+
 def test_move_relative_posts_step_jog_payload(monkeypatch):
     captured = {}
 

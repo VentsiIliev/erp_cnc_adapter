@@ -508,6 +508,39 @@
             grid-template-columns: 1fr 1fr;
         }
 
+        .config-tabs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .config-tab {
+            border: 1px solid #cbd5e1;
+            border-radius: 999px;
+            background: #f8fafc;
+            color: var(--text);
+            padding: 10px 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .config-tab:hover,
+        .config-tab.active {
+            background: linear-gradient(135deg, var(--accent), #1d4ed8);
+            border-color: transparent;
+            color: #fff;
+        }
+
+        .config-action-row {
+            position: sticky;
+            bottom: 0;
+            margin-top: 18px;
+            padding-top: 16px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), #fff 34%);
+            border-top: 1px solid var(--line);
+        }
+
         .form-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -530,6 +563,7 @@
 
         input[type="text"],
         input[type="number"],
+        input[type="password"],
         input[type="file"] {
             width: 100%;
             border: 1px solid #cbd5e1;
@@ -883,141 +917,15 @@
                 </div>
 
                 <form id="configForm">
-                    <div class="form-grid">
-                        <div class="field">
-                            <label for="machineNumber">Machine Number</label>
-                            <input type="text" id="machineNumber" name="machine_number" placeholder="CNC1">
-                            <div class="helper">Current: <span id="currentMachine">Loading...</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="reportUrlInput">Job Done Report URL</label>
-                            <input type="text" id="reportUrlInput" name="job_done_report_url" placeholder="http://server/actions/cnc_job_done.php">
-                            <div class="helper">Current: <span id="currentReportUrl">Loading...</span></div>
-                        </div>
-                        <div class="field full">
-                            <label for="baseDir">Base Directory</label>
-                            <input type="text" id="baseDir" name="base_dir" placeholder="\\server\Production\CNC\Mills">
-                            <div class="helper">Current: <span id="currentBaseDir">Loading...</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="cncShareUsername">CNC Share Username</label>
-                            <input type="text" id="cncShareUsername" name="cnc_share_username" placeholder="Share username">
-                            <div class="helper">Current: <span id="currentCncShareUsername">Not configured</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="cncSharePassword">CNC Share Password</label>
-                            <input type="password" id="cncSharePassword" name="cnc_share_password" placeholder="Enter password to set or change">
-                            <div class="helper">Current: <span id="currentCncSharePasswordStatus">Not configured</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="dllPath">CNC DLL Path</label>
-                            <input type="text" id="dllPath" name="dll_path" placeholder="C:\CNC4.03\cncapi.dll">
-                            <div class="helper">Current: <span id="currentDllPath">Loading...</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="iniPath">CNC INI Path</label>
-                            <input type="text" id="iniPath" name="ini_path" placeholder="C:\CNC4.03\cnc.ini">
-                            <div class="helper">Current: <span id="currentIniPath">Loading...</span></div>
-                        </div>
-                        <div class="field full">
-                            <label>
-                                <input type="checkbox" id="runAsUserToggle">
-                                Run scheduled startup tasks as a Windows user
-                            </label>
-                            <div class="helper" id="currentLaunchMode">Current: Loading...</div>
-                        </div>
-                        <div class="field full">
-                            <label>
-                                <input type="checkbox" id="autoStartAdapterOnLogonToggle">
-                                Start adapter automatically on Windows logon
-                            </label>
-                            <div class="helper">Current: <span id="currentAutoStartAdapterOnLogon">Loading...</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="adapterStartupDelay">Adapter Startup Delay</label>
-                            <input type="number" id="adapterStartupDelay" name="adapter_startup_delay_seconds" min="0" max="600" step="1" placeholder="90">
-                            <div class="helper">Current: <span id="currentAdapterStartupDelay">Loading...</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="taskUsername">Task Username</label>
-                            <input type="text" id="taskUsername" name="task_username" placeholder="DOMAIN\username or .\username">
-                            <div class="helper">Current: <span id="currentTaskUsername">SYSTEM</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="taskPassword">Task Password</label>
-                            <input type="password" id="taskPassword" name="task_password" placeholder="Enter password to set or change">
-                            <div class="helper">Current: <span id="currentPasswordStatus">Not required when running as SYSTEM</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="retryInterval">CNC Retry Interval</label>
-                            <input type="number" id="retryInterval" name="cnc_retry_interval" min="1" max="300" step="1" placeholder="5">
-                            <div class="helper">Current: <span id="currentRetryInterval">Loading...</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="healthInterval">CNC Health Interval</label>
-                            <input type="number" id="healthInterval" name="cnc_health_interval" min="1" max="300" step="1" placeholder="10">
-                            <div class="helper">Current: <span id="currentHealthInterval">Loading...</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="startupReadyTimeout">CNC Ready Timeout</label>
-                            <input type="number" id="startupReadyTimeout" name="cnc_startup_ready_timeout" min="5" max="600" step="1" placeholder="60">
-                            <div class="helper">Current: <span id="currentStartupReadyTimeout">Loading...</span></div>
-                        </div>
-                        <div class="field full">
-                            <label>
-                                <input type="checkbox" id="autoStartCncServerToggle">
-                                Start CncServer automatically with the adapter
-                            </label>
-                            <div class="helper">Current: <span id="currentAutoStartCncServer">Loading...</span></div>
-                        </div>
-                        <div class="field full">
-                            <label>
-                                <input type="checkbox" id="autoStartEdingGuiToggle">
-                                Start Eding CNC GUI after CNC is ready
-                            </label>
-                            <div class="helper">Current: <span id="currentAutoStartEdingGui">Loading...</span></div>
-                        </div>
-                        <div class="field full">
-                            <label>
-                                <input type="checkbox" id="operatorReadyMessageToggle">
-                                Show operator ready message when GUI auto-start is off
-                            </label>
-                            <div class="helper">Current: <span id="currentOperatorReadyMessage">Loading...</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="pollInterval">Job Monitor Poll Interval</label>
-                            <input type="number" id="pollInterval" name="job_monitor_poll_interval" min="0.1" max="60" step="0.1" placeholder="1.0">
-                            <div class="helper">Current: <span id="currentPollInterval">Loading...</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="jogPadPauseHoldInterval">Jog Pad Pause Hold Interval</label>
-                            <input type="number" id="jogPadPauseHoldInterval" name="jog_pad_pause_hold_interval_ms" min="0" max="10000" step="100" placeholder="500">
-                            <div class="helper">Current: <span id="currentJogPadPauseHoldInterval">Loading...</span> (0 disables)</div>
-                        </div>
-                        <div class="field">
-                            <label for="adapterPort">Adapter Port</label>
-                            <input type="number" id="adapterPort" name="port" min="1" max="65535" step="1" placeholder="8002">
-                            <div class="helper">Current: <span id="currentAdapterPort">Loading...</span> (restart required)</div>
-                        </div>
-                        <div class="field">
-                            <label for="updateUsername">SVN Update Username</label>
-                            <input type="text" id="updateUsername" name="update_username" placeholder="SVN username">
-                            <div class="helper">Current: <span id="currentUpdateUsername">Not configured</span></div>
-                        </div>
-                        <div class="field">
-                            <label for="updatePassword">SVN Update Password</label>
-                            <input type="password" id="updatePassword" name="update_password" placeholder="Enter password to set or change">
-                            <div class="helper">Current: <span id="currentUpdatePasswordStatus">Not configured</span></div>
-                        </div>
-                        <div class="field">
-                            <label>Network Bind</label>
-                            <div class="detail-item">
-                                <div class="detail-value"><span id="configHost">--</span>:<span id="configPort">--</span></div>
-                            </div>
-                        </div>
+                    <div class="config-tabs" id="configTabs" role="tablist" aria-label="Configuration groups">
+                        <button type="button" class="config-tab active" data-config-tab="machine" role="tab">Machine</button>
+                        <button type="button" class="config-tab" data-config-tab="startup" role="tab">Startup</button>
+                        <button type="button" class="config-tab" data-config-tab="credentials" role="tab">Credentials</button>
+                        <button type="button" class="config-tab" data-config-tab="timing" role="tab">Timing</button>
                     </div>
+                    <div class="form-grid" id="configTabFields"></div>
 
-                    <div class="form-actions" style="margin-top: 18px;">
+                    <div class="form-actions config-action-row">
                         <button type="submit" class="btn-primary" id="saveConfigBtn">Save Configuration</button>
                         <button type="button" class="btn-primary" id="saveAndRestartConfigBtn">Apply Credentials and Restart Task</button>
                         <button type="button" class="btn-secondary" id="resetConfigBtn">Reset Form</button>
@@ -1114,6 +1022,8 @@
             jobFinishedShown: false,
             monitorEvents: ["Monitor stream initialized."],
             testEvents: ["Ready for manual verification."],
+            activeConfigTab: "machine",
+            configDraft: {},
         };
 
         const viewLabels = {
@@ -1122,6 +1032,177 @@
             config: "Configuration",
             maintenance: "Maintenance",
             testing: "Testing",
+        };
+        const CONFIG_TEXT_FIELD_IDS = [
+            "machineNumber",
+            "reportUrlInput",
+            "baseDir",
+            "dllPath",
+            "iniPath",
+            "taskUsername",
+            "taskPassword",
+            "adapterStartupDelay",
+            "cncShareUsername",
+            "cncSharePassword",
+            "updateUsername",
+            "updatePassword",
+            "retryInterval",
+            "healthInterval",
+            "startupReadyTimeout",
+            "pollInterval",
+            "jogPadPauseHoldInterval",
+            "adapterPort",
+        ];
+        const CONFIG_BOOLEAN_FIELD_IDS = [
+            "runAsUserToggle",
+            "autoStartAdapterOnLogonToggle",
+            "autoStartCncServerToggle",
+            "autoStartEdingGuiToggle",
+            "operatorReadyMessageToggle",
+        ];
+        const CONFIG_BOOLEAN_KEYS = {
+            runAsUserToggle: "run_as_windows_user",
+            autoStartAdapterOnLogonToggle: "auto_start_adapter_on_logon",
+            autoStartCncServerToggle: "auto_start_cnc_server",
+            autoStartEdingGuiToggle: "auto_start_eding_gui",
+            operatorReadyMessageToggle: "show_operator_ready_message",
+        };
+        const CONFIG_TABS = {
+            machine: `
+                        <div class="field">
+                            <label for="machineNumber">Machine Number</label>
+                            <input type="text" id="machineNumber" name="machine_number" placeholder="CNC1">
+                            <div class="helper">Current: <span id="currentMachine">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="reportUrlInput">Job Done Report URL</label>
+                            <input type="text" id="reportUrlInput" name="job_done_report_url" placeholder="http://server/actions/cnc_job_done.php">
+                            <div class="helper">Current: <span id="currentReportUrl">Loading...</span></div>
+                        </div>
+                        <div class="field full">
+                            <label for="baseDir">Base Directory</label>
+                            <input type="text" id="baseDir" name="base_dir" placeholder="\\\\server\\Production\\CNC\\Mills">
+                            <div class="helper">Current: <span id="currentBaseDir">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="dllPath">CNC DLL Path</label>
+                            <input type="text" id="dllPath" name="dll_path" placeholder="C:\\CNC4.03\\cncapi.dll">
+                            <div class="helper">Current: <span id="currentDllPath">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="iniPath">CNC INI Path</label>
+                            <input type="text" id="iniPath" name="ini_path" placeholder="C:\\CNC4.03\\cnc.ini">
+                            <div class="helper">Current: <span id="currentIniPath">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="adapterPort">Adapter Port</label>
+                            <input type="number" id="adapterPort" name="port" min="1" max="65535" step="1" placeholder="8002">
+                            <div class="helper">Current: <span id="currentAdapterPort">Loading...</span> (restart required)</div>
+                        </div>
+                        <div class="field">
+                            <label>Network Bind</label>
+                            <div class="detail-item">
+                                <div class="detail-value"><span id="configHost">--</span>:<span id="configPort">--</span></div>
+                            </div>
+                        </div>`,
+            startup: `
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="runAsUserToggle">
+                                Run scheduled startup tasks as a Windows user
+                            </label>
+                            <div class="helper" id="currentLaunchMode">Current: Loading...</div>
+                        </div>
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="autoStartAdapterOnLogonToggle">
+                                Start adapter automatically on Windows logon
+                            </label>
+                            <div class="helper">Current: <span id="currentAutoStartAdapterOnLogon">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="adapterStartupDelay">Adapter Startup Delay</label>
+                            <input type="number" id="adapterStartupDelay" name="adapter_startup_delay_seconds" min="0" max="600" step="1" placeholder="90">
+                            <div class="helper">Current: <span id="currentAdapterStartupDelay">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="taskUsername">Task Username</label>
+                            <input type="text" id="taskUsername" name="task_username" placeholder="DOMAIN\\username or .\\username">
+                            <div class="helper">Current: <span id="currentTaskUsername">SYSTEM</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="taskPassword">Task Password</label>
+                            <input type="password" id="taskPassword" name="task_password" placeholder="Enter password to set or change">
+                            <div class="helper">Current: <span id="currentPasswordStatus">Not required when running as SYSTEM</span></div>
+                        </div>
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="autoStartCncServerToggle">
+                                Start CncServer automatically with the adapter
+                            </label>
+                            <div class="helper">Current: <span id="currentAutoStartCncServer">Loading...</span></div>
+                        </div>
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="autoStartEdingGuiToggle">
+                                Start Eding CNC GUI after CNC is ready
+                            </label>
+                            <div class="helper">Current: <span id="currentAutoStartEdingGui">Loading...</span></div>
+                        </div>
+                        <div class="field full">
+                            <label>
+                                <input type="checkbox" id="operatorReadyMessageToggle">
+                                Show operator ready message when GUI auto-start is off
+                            </label>
+                            <div class="helper">Current: <span id="currentOperatorReadyMessage">Loading...</span></div>
+                        </div>`,
+            credentials: `
+                        <div class="field">
+                            <label for="cncShareUsername">CNC Share Username</label>
+                            <input type="text" id="cncShareUsername" name="cnc_share_username" placeholder="Share username">
+                            <div class="helper">Current: <span id="currentCncShareUsername">Not configured</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="cncSharePassword">CNC Share Password</label>
+                            <input type="password" id="cncSharePassword" name="cnc_share_password" placeholder="Enter password to set or change">
+                            <div class="helper">Current: <span id="currentCncSharePasswordStatus">Not configured</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="updateUsername">SVN Update Username</label>
+                            <input type="text" id="updateUsername" name="update_username" placeholder="SVN username">
+                            <div class="helper">Current: <span id="currentUpdateUsername">Not configured</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="updatePassword">SVN Update Password</label>
+                            <input type="password" id="updatePassword" name="update_password" placeholder="Enter password to set or change">
+                            <div class="helper">Current: <span id="currentUpdatePasswordStatus">Not configured</span></div>
+                        </div>`,
+            timing: `
+                        <div class="field">
+                            <label for="retryInterval">CNC Retry Interval</label>
+                            <input type="number" id="retryInterval" name="cnc_retry_interval" min="1" max="300" step="1" placeholder="5">
+                            <div class="helper">Current: <span id="currentRetryInterval">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="healthInterval">CNC Health Interval</label>
+                            <input type="number" id="healthInterval" name="cnc_health_interval" min="1" max="300" step="1" placeholder="10">
+                            <div class="helper">Current: <span id="currentHealthInterval">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="startupReadyTimeout">CNC Ready Timeout</label>
+                            <input type="number" id="startupReadyTimeout" name="cnc_startup_ready_timeout" min="5" max="600" step="1" placeholder="60">
+                            <div class="helper">Current: <span id="currentStartupReadyTimeout">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="pollInterval">Job Monitor Poll Interval</label>
+                            <input type="number" id="pollInterval" name="job_monitor_poll_interval" min="0.1" max="60" step="0.1" placeholder="1.0">
+                            <div class="helper">Current: <span id="currentPollInterval">Loading...</span></div>
+                        </div>
+                        <div class="field">
+                            <label for="jogPadPauseHoldInterval">Jog Pad Pause Hold Interval</label>
+                            <input type="number" id="jogPadPauseHoldInterval" name="jog_pad_pause_hold_interval_ms" min="0" max="10000" step="100" placeholder="500">
+                            <div class="helper">Current: <span id="currentJogPadPauseHoldInterval">Loading...</span> (0 disables)</div>
+                        </div>`,
         };
 
         function escapeHtml(value) {
@@ -1211,6 +1292,95 @@
             const contentType = response.headers.get("content-type") || "";
             const body = contentType.includes("application/json") ? await response.json() : await response.text();
             return { response, body };
+        }
+        function setTextIfPresent(id, value) {
+            const element = document.getElementById(id);
+            if (element) element.textContent = value;
+        }
+
+        function setCheckedIfPresent(id, checked) {
+            const element = document.getElementById(id);
+            if (element) element.checked = Boolean(checked);
+        }
+
+        function hasConfigDraftValue(id) {
+            return Object.prototype.hasOwnProperty.call(state.configDraft, id);
+        }
+
+        function getConfigTextValue(id) {
+            return hasConfigDraftValue(id) ? String(state.configDraft[id] ?? "") : "";
+        }
+
+        function getConfigBooleanValue(id) {
+            if (hasConfigDraftValue(id)) return Boolean(state.configDraft[id]);
+            const key = CONFIG_BOOLEAN_KEYS[id];
+            return Boolean(state.config && key && state.config[key]);
+        }
+
+        function captureConfigDraft() {
+            document.querySelectorAll("#configTabFields input").forEach((input) => {
+                state.configDraft[input.id] = input.type === "checkbox" ? input.checked : input.value;
+            });
+        }
+
+        function updateCurrentConfigDisplay() {
+            const body = state.config || {};
+            setTextIfPresent("currentMachine", body.machine_number || "Loading...");
+            setTextIfPresent("currentReportUrl", body.job_done_report_url || "Loading...");
+            setTextIfPresent("currentBaseDir", body.base_dir || "Loading...");
+            setTextIfPresent("currentCncShareUsername", body.cnc_share_username || "Not configured");
+            setTextIfPresent("currentCncSharePasswordStatus", body.cnc_share_password_configured ? "Password configured" : "Not configured");
+            setTextIfPresent("currentDllPath", body.dll_path || "Loading...");
+            setTextIfPresent("currentIniPath", body.ini_path || "Loading...");
+            setTextIfPresent("currentLaunchMode", body.run_as_windows_user ? "Current: Windows account" : "Current: SYSTEM");
+            setTextIfPresent("currentTaskUsername", body.task_username || "SYSTEM");
+            setTextIfPresent("currentPasswordStatus", body.run_as_windows_user
+                ? (body.task_password_configured ? "Password configured in scheduled task" : "Password not confirmed")
+                : "Not required when running as SYSTEM");
+            setTextIfPresent("currentRetryInterval", body.cnc_retry_interval == null ? "Loading..." : body.cnc_retry_interval + "s");
+            setTextIfPresent("currentHealthInterval", body.cnc_health_interval == null ? "Loading..." : body.cnc_health_interval + "s");
+            setTextIfPresent("currentStartupReadyTimeout", body.cnc_startup_ready_timeout == null ? "Loading..." : body.cnc_startup_ready_timeout + "s");
+            setTextIfPresent("currentAutoStartAdapterOnLogon", body.auto_start_adapter_on_logon ? "Enabled" : "Disabled");
+            setTextIfPresent("currentAdapterStartupDelay", body.adapter_startup_delay_seconds == null ? "Loading..." : body.adapter_startup_delay_seconds + "s");
+            setTextIfPresent("currentAutoStartCncServer", body.auto_start_cnc_server ? "Enabled" : "Disabled");
+            setTextIfPresent("currentAutoStartEdingGui", body.auto_start_eding_gui ? "Enabled" : "Disabled");
+            setTextIfPresent("currentOperatorReadyMessage", body.show_operator_ready_message ? "Enabled" : "Disabled");
+            setTextIfPresent("currentPollInterval", body.job_monitor_poll_interval == null ? "Loading..." : body.job_monitor_poll_interval + "s");
+            setTextIfPresent("currentJogPadPauseHoldInterval", body.jog_pad_pause_hold_interval_ms == null ? "Loading..." : body.jog_pad_pause_hold_interval_ms + "ms");
+            setTextIfPresent("currentAdapterPort", body.port || "Loading...");
+            setTextIfPresent("currentUpdateUsername", body.update_username || "Not configured");
+            setTextIfPresent("currentUpdatePasswordStatus", body.update_password_configured ? "Password configured" : "Not configured");
+            setTextIfPresent("configHost", body.host || "--");
+            setTextIfPresent("configPort", body.port || "--");
+        }
+
+        function applyConfigDraftToRenderedFields() {
+            CONFIG_TEXT_FIELD_IDS.forEach((id) => {
+                const input = document.getElementById(id);
+                if (input) input.value = getConfigTextValue(id);
+            });
+            CONFIG_BOOLEAN_FIELD_IDS.forEach((id) => {
+                setCheckedIfPresent(id, getConfigBooleanValue(id));
+            });
+            toggleTaskCredentialInputs(getConfigBooleanValue("runAsUserToggle"));
+            updateCurrentConfigDisplay();
+        }
+
+        function renderConfigTab(tabName) {
+            const selected = CONFIG_TABS[tabName] ? tabName : "machine";
+            state.activeConfigTab = selected;
+            document.querySelectorAll("#configTabs .config-tab").forEach((button) => {
+                const active = button.dataset.configTab === selected;
+                button.classList.toggle("active", active);
+                button.setAttribute("aria-selected", active ? "true" : "false");
+            });
+            document.getElementById("configTabFields").innerHTML = CONFIG_TABS[selected];
+            applyConfigDraftToRenderedFields();
+        }
+
+        function setConfigTab(tabName) {
+            captureConfigDraft();
+            renderConfigTab(tabName);
         }
 
         function updateHealthCard(data) {
@@ -1336,53 +1506,19 @@
             document.getElementById("heroBindAddress").textContent = body.host && body.host !== body.local_ip
                 ? "Bind: " + body.host + ":" + body.port
                 : "";
-            document.getElementById("currentMachine").textContent = body.machine_number;
-            document.getElementById("currentReportUrl").textContent = body.job_done_report_url;
-            document.getElementById("currentBaseDir").textContent = body.base_dir;
-            document.getElementById("currentCncShareUsername").textContent = body.cnc_share_username || "Not configured";
-            document.getElementById("currentCncSharePasswordStatus").textContent = body.cnc_share_password_configured ? "Password configured" : "Not configured";
-            document.getElementById("currentDllPath").textContent = body.dll_path;
-            document.getElementById("currentIniPath").textContent = body.ini_path;
-            document.getElementById("currentLaunchMode").textContent = body.run_as_windows_user
-                ? "Current: Windows account"
-                : "Current: SYSTEM";
-            document.getElementById("currentTaskUsername").textContent = body.task_username || "SYSTEM";
-            document.getElementById("currentPasswordStatus").textContent = body.run_as_windows_user
-                ? (body.task_password_configured ? "Password configured in scheduled task" : "Password not confirmed")
-                : "Not required when running as SYSTEM";
-            document.getElementById("currentRetryInterval").textContent = body.cnc_retry_interval + "s";
-            document.getElementById("currentHealthInterval").textContent = body.cnc_health_interval + "s";
-            document.getElementById("currentStartupReadyTimeout").textContent = body.cnc_startup_ready_timeout + "s";
-            document.getElementById("currentAutoStartAdapterOnLogon").textContent = body.auto_start_adapter_on_logon ? "Enabled" : "Disabled";
-            document.getElementById("currentAdapterStartupDelay").textContent = body.adapter_startup_delay_seconds + "s";
-            document.getElementById("currentAutoStartCncServer").textContent = body.auto_start_cnc_server ? "Enabled" : "Disabled";
-            document.getElementById("currentAutoStartEdingGui").textContent = body.auto_start_eding_gui ? "Enabled" : "Disabled";
-            document.getElementById("currentOperatorReadyMessage").textContent = body.show_operator_ready_message ? "Enabled" : "Disabled";
-            document.getElementById("currentPollInterval").textContent = body.job_monitor_poll_interval + "s";
-            document.getElementById("currentJogPadPauseHoldInterval").textContent = body.jog_pad_pause_hold_interval_ms + "ms";
-            document.getElementById("currentAdapterPort").textContent = body.port;
-            document.getElementById("currentUpdateUsername").textContent = body.update_username || "Not configured";
-            document.getElementById("currentUpdatePasswordStatus").textContent = body.update_password_configured ? "Password configured" : "Not configured";
-            document.getElementById("configHost").textContent = body.host;
-            document.getElementById("configPort").textContent = body.port;
-            document.getElementById("runAsUserToggle").checked = Boolean(body.run_as_windows_user);
-            document.getElementById("autoStartAdapterOnLogonToggle").checked = Boolean(body.auto_start_adapter_on_logon);
-            document.getElementById("autoStartCncServerToggle").checked = Boolean(body.auto_start_cnc_server);
-            document.getElementById("autoStartEdingGuiToggle").checked = Boolean(body.auto_start_eding_gui);
-            document.getElementById("operatorReadyMessageToggle").checked = Boolean(body.show_operator_ready_message);
-            toggleTaskCredentialInputs(Boolean(body.run_as_windows_user));
             resetConfigForm();
         }
 
         function resetConfigForm() {
-            ["machineNumber", "reportUrlInput", "baseDir", "cncShareUsername", "cncSharePassword", "dllPath", "iniPath", "taskUsername", "taskPassword", "adapterStartupDelay", "retryInterval", "healthInterval", "startupReadyTimeout", "pollInterval", "jogPadPauseHoldInterval", "adapterPort", "updateUsername", "updatePassword"].forEach((id) => {
-                document.getElementById(id).value = "";
-            });
+            state.configDraft = {};
+            renderConfigTab(state.activeConfigTab);
         }
 
         function toggleTaskCredentialInputs(enabled) {
-            document.getElementById("taskUsername").disabled = !enabled;
-            document.getElementById("taskPassword").disabled = !enabled;
+            const username = document.getElementById("taskUsername");
+            const password = document.getElementById("taskPassword");
+            if (username) username.disabled = !enabled;
+            if (password) password.disabled = !enabled;
         }
 
         async function refreshBackups() {
@@ -1470,30 +1606,31 @@
 
         async function submitConfig(event, options = {}) {
             if (event) event.preventDefault();
+            captureConfigDraft();
             const payload = {};
-            const machineNumber = document.getElementById("machineNumber").value.trim();
-            const reportUrl = document.getElementById("reportUrlInput").value.trim();
-            const baseDir = document.getElementById("baseDir").value.trim();
-            const cncShareUsername = document.getElementById("cncShareUsername").value.trim();
-            const cncSharePassword = document.getElementById("cncSharePassword").value;
-            const dllPath = document.getElementById("dllPath").value.trim();
-            const iniPath = document.getElementById("iniPath").value.trim();
-            const runAsWindowsUser = document.getElementById("runAsUserToggle").checked;
-            const autoStartAdapterOnLogon = document.getElementById("autoStartAdapterOnLogonToggle").checked;
-            const adapterStartupDelay = document.getElementById("adapterStartupDelay").value;
-            const taskUsername = document.getElementById("taskUsername").value.trim();
-            const taskPassword = document.getElementById("taskPassword").value;
-            const retry = document.getElementById("retryInterval").value;
-            const health = document.getElementById("healthInterval").value;
-            const startupReadyTimeout = document.getElementById("startupReadyTimeout").value;
-            const autoStartCncServer = document.getElementById("autoStartCncServerToggle").checked;
-            const autoStartEdingGui = document.getElementById("autoStartEdingGuiToggle").checked;
-            const operatorReadyMessage = document.getElementById("operatorReadyMessageToggle").checked;
-            const poll = document.getElementById("pollInterval").value;
-            const jogPadPauseHoldInterval = document.getElementById("jogPadPauseHoldInterval").value;
-            const adapterPort = document.getElementById("adapterPort").value;
-            const updateUsername = document.getElementById("updateUsername").value.trim();
-            const updatePassword = document.getElementById("updatePassword").value;
+            const machineNumber = getConfigTextValue("machineNumber").trim();
+            const reportUrl = getConfigTextValue("reportUrlInput").trim();
+            const baseDir = getConfigTextValue("baseDir").trim();
+            const dllPath = getConfigTextValue("dllPath").trim();
+            const iniPath = getConfigTextValue("iniPath").trim();
+            const taskUsername = getConfigTextValue("taskUsername").trim();
+            const taskPassword = getConfigTextValue("taskPassword");
+            const adapterStartupDelay = getConfigTextValue("adapterStartupDelay");
+            const cncShareUsername = getConfigTextValue("cncShareUsername").trim();
+            const cncSharePassword = getConfigTextValue("cncSharePassword");
+            const updateUsername = getConfigTextValue("updateUsername").trim();
+            const updatePassword = getConfigTextValue("updatePassword");
+            const retry = getConfigTextValue("retryInterval");
+            const health = getConfigTextValue("healthInterval");
+            const startupReadyTimeout = getConfigTextValue("startupReadyTimeout");
+            const poll = getConfigTextValue("pollInterval");
+            const jogPadPauseHoldInterval = getConfigTextValue("jogPadPauseHoldInterval");
+            const adapterPort = getConfigTextValue("adapterPort");
+            const runAsWindowsUser = getConfigBooleanValue("runAsUserToggle");
+            const autoStartAdapterOnLogon = getConfigBooleanValue("autoStartAdapterOnLogonToggle");
+            const autoStartCncServer = getConfigBooleanValue("autoStartCncServerToggle");
+            const autoStartEdingGui = getConfigBooleanValue("autoStartEdingGuiToggle");
+            const operatorReadyMessage = getConfigBooleanValue("operatorReadyMessageToggle");
 
             if (machineNumber) payload.machine_number = machineNumber;
             if (dllPath) payload.dll_path = dllPath;
@@ -1728,8 +1865,14 @@
             document.getElementById("loadJobBtn").addEventListener("click", loadReferenceJob);
             document.getElementById("startJobBtn").addEventListener("click", startReferenceJob);
             document.getElementById("unloadJobBtn").addEventListener("click", unloadReferenceJob);
-            document.getElementById("runAsUserToggle").addEventListener("change", (event) => {
-                toggleTaskCredentialInputs(event.target.checked);
+            document.querySelectorAll("#configTabs .config-tab").forEach((button) => {
+                button.addEventListener("click", () => setConfigTab(button.dataset.configTab));
+            });
+            document.getElementById("configTabFields").addEventListener("change", (event) => {
+                if (event.target.id === "runAsUserToggle") {
+                    state.configDraft.runAsUserToggle = event.target.checked;
+                    toggleTaskCredentialInputs(event.target.checked);
+                }
             });
             document.getElementById("exeFile").addEventListener("change", (event) => {
                 const file = event.target.files[0];
@@ -1740,6 +1883,7 @@
 
         async function initialize() {
             wireEvents();
+            renderConfigTab(state.activeConfigTab);
             renderEventLog("monitor");
             renderEventLog("test");
             await Promise.all([refreshConfig(), refreshBackups(), refreshLogs(), refreshDashboard()]);

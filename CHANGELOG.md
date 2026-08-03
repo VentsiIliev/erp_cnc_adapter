@@ -57,6 +57,10 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.4.4 - 2026-08-03
+
+- Added watchdog.log, organized dashboard config section, fixed single jog press in cont mode causing stale moves
+
 ## v1.4.3 - 2026-08-02
 
 - Fixed VBS launcher encoding so watchdog/status
@@ -208,6 +212,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 

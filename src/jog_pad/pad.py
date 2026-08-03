@@ -51,6 +51,7 @@ class JogPad(QWidget):
     mode_changed = pyqtSignal(object)
 
     CONTINUOUS = None
+    CONTINUOUS_JOG_START_DELAY_MS = 80
 
     def __init__(
         self,
@@ -82,6 +83,7 @@ class JogPad(QWidget):
         self._background_threads_started = False
         self.selected_step: Optional[float] = self.CONTINUOUS
         self._active_axis: Optional[str] = None
+        self._continuous_jog_token = 0
 
         self.setObjectName("jogPad")
         self.setMinimumSize(1060, 570)
@@ -790,13 +792,35 @@ class JogPad(QWidget):
     def _jog_pressed(self, axis: str, direction: int) -> None:
         if self.selected_step is self.CONTINUOUS:
             self._active_axis = axis
-            self.jog_started.emit(axis, direction, self.speed_percent)
-            self.action_start_continuous_jog(axis, direction, self.speed_percent)
+            self._continuous_jog_token += 1
+            token = self._continuous_jog_token
+            speed_percent = self.speed_percent
+            QTimer.singleShot(
+                self.CONTINUOUS_JOG_START_DELAY_MS,
+                lambda: self._start_continuous_jog_if_still_pressed(axis, direction, speed_percent, token),
+            )
             return
 
         signed_distance = float(direction) * float(self.selected_step)
         self.step_requested.emit(axis, signed_distance, self.speed_percent)
         self.action_move_relative(axis, signed_distance, self.speed_percent)
+
+    def _start_continuous_jog_if_still_pressed(
+        self,
+        axis: str,
+        direction: int,
+        speed_percent: float,
+        token: int,
+    ) -> None:
+        if self.selected_step is not self.CONTINUOUS:
+            return
+        if self._active_axis != axis:
+            return
+        if token != self._continuous_jog_token:
+            return
+
+        self.jog_started.emit(axis, direction, speed_percent)
+        self.action_start_continuous_jog(axis, direction, speed_percent)
 
     def _jog_released(self, axis: str) -> None:
         if self.selected_step is not self.CONTINUOUS:
@@ -804,6 +828,7 @@ class JogPad(QWidget):
 
         if self._active_axis == axis:
             self._active_axis = None
+            self._continuous_jog_token += 1
             self.jog_stopped.emit(axis)
             self.action_stop_continuous_jog(axis)
 

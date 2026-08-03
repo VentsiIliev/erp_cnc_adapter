@@ -99,6 +99,7 @@ async def test_logging_preserves_response_headers_and_body(caplog):
         "/favicon.ico",
         "/static/app.css",
         "/api/health",
+        "/api/status/indicator",
         "/api/logs",
         "/api/logs?lines=120",
         "/api/config",
@@ -126,6 +127,10 @@ async def test_internal_polling_endpoints_are_not_logged(caplog, path):
     @app.get("/api/health")
     async def health():
         return {"status": "healthy"}
+
+    @app.get("/api/status/indicator")
+    async def indicator_status():
+        return {"adapter": {"online": True}}
 
     @app.get("/api/logs")
     async def logs():

@@ -163,6 +163,16 @@ class TestBuildScript:
         assert "schtasks /Run /TN ERPCNCAdapter" in text
         assert text.index("suppress_adapter_launch_splash.flag") < text.index("schtasks /Run /TN ERPCNCAdapter")
 
+    def test_watchdog_writes_dedicated_log_file(self):
+        text = (PROJECT_ROOT / "scripts" / "watchdog.bat").read_text(encoding="utf-8", errors="replace")
+
+        assert "logs\\watchdog.log" in text
+        assert "FAILURE detected" in text
+        assert "RECOVERY requested" in text
+        assert "RECOVERY failed" in text
+        assert "Adapter process is running" not in text
+        assert "Watchdog check started" not in text
+
     def test_restart_script_falls_back_without_network_preflight(self):
         """Manual START-CNC fallback should not run the removed network preflight."""
         text = (PROJECT_ROOT / "scripts" / "restart.bat").read_text(encoding="utf-8", errors="replace")

@@ -674,3 +674,51 @@ Recommended pre-wrap manual checklist:
 - Keep CNC behavior deterministic; avoid hidden fallback chains unless explicitly requested.
 - Surface actionable failures in jog pad/dashboard, not only logs.
 - Do not depend on Eding GUI unless the feature explicitly requires GUI and user accepts it.
+
+## Current Context Snapshot - 2026-08-03
+
+Recent work completed in this session:
+
+- Jog pad continuous jog quick-tap race fixed in `src/jog_pad/pad.py`.
+  - Continuous jog start is delayed by `CONTINUOUS_JOG_START_DELAY_MS = 80`.
+  - A `_continuous_jog_token` cancels any pending start when the button is released or another continuous press supersedes it.
+  - Release still sends `action_stop_continuous_jog(axis)` immediately for safety.
+  - Purpose: prevent quick press/release from queuing a delayed start that moves after the operator already released the button.
+  - Tests updated in `tests/test_jog_pad_client.py`.
+  - Verified with `py_compile src\jog_pad\pad.py` and `pytest tests\test_jog_pad_client.py tests\test_jog_pad_button_monitor.py tests\test_jog_pad_launcher.py`.
+
+- Dashboard Configuration section reorganized in `src/web/templates/dashboard.html`.
+  - The old long static config grid was replaced with lazy-rendered tabs: `Machine`, `Startup`, `Credentials`, and `Timing`.
+  - Only the active config tab fields are rendered into `#configTabFields`.
+  - A persistent/sticky action row remains visible with Save, Apply Credentials and Restart Task, and Reset Form.
+  - The backend contract remains unchanged: saves still POST one `/api/config` payload.
+  - `state.configDraft` preserves edits while switching tabs before saving.
+  - `submitConfig()` now reads from draft helpers such as `getConfigTextValue(...)` and `getConfigBooleanValue(...)` instead of assuming every field exists in the DOM.
+  - Current-value labels are updated with `setTextIfPresent(...)` because hidden tab fields are not always mounted.
+  - Tests updated in `tests/test_dashboard_template.py`.
+  - Verified with `pytest tests\test_dashboard_template.py tests\test_config.py` and `git diff --check` for dashboard files.
+  - Node.js was not installed, so no standalone JS syntax check was run.
+
+Current dirty files at the time of this note:
+
+```text
+M adapter.pid
+M machine_health_dashboard/health_history.json
+M src/jog_pad/pad.py
+M src/web/templates/dashboard.html
+M tests/test_dashboard_template.py
+M tests/test_jog_pad_client.py
+```
+
+`adapter.pid` and `machine_health_dashboard/health_history.json` are runtime/local state and were not intentionally edited.
+
+Tooling note:
+
+- `apply_patch` is unreliable in this session.
+- It can sometimes add a new file, but update/delete operations fail with:
+
+```text
+codex-windows-sandbox-setup.exe ... program not found
+```
+
+- PowerShell edits were used instead, with focused diffs/tests afterward.

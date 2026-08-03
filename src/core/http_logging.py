@@ -16,6 +16,7 @@ EXCLUDED_PATHS = {
     "/api/config",
     "/api/health",
     "/api/logs",
+    "/api/status/indicator",
     "/api/update/backups",
     "/api/cnc/job/status",
 }

@@ -63,7 +63,7 @@ def _run_adapter() -> None:
     logger.info("  Network: http://%s:%d", local_ip, settings.port)
     logger.info("Startup timing: handing off to uvicorn at %.1fms", (time.perf_counter() - process_start) * 1000)
 
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    uvicorn.run(app, host=settings.host, port=settings.port, access_log=False)
 
 
 def _run_update_worker() -> int:

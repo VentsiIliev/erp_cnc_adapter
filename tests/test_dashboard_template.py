@@ -47,7 +47,7 @@ def test_config_form_can_edit_adapter_port():
     assert 'label for="adapterPort"' in dashboard
     assert 'id="adapterPort"' in dashboard
     assert 'id="currentAdapterPort"' in dashboard
-    assert 'const adapterPort = document.getElementById("adapterPort").value;' in dashboard
+    assert 'const adapterPort = getConfigTextValue("adapterPort");' in dashboard
     assert 'if (adapterPort) payload.port = parseInt(adapterPort, 10);' in dashboard
     assert '"adapterPort"' in dashboard
 
@@ -91,7 +91,7 @@ def test_config_form_can_edit_jog_pad_pause_hold_interval():
     assert 'label for="jogPadPauseHoldInterval"' in dashboard
     assert 'id="jogPadPauseHoldInterval"' in dashboard
     assert 'id="currentJogPadPauseHoldInterval"' in dashboard
-    assert 'const jogPadPauseHoldInterval = document.getElementById("jogPadPauseHoldInterval").value;' in dashboard
+    assert 'const jogPadPauseHoldInterval = getConfigTextValue("jogPadPauseHoldInterval");' in dashboard
     assert 'payload.jog_pad_pause_hold_interval_ms = parseInt(jogPadPauseHoldInterval, 10);' in dashboard
     assert '"jogPadPauseHoldInterval"' in dashboard
 
@@ -105,8 +105,8 @@ def test_config_form_can_edit_cnc_share_credentials():
     assert 'label for="cncSharePassword"' in dashboard
     assert 'id="cncSharePassword"' in dashboard
     assert 'id="currentCncSharePasswordStatus"' in dashboard
-    assert 'const cncShareUsername = document.getElementById("cncShareUsername").value.trim();' in dashboard
-    assert 'const cncSharePassword = document.getElementById("cncSharePassword").value;' in dashboard
+    assert 'const cncShareUsername = getConfigTextValue("cncShareUsername").trim();' in dashboard
+    assert 'const cncSharePassword = getConfigTextValue("cncSharePassword");' in dashboard
     assert 'payload.cnc_share_username = cncShareUsername;' in dashboard
     assert 'payload.cnc_share_password = cncSharePassword;' in dashboard
     assert '"cncShareUsername"' in dashboard
@@ -122,8 +122,8 @@ def test_config_form_can_edit_svn_update_credentials():
     assert 'label for="updatePassword"' in dashboard
     assert 'id="updatePassword"' in dashboard
     assert 'id="currentUpdatePasswordStatus"' in dashboard
-    assert 'const updateUsername = document.getElementById("updateUsername").value.trim();' in dashboard
-    assert 'const updatePassword = document.getElementById("updatePassword").value;' in dashboard
+    assert 'const updateUsername = getConfigTextValue("updateUsername").trim();' in dashboard
+    assert 'const updatePassword = getConfigTextValue("updatePassword");' in dashboard
     assert 'payload.update_username = updateUsername;' in dashboard
     assert 'payload.update_password = updatePassword;' in dashboard
     assert '"updateUsername"' in dashboard
@@ -134,3 +134,20 @@ def test_nav_buttons_scroll_to_content_sections_not_nav_buttons():
 
     assert "document.querySelector('section.content-card[data-view=\"' + normalized + '\"]')" in dashboard
     assert "document.querySelector('[data-view=\"' + normalized + '\"]')" not in dashboard
+
+def test_config_form_uses_lazy_tabs_with_preserved_draft_state():
+    dashboard = _dashboard_html()
+
+    assert 'id="configTabs"' in dashboard
+    assert 'data-config-tab="machine"' in dashboard
+    assert 'data-config-tab="startup"' in dashboard
+    assert 'data-config-tab="credentials"' in dashboard
+    assert 'data-config-tab="timing"' in dashboard
+    assert 'id="configTabFields"' in dashboard
+    assert 'activeConfigTab: "machine"' in dashboard
+    assert 'configDraft: {}' in dashboard
+    assert 'function captureConfigDraft()' in dashboard
+    assert 'function renderConfigTab(tabName)' in dashboard
+    assert 'function setConfigTab(tabName)' in dashboard
+    assert 'CONFIG_TABS[selected]' in dashboard
+    assert 'class="form-actions config-action-row"' in dashboard
