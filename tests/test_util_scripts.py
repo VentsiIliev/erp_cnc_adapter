@@ -145,6 +145,14 @@ class TestBuildScript:
         text = _read_script(self.SCRIPT)
         assert "scripts\\start_cnc_splash.ps1" in text
 
+    def test_start_cnc_splash_supports_update_mode(self):
+        text = (PROJECT_ROOT / "scripts" / "start_cnc_splash.ps1").read_text(encoding="utf-8", errors="replace")
+
+        assert "[ValidateSet('Start', 'Update')]" in text
+        assert "ERP-CNC Update" in text
+        assert "Updating CNC adapter" in text
+        assert "LockPath" in text
+
     def test_copies_status_indicator_script(self):
         """The always-on operator status indicator must be shipped in full update packages."""
         text = _read_script(self.SCRIPT)

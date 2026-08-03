@@ -253,6 +253,57 @@ def test_repair_adapter_hidden_launcher_targets_adapter_directly(monkeypatch, tm
     assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File" in text
     assert ", 0, False" in text
 
+
+def test_launch_update_splash_uses_existing_splash_script(monkeypatch, tmp_path):
+    from src import update_worker
+
+    install_dir = tmp_path / "install"
+    scripts_dir = install_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    splash = scripts_dir / "start_cnc_splash.ps1"
+    splash.write_text("param()\n", encoding="utf-8")
+    lock_file = install_dir / ".update-lock"
+    calls = []
+
+    def fake_popen(args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+    monkeypatch.setattr(update_worker.subprocess, "Popen", fake_popen)
+
+    assert update_worker._launch_update_splash(str(install_dir), str(lock_file)) is True
+
+    args, kwargs = calls[0]
+    assert args[:7] == [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-File",
+    ]
+    assert args[7] == str(splash)
+    assert "-Mode" in args
+    assert args[args.index("-Mode") + 1] == "Update"
+    assert "-LockPath" in args
+    assert args[args.index("-LockPath") + 1] == str(lock_file)
+    assert kwargs["cwd"] == str(install_dir)
+    assert kwargs["stdout"] is update_worker.subprocess.DEVNULL
+    assert kwargs["stderr"] is update_worker.subprocess.DEVNULL
+
+
+def test_launch_update_splash_skips_when_script_missing(monkeypatch, tmp_path):
+    from src import update_worker
+
+    calls = []
+    monkeypatch.setattr(update_worker.os, "name", "nt")
+    monkeypatch.setattr(update_worker.subprocess, "Popen", lambda *args, **kwargs: calls.append(args))
+
+    assert update_worker._launch_update_splash(str(tmp_path), str(tmp_path / ".update-lock")) is False
+    assert calls == []
+
+
 def test_repair_adapter_scheduled_task_action_points_task_to_hidden_launcher(monkeypatch, tmp_path):
     from src import update_worker
 

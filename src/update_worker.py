@@ -266,6 +266,49 @@ def _ps_quote(value: str) -> str:
     return value.replace("'", "''")
 
 
+def _launch_update_splash(install_dir: str, lock_file: str) -> bool:
+    """Show a non-blocking operator splash while an update is being applied."""
+    if os.name != "nt":
+        return False
+
+    splash_path = Path(install_dir) / "scripts" / "start_cnc_splash.ps1"
+    if not splash_path.exists():
+        logger.warning("Update splash skipped; script is missing: %s", splash_path)
+        return False
+
+    command = [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-File",
+        str(splash_path),
+        "-Mode",
+        "Update",
+        "-LockPath",
+        lock_file,
+        "-TimeoutSeconds",
+        "300",
+    ]
+    try:
+        subprocess.Popen(
+            command,
+            cwd=install_dir,
+            creationflags=0x00000200 | 0x00000008,
+            close_fds=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        logger.warning("Update splash failed to launch: %s", exc)
+        return False
+
+    logger.info("Update splash launched: %s", splash_path)
+    return True
+
+
 def _repair_adapter_hidden_launcher(install_dir: str) -> bool:
     """Repair the legacy adapter VBS launcher for installs that still reference it."""
     install_path = Path(install_dir)
@@ -723,6 +766,8 @@ def main(argv: list[str] | None = None) -> None:
         Path(lock_file).write_text(f"Update in progress since {datetime.now():%Y-%m-%d %H:%M:%S}\n", encoding="utf-8")
     except OSError as exc:
         logger.warning("Could not create lock file: %s", exc)
+    else:
+        _launch_update_splash(install_dir, lock_file)
 
     backup_path = ""
     try:

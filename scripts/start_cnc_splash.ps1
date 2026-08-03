@@ -1,17 +1,26 @@
-﻿$ErrorActionPreference = 'SilentlyContinue'
+param(
+  [ValidateSet('Start', 'Update')]
+  [string]$Mode = 'Start',
+  [string]$LockPath = '',
+  [string]$HealthUrl = '',
+  [int]$TimeoutSeconds = 120
+)
+
+$ErrorActionPreference = 'SilentlyContinue'
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $installDir = Split-Path -Parent $scriptDir
 $iconPath = Join-Path $installDir 'resources\logo.ico'
-$healthUrl = 'http://127.0.0.1:8002/api/health'
-$timeoutSeconds = 120
+if ([string]::IsNullOrWhiteSpace($HealthUrl)) {
+  $HealthUrl = 'http://127.0.0.1:8002/api/health'
+}
 
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 
 $window = New-Object System.Windows.Window
-$window.Title = 'START-CNC'
+$window.Title = if ($Mode -eq 'Update') { 'ERP-CNC Update' } else { 'START-CNC' }
 $window.Width = 420
 $window.Height = 230
 $window.WindowStartupLocation = 'CenterScreen'
@@ -48,7 +57,7 @@ if (Test-Path -LiteralPath $iconPath) {
 }
 
 $title = New-Object System.Windows.Controls.TextBlock
-$title.Text = 'ERP-CNC'
+$title.Text = if ($Mode -eq 'Update') { 'ERP-CNC Update' } else { 'ERP-CNC' }
 $title.FontSize = 22
 $title.FontWeight = 'SemiBold'
 $title.VerticalAlignment = 'Center'
@@ -58,7 +67,7 @@ $header.Children.Add($title) | Out-Null
 $root.Children.Add($header) | Out-Null
 
 $status = New-Object System.Windows.Controls.TextBlock
-$status.Text = 'Starting CNC adapter...'
+$status.Text = if ($Mode -eq 'Update') { 'Updating CNC adapter...' } else { 'Starting CNC adapter...' }
 $status.FontSize = 15
 $status.TextAlignment = 'Center'
 $status.Margin = New-Object System.Windows.Thickness(0, 0, 0, 16)
@@ -77,39 +86,68 @@ $root.Children.Add($progress) | Out-Null
 $window.Content = $root
 $startedAt = Get-Date
 $readyCount = 0
+$lockSeen = $false
+
+function Complete-Splash([string]$message, [int]$delayMs) {
+  $status.Text = $message
+  $progress.IsIndeterminate = $false
+  $progress.Value = 100
+  $timer.Stop()
+  $closeTimer = New-Object System.Windows.Threading.DispatcherTimer
+  $closeTimer.Interval = [TimeSpan]::FromMilliseconds($delayMs)
+  $closeTimer.Add_Tick({ $closeTimer.Stop(); $window.Close() })
+  $closeTimer.Start()
+}
 
 $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(800)
 $timer.Add_Tick({
   $elapsed = [int]((Get-Date) - $startedAt).TotalSeconds
+
+  if ($Mode -eq 'Update') {
+    if (-not [string]::IsNullOrWhiteSpace($LockPath) -and (Test-Path -LiteralPath $LockPath)) {
+      $script:lockSeen = $true
+      $status.Text = ('Updating CNC adapter... {0}s' -f $elapsed)
+      return
+    }
+
+    if ($script:lockSeen) {
+      try {
+        $health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 1
+        if ($health) {
+          Complete-Splash 'Update complete. Adapter is ready.' 1400
+          return
+        }
+      } catch {}
+      if ($elapsed -ge $TimeoutSeconds) {
+        Complete-Splash 'Update finished, but adapter is not reachable. Check update log.' 8000
+        return
+      }
+      $status.Text = 'Update applied. Waiting for adapter...'
+      return
+    }
+
+    $status.Text = ('Preparing update... {0}s' -f $elapsed)
+    if ($elapsed -ge $TimeoutSeconds) {
+      Complete-Splash 'Update is taking longer than expected. Check update log.' 8000
+    }
+    return
+  }
+
   try {
-    $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 1
+    $health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 1
     if ($health.cnc.connected -eq $true) {
       $script:readyCount++
-      $status.Text = 'CNC adapter is ready.'
-      $progress.IsIndeterminate = $false
-      $progress.Value = 100
       if ($script:readyCount -ge 2) {
-        $timer.Stop()
-        $closeTimer = New-Object System.Windows.Threading.DispatcherTimer
-        $closeTimer.Interval = [TimeSpan]::FromMilliseconds(900)
-        $closeTimer.Add_Tick({ $closeTimer.Stop(); $window.Close() })
-        $closeTimer.Start()
+        Complete-Splash 'CNC adapter is ready.' 900
       }
       return
     }
   } catch {}
 
   $script:readyCount = 0
-  if ($elapsed -ge $timeoutSeconds) {
-    $status.Text = 'Still starting. Check START-CNC log if needed.'
-    $progress.IsIndeterminate = $false
-    $progress.Value = 100
-    $timer.Stop()
-    $closeTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $closeTimer.Interval = [TimeSpan]::FromSeconds(8)
-    $closeTimer.Add_Tick({ $closeTimer.Stop(); $window.Close() })
-    $closeTimer.Start()
+  if ($elapsed -ge $TimeoutSeconds) {
+    Complete-Splash 'Still starting. Check START-CNC log if needed.' 8000
     return
   }
 
