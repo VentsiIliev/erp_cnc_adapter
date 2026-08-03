@@ -57,6 +57,10 @@
 
 All notable changes to ERP-CNC Adapter are documented here.
 
+## v1.4.6 - 2026-08-03
+
+- Fixed Eding pause resume by syncing from pause using cnc.ini approachFeed. Suppressed high-frequency polling logs.
+
 ## v1.4.5 - 2026-08-03
 
 - showing update splash screen
@@ -216,6 +220,7 @@ All notable changes to ERP-CNC Adapter are documented here.
 
 - Initial stable release baseline for ERP-CNC Adapter.
 - Added adapter dashboard, installer workflow, scheduled task setup, watchdog/restart support, CNC job load/start/status behavior, and PyQt5 jog pad integration.
+
 
 
 

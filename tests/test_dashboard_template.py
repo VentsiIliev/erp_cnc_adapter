@@ -151,3 +151,21 @@ def test_config_form_uses_lazy_tabs_with_preserved_draft_state():
     assert 'function setConfigTab(tabName)' in dashboard
     assert 'CONFIG_TABS[selected]' in dashboard
     assert 'class="form-actions config-action-row"' in dashboard
+
+
+def test_dashboard_collapses_repeated_refresh_failures():
+    dashboard = _dashboard_html()
+
+    assert "dashboardOffline: false" in dashboard
+    assert 'if (!state.dashboardOffline)' in dashboard
+    assert 'state.dashboardOffline = true;' in dashboard
+    assert 'Dashboard connection restored.' in dashboard
+
+
+def test_stop_cnc_accepts_manual_redirect_without_json_parse():
+    dashboard = _dashboard_html()
+
+    assert 'result.type === "opaqueredirect"' in dashboard
+    assert 'result.status === 0' in dashboard
+    assert 'CNC stop command accepted. Adapter recovery may take up to a minute.' in dashboard
+    assert 'const data = contentType.includes("application/json") ? await result.json() : {};' in dashboard

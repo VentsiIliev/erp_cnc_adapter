@@ -368,6 +368,52 @@ def test_pause_job_calls_cnc_pause_job():
     client._dll.CncPauseJob.assert_called_once_with()
 
 
+def test_run_job_uses_standard_run_when_not_paused():
+    from src.cnc.cnc_client import CncClient
+
+    client = CncClient.__new__(CncClient)
+    client._dll = MagicMock()
+    client._dll.CncGetState.return_value = 2
+    client._dll.CncRunOrResumeJob.return_value = 0
+
+    assert client.run_job() == 0
+
+    client._dll.CncRunOrResumeJob.assert_called_once_with()
+    client._dll.CncSyncFromPauseAndStartAutomatic.assert_not_called()
+
+
+def test_run_job_syncs_from_pause_using_eding_ini_approach_feed(tmp_path):
+    from cncapi.python.cncstructs import CNC_PAUSE_STS
+    from src.cnc.cnc_client import CncClient
+
+    ini_path = tmp_path / "cnc.ini"
+    ini_path.write_text("[SAFETY]\napproachFeed = 123.400000\n", encoding="utf-8")
+
+    pause_status = CNC_PAUSE_STS()
+    pause_status.pausePositionValid = 1
+    pause_status.pausePosition.z = 42.0
+    pause_status.curPosInSync.z = 0
+
+    client = CncClient.__new__(CncClient)
+    client._settings = MagicMock(ini_path=str(ini_path))
+    client._last_cnc_message = None
+    client._captured_cnc_messages = []
+    client._dll = MagicMock()
+    client._dll.CncGetState.return_value = 12
+    client._dll.CncGetPauseStatus.return_value.contents = pause_status
+    client._dll.CncSyncFromPauseAndStartAutomatic.return_value = 0
+    client._dll.CncLogFifoGet.return_value = 1
+    client._wait_for_cnc_messages = MagicMock(return_value=False)
+
+    assert client.run_job() == 0
+
+    feed, callback, callback_param = client._dll.CncSyncFromPauseAndStartAutomatic.call_args.args
+    assert feed.value == 123.4
+    assert callback is None
+    assert callback_param is None
+    client._dll.CncRunOrResumeJob.assert_not_called()
+
+
 def test_is_motion_enabled_reads_controller_status():
     from src.cnc.cnc_client import CncClient
 

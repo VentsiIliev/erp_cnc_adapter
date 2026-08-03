@@ -27,13 +27,6 @@
       "start_status": "offline",
       "last_status": "offline",
       "last_error": "<urlopen error timed out>"
-    },
-    "CNC5": {
-      "machine_id": "CNC5",
-      "started_at": "2026-08-03 08:59:05",
-      "start_status": "offline",
-      "last_status": "offline",
-      "last_error": "<urlopen error timed out>"
     }
   },
   "events": [
@@ -306,6 +299,123 @@
       "last_error": "<urlopen error timed out>",
       "ended_at": "2026-08-03 08:55:24",
       "duration_seconds": 39
+    },
+    {
+      "machine_id": "CNC5",
+      "started_at": "2026-08-03 08:59:05",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "<urlopen error timed out>",
+      "ended_at": "2026-08-03 09:02:42",
+      "duration_seconds": 217
+    },
+    {
+      "machine_id": "CNC5",
+      "started_at": "2026-08-03 09:04:26",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "<urlopen error timed out>",
+      "ended_at": "2026-08-03 09:05:05",
+      "duration_seconds": 39
+    },
+    {
+      "machine_id": "CNC4",
+      "started_at": "2026-08-03 09:10:43",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "timed out",
+      "ended_at": "2026-08-03 09:10:56",
+      "duration_seconds": 13
+    },
+    {
+      "machine_id": "CNC4",
+      "started_at": "2026-08-03 09:12:14",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "HTTP Error 503: Service Unavailable",
+      "ended_at": "2026-08-03 09:13:06",
+      "duration_seconds": 52
+    },
+    {
+      "machine_id": "CNC4",
+      "started_at": "2026-08-03 09:18:18",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "<urlopen error timed out>",
+      "ended_at": "2026-08-03 09:19:10",
+      "duration_seconds": 52
+    },
+    {
+      "machine_id": "CNC5",
+      "started_at": "2026-08-03 09:23:56",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "timed out",
+      "ended_at": "2026-08-03 09:24:09",
+      "duration_seconds": 13
+    },
+    {
+      "machine_id": "CNC4",
+      "started_at": "2026-08-03 09:22:51",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "HTTP Error 503: Service Unavailable",
+      "ended_at": "2026-08-03 09:25:40",
+      "duration_seconds": 169
+    },
+    {
+      "machine_id": "CNC5",
+      "started_at": "2026-08-03 09:25:40",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "HTTP Error 503: Service Unavailable",
+      "ended_at": "2026-08-03 09:28:16",
+      "duration_seconds": 156
+    },
+    {
+      "machine_id": "CNC5",
+      "started_at": "2026-08-03 09:28:29",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "HTTP Error 503: Service Unavailable",
+      "ended_at": "2026-08-03 09:29:08",
+      "duration_seconds": 39
+    },
+    {
+      "machine_id": "CNC4",
+      "started_at": "2026-08-03 09:28:03",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "<urlopen error timed out>",
+      "ended_at": "2026-08-03 09:30:26",
+      "duration_seconds": 143
+    },
+    {
+      "machine_id": "CNC4",
+      "started_at": "2026-08-03 09:31:57",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "HTTP Error 503: Service Unavailable",
+      "ended_at": "2026-08-03 09:34:20",
+      "duration_seconds": 143
+    },
+    {
+      "machine_id": "CNC5",
+      "started_at": "2026-08-03 09:31:57",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "HTTP Error 503: Service Unavailable",
+      "ended_at": "2026-08-03 09:34:20",
+      "duration_seconds": 143
+    },
+    {
+      "machine_id": "CNC4",
+      "started_at": "2026-08-03 09:44:25",
+      "start_status": "offline",
+      "last_status": "offline",
+      "last_error": "timed out",
+      "ended_at": "2026-08-03 09:44:38",
+      "duration_seconds": 13
     }
   ]
 }

@@ -19,6 +19,9 @@ EXCLUDED_PATHS = {
     "/api/status/indicator",
     "/api/update/backups",
     "/api/cnc/job/status",
+    "/api/cnc/physical-buttons",
+    "/api/cnc/messages/recent",
+    "/api/cnc/position",
 }
 EXCLUDED_PATH_PREFIXES = (
     "/static/",

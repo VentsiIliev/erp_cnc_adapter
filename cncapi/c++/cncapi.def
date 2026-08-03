@@ -180,14 +180,14 @@ EXPORTS
 	CncSetPlasmaParameters
 	CncStartRenderSearch
 	CncSyncPauseAxis
-        CncSyncFromPauseAndStartAutomatic
+    CncSyncFromPauseAndStartAutomatic
 	CncSyncPauseXSafe
 	CncSyncPauseZSafe
 	CncSyncSearchAxis
 	CncSyncSearchTool
 	CncSyncSearchXSafe
 	CncSyncSearchZSafe
-        CncSyncFromSearchAndStartAutomatic
+    CncSyncFromSearchAndStartAutomatic
 	CncGetCompensationStatus
 	CncSyncInchModeAndParametersAndOffset
 	CncCheckStartConditionOK

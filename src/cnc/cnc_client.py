@@ -1,3 +1,4 @@
+import configparser
 import ctypes
 import logging
 import struct
@@ -5,7 +6,7 @@ import sys
 import time
 from ctypes import POINTER, WinDLL, byref, c_char_p, c_double, c_int, c_uint, c_void_p, c_wchar_p
 
-from cncapi.python.cncstructs import CNC_CART_BOOL, CNC_CART_DOUBLE, CNC_CONTROLLER_STATUS, CNC_JOB_STATUS, CNC_LOG_MESSAGE, CNC_MOTION_STATUS, CNC_RUNNING_STATUS
+from cncapi.python.cncstructs import CNC_CART_BOOL, CNC_CART_DOUBLE, CNC_CONTROLLER_STATUS, CNC_JOB_STATUS, CNC_LOG_MESSAGE, CNC_MOTION_STATUS, CNC_PAUSE_STS, CNC_RUNNING_STATUS
 from src.core.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,8 @@ CNC_RC_ERR_SERVER_NOT_RUNNING = 22
 CNC_RC_ERR_NOT_CONNECTED = 24
 CNC_IOID_RUN_IN = 31
 CNC_IOID_PAUSE_IN = 32
+CNC_PAUSED_STATES = {11, 12, 13, 14, 15, 18}
+DEFAULT_APPROACH_FEED = 100.0
 
 
 class CncClient:
@@ -476,8 +479,68 @@ class CncClient:
 
     def run_job(self) -> int:
         """Start (or resume) execution of the loaded job."""
+        state = int(self._dll.CncGetState())
+        if state in CNC_PAUSED_STATES and hasattr(self._dll, "CncSyncFromPauseAndStartAutomatic"):
+            return self.sync_from_pause_and_start()
+
         result = self._dll.CncRunOrResumeJob()
         logger.info("CncRunOrResumeJob() returned %d", result)
+        return result
+
+    def get_pause_status(self) -> dict | None:
+        """Return pause synchronization status from Eding, if available."""
+        if not hasattr(self._dll, "CncGetPauseStatus"):
+            logger.info("CncGetPauseStatus() not available in DLL")
+            return None
+
+        ptr = self._dll.CncGetPauseStatus()
+        if not ptr:
+            logger.info("CncGetPauseStatus() returned NULL")
+            return None
+
+        s = ptr.contents
+        return {
+            "pauseManualActionRequired": int(s.pauseManualActionRequired),
+            "pausePositionValid": int(s.pausePositionValid),
+            "pausePositionLine": int(s.pausePositionLine),
+            "pausePosition": self._cart_to_dict(s.pausePosition),
+            "curPosInSync": {
+                "x": int(s.curPosInSync.x),
+                "y": int(s.curPosInSync.y),
+                "z": int(s.curPosInSync.z),
+                "a": int(s.curPosInSync.a),
+                "b": int(s.curPosInSync.b),
+                "c": int(s.curPosInSync.c),
+            },
+            "spindleInSync": int(s.spindleInSync),
+            "floodInSync": int(s.floodInSync),
+            "mistInSync": int(s.mistInSync),
+            "allAxesInSync": int(s.allAxesInSync),
+        }
+
+    def sync_from_pause_and_start(self) -> int:
+        """Move back to Eding's pause position and resume automatically."""
+        approach_feed = self._read_eding_safety_float("approachFeed", DEFAULT_APPROACH_FEED)
+        before = self.get_pause_status()
+        if before is not None:
+            logger.info("Pause status before sync/start: %s", before)
+
+        self._clear_cnc_messages()
+        result = self._dll.CncSyncFromPauseAndStartAutomatic(
+            c_double(approach_feed),
+            None,
+            None,
+        )
+        logger.info(
+            "CncSyncFromPauseAndStartAutomatic(approachFeed=%s) returned %d",
+            approach_feed,
+            result,
+        )
+        self._wait_for_cnc_messages("after sync from pause and start")
+
+        after = self.get_pause_status()
+        if after is not None:
+            logger.info("Pause status after sync/start: %s", after)
         return result
 
     def pause_job(self) -> int:
@@ -632,6 +695,30 @@ class CncClient:
         logger.warning("Unexpected active G5X index %s, using G54/P1", current_g5x)
         return 1
 
+    def _read_eding_safety_float(self, key: str, default: float) -> float:
+        """Read a numeric safety setting from the active Eding cnc.ini."""
+        parser = configparser.ConfigParser(inline_comment_prefixes=(";",))
+        try:
+            read_files = parser.read(self._settings.ini_path, encoding="utf-8")
+            if not read_files:
+                logger.warning(
+                    "Could not read Eding ini %r; using %s=%s",
+                    self._settings.ini_path,
+                    key,
+                    default,
+                )
+                return default
+            return parser.getfloat("SAFETY", key, fallback=default)
+        except Exception as exc:
+            logger.warning(
+                "Could not read [SAFETY] %s from Eding ini %r; using %s: %s",
+                key,
+                self._settings.ini_path,
+                default,
+                exc,
+            )
+            return default
+
     @staticmethod
     def _axis_index(axis: str) -> int:
         axis_map = {"X": 0, "Y": 1, "Z": 2, "A": 3, "B": 4, "C": 5}
@@ -691,6 +778,7 @@ class CncClient:
             ("CncGetRunningStatus", None, POINTER(CNC_RUNNING_STATUS)),
             ("CncGetMotionStatus", None, POINTER(CNC_MOTION_STATUS)),
             ("CncGetControllerStatus", None, POINTER(CNC_CONTROLLER_STATUS)),
+            ("CncGetPauseStatus", None, POINTER(CNC_PAUSE_STS)),
             ("CncGetInput", [c_int], c_int),
             ("CncGetInputRaw", [c_int], c_int),
             ("CncRunSingleLine", [c_char_p], c_int),
@@ -699,6 +787,7 @@ class CncClient:
             ("CncSendToGUI", [c_int, c_int, c_int], c_int),
             ("CncSendUserMessage", [c_char_p, c_char_p, c_int, c_int, c_int, c_char_p], None),
             ("CncRunOrResumeJob", None, c_int),
+            ("CncSyncFromPauseAndStartAutomatic", [c_double, c_void_p, c_void_p], c_int),
             ("CncPauseJob", None, c_int),
             ("CncReset", None, c_int),
             ("CncSetExtraJobOptions", [c_char_p, c_int, c_uint], c_int),

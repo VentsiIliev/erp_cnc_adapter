@@ -1020,6 +1020,7 @@
             lastJobName: "",
             wasRunning: false,
             jobFinishedShown: false,
+            dashboardOffline: false,
             monitorEvents: ["Monitor stream initialized."],
             testEvents: ["Ready for manual verification."],
             activeConfigTab: "machine",
@@ -1548,11 +1549,18 @@
                 updateHealthCard(health);
                 updateMonitorCards(jobStatus, monitorStatus);
                 document.getElementById("lastRefresh").textContent = new Date().toLocaleTimeString();
+                if (state.dashboardOffline) {
+                    addEvent("monitor", "Dashboard connection restored.", "success");
+                }
+                state.dashboardOffline = false;
             } catch (error) {
                 setStatusPill("degraded", "Error");
                 document.getElementById("connectionHeadline").textContent = "Dashboard refresh failed";
                 document.getElementById("connectionSubline").textContent = error.message;
-                addEvent("monitor", "Dashboard refresh failed: " + error.message, "error");
+                if (!state.dashboardOffline) {
+                    addEvent("monitor", "Dashboard refresh failed: " + error.message, "error");
+                }
+                state.dashboardOffline = true;
             }
         }
 
@@ -1592,13 +1600,14 @@
         async function stopCnc() {
             try {
                 const result = await fetch("/api/cnc/stop", { redirect: "manual" });
-                if (result.status >= 300 && result.status < 400) {
-                    addEvent("monitor", "CNC stop command accepted.", "warning");
+                if (result.type === "opaqueredirect" || result.status === 0 || (result.status >= 200 && result.status < 400)) {
+                    addEvent("monitor", "CNC stop command accepted. Adapter recovery may take up to a minute.", "warning");
                 } else {
-                    const data = await result.json();
+                    const contentType = result.headers.get("content-type") || "";
+                    const data = contentType.includes("application/json") ? await result.json() : {};
                     if (data.error) throw new Error(data.error);
+                    throw new Error("Stop request failed with HTTP " + result.status);
                 }
-                await refreshDashboard();
             } catch (error) {
                 addEvent("monitor", "CNC stop failed: " + error.message, "error");
             }

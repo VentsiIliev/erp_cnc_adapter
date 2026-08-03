@@ -105,6 +105,10 @@ async def test_logging_preserves_response_headers_and_body(caplog):
         "/api/config",
         "/api/update/backups",
         "/api/cnc/job/status",
+        "/api/cnc/physical-buttons",
+        "/api/cnc/messages/recent",
+        "/api/cnc/messages/recent?limit=10",
+        "/api/cnc/position",
         "/api/cnc/monitor/status",
     ],
 )
@@ -147,6 +151,18 @@ async def test_internal_polling_endpoints_are_not_logged(caplog, path):
     @app.get("/api/cnc/job/status")
     async def job_status():
         return {"state": 2}
+
+    @app.get("/api/cnc/physical-buttons")
+    async def physical_buttons():
+        return {"runInput": False, "pauseInput": False}
+
+    @app.get("/api/cnc/messages/recent")
+    async def recent_messages():
+        return {"messages": []}
+
+    @app.get("/api/cnc/position")
+    async def position():
+        return {"work": {}, "machine": {}}
 
     @app.get("/api/cnc/monitor/status")
     async def monitor_status():
